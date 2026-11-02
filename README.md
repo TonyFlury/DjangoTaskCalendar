@@ -24,6 +24,9 @@ No later release number is confirmed for reminders.
 Only DiaryManagers can change calendar templates.
 DiaryManagers approve new templates and template versions through the save action in V1.
 A separate approval step is outside V1 scope.
+Only DiaryManagers can modify tasks copied from a template into a calendar instance.
+Task assignment does not grant permission to modify those tasks.
+Completion permissions remain a separate decision.
 
 ## Remaining work
 
@@ -51,6 +54,7 @@ The previews use sample data and do not complete application requirements.
 - [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
 - [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
 - [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
+- [ ] Restrict changes to template-sourced instance tasks to DiaryManagers through every interface.
 - [ ] Approve the resulting template version through the DiaryManager's save action in V1.
 - [ ] Show the event name and event date on the current calendar page.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
@@ -78,14 +82,20 @@ The previews use sample data and do not complete application requirements.
 These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
-- [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
-- [ ] Define the host calls that save the Diary key.
 - [ ] Define personal entry visibility beyond the associated user's task view.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
 - [ ] Decide whether existing calendars need template updates with a date review.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
+
+### Garage Sale integration
+
+The host decides when to call the calendar creation API.
+Diary does not define event creation or activation callbacks.
+The [Garage Sale integration design](../GarageSale/DIARY_INTEGRATION.md) records the lifecycle proposal and remaining host work.
+It includes calendar creation timing, activation checks, and storage of the returned Diary key.
+These decisions are outside the generic Diary feature definition.
 
 ### Reminders: deferred beyond V1
 
