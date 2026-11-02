@@ -21,6 +21,8 @@ Milestone date changes and their impact review belong in V2.
 The first release uses the milestone dates supplied during calendar creation.
 Reminders are outside V1 scope.
 No later release number is confirmed for reminders.
+Only DiaryManagers can change calendar templates.
+Template version approval rules remain a separate open decision.
 
 ## Remaining work
 
@@ -47,6 +49,7 @@ The previews use sample data and do not complete application requirements.
 - [ ] Add an authenticated HTTP API with the same instance selection and access rules.
 - [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
 - [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
+- [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
 - [ ] Show the event name and event date on the current calendar page.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
 - [ ] Keep calendar reads free from calendar creation actions.
@@ -77,7 +80,7 @@ These items do not authorize implementation.
 - [ ] Define the host calls that save the Diary key.
 - [ ] Define personal entry visibility beyond the associated user's task view.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
-- [ ] Define template editing and approval permissions beyond the confirmed DiaryManager additions.
+- [ ] Define template version approval rules.
 - [ ] Decide whether a DiaryManager's template addition also approves the new version.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
@@ -147,6 +150,9 @@ The host supplies the trusted identity, role memberships, and permitted instance
 Diary enforces that scope on each request.
 An all-instances selection cannot expand the host's permission grant.
 These read rules do not grant task-change or completion permissions.
+Only DiaryManagers can change templates, including their entries, date rules, owners, and dependencies.
+DiaryUsers cannot change templates through any interface.
+Template version approval rules remain a separate open decision.
 
 The current implementation has a callable API with one required `calendar_key` for `personal_tasks`.
 It has no HTTP API or task query across multiple instances yet.
