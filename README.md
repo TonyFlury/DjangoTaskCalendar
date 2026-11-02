@@ -13,6 +13,8 @@ Role ownership does not grant access to users outside ExecMember.
 Diary provides a generic capability to hold an event diary.
 The selection of template tasks and their dates is outside the feature definition.
 Template content is application data and does not prevent implementation of the feature.
+Task progress through completion is required in the first feature release.
+The progress states, permitted transitions, and completion permissions still need definition.
 
 ## Remaining work
 
@@ -22,6 +24,8 @@ The previews use sample data and do not complete application requirements.
 
 ### Requirements still to implement
 
+- [ ] Implement task progress and completion through the callable API and Diary pages in the first feature release.
+- [ ] Preserve completion records and due dates at completion when milestone dates change.
 - [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
 - [ ] Make the personal task view the default Diary page for a logged-in user.
 - [ ] Add navigation to the full event calendar for users with view permission.
@@ -64,7 +68,6 @@ These items do not authorize implementation.
 - [ ] Decide whether an Officer's template addition also approves the new version.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether Officers can override them.
-- [ ] Implement completion actions after approval of their rules.
 - [ ] Decide whether existing calendars need template updates with a date review.
 - [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
