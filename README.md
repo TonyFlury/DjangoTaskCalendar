@@ -414,6 +414,58 @@ Django's normal static file finders select the file.
 The first matching file wins with the configured finder order.
 See [Django's static file guidance](https://docs.djangoproject.com/en/5.0/ref/contrib/staticfiles/).
 
+### Files that the host can override
+
+| Packaged file | Lookup name | Host change |
+| --- | --- | --- |
+| `Diary/static/Diary/styles/diary.css` | `Diary/styles/diary.css` | Replace the complete default stylesheet through the static file finders. |
+| `Diary/templates/Diary/base.html` | `Diary/base.html` | Change the page shell or stylesheet links through the template loaders. |
+| `Diary/templates/Diary/task_list.html` | `Diary/task_list.html` | Change the standalone task page. |
+| `Diary/templates/Diary/partials/task_list.html` | `Diary/partials/task_list.html` | Change the task list content in standalone and host pages. |
+
+The lookup name is the relative name used by `static`, `extends`, or `include`.
+The host must keep that relative name when it replaces a packaged file.
+A differently named host stylesheet needs its own link in the page.
+
+### Static file selection and CSS rule order
+
+Django selects a file for each requested static path.
+It does not combine files with the same path.
+It does not load duplicate files in reverse order.
+
+With the default `STATICFILES_FINDERS`, the search order is:
+
+1. `FileSystemFinder` searches the directories in `STATICFILES_DIRS`, in their listed order.
+2. `AppDirectoriesFinder` searches app static directories in `INSTALLED_APPS` order.
+
+The first matching file supplies that static path.
+A custom finder configuration can change this order.
+`collectstatic` uses the selected source to create the deployment copy under `STATIC_ROOT`.
+The production static server serves that collected copy.
+It does not repeat Django's source search for each browser request.
+
+For example, these two source files have the same lookup name:
+
+```text
+site_static/Diary/styles/diary.css
+Diary/static/Diary/styles/diary.css
+```
+
+With `site_static` in `STATICFILES_DIRS` and the default finders, only the first file supplies `Diary/styles/diary.css`.
+Its content replaces the packaged stylesheet completely.
+It does not inherit missing rules from the packaged file.
+
+The browser can load multiple stylesheets only when the page links or imports them.
+For example, a page can link to `Diary/styles/diary.css` and then `site/diary-overrides.css`.
+Django resolves each path independently.
+The browser then applies the CSS cascade to both files.
+When origin, importance, layer, specificity, and scope proximity are equal, a later declaration wins.
+A more specific earlier selector can still beat a less specific later selector.
+See [the CSS cascade reference](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_cascade/Cascade).
+
+The extra stylesheet approach keeps the packaged defaults available.
+It is the first choice for small visual changes.
+
 ### Add host styles after the defaults
 
 The usual first choice is an extra stylesheet with CSS variable overrides.
@@ -449,6 +501,82 @@ Other blocks are `diary_title`, `diary_head`, `diary_content`, and `diary_script
 The host can replace the complete base template to use its own page structure.
 It must retain those blocks for child pages.
 Each reusable fragment supplies its own `.diary` content wrapper.
+
+### CSS variables
+
+The default stylesheet defines these variables on `.diary`.
+The host can redefine them on the same selector in its extra stylesheet.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `--diary-background` | `#fff` | Component background. |
+| `--diary-surface` | `#fff` | Card and form control backgrounds. |
+| `--diary-text` | `#111` | Main text and default button text. |
+| `--diary-muted` | `#505050` | Secondary text. |
+| `--diary-accent` | `darkslategray` | Heading and primary button backgrounds. |
+| `--diary-accent-text` | `#fff` | Text on accent backgrounds. |
+| `--diary-border` | `#bbb` | Card, control, button, and task divider borders. |
+| `--diary-focus` | `#3333dd` | Keyboard focus outline. |
+| `--diary-radius` | `.5rem` | Card, heading, button, and control corner radius. |
+
+Status colors and the default button background currently use direct CSS values.
+The host can change those values through the selectors below.
+
+### CSS classes and selectors
+
+These selectors form the current styling interface.
+Some form and button classes are available for subsequent Diary pages.
+
+| Selector | Purpose | Examples of host changes |
+| --- | --- | --- |
+| `.diary` | Component root and CSS variables. | Font, width, spacing, and theme variables. |
+| `.diary .diary-card` | Bordered content panel. | Surface, border, padding, and corners. |
+| `.diary .diary-heading` | Section heading bar. | Background, text color, and heading spacing. |
+| `.diary .diary-actions` | Button container. | Gap, alignment, and row or column layout. |
+| `.diary .diary-button` | Default button or link appearance. | Background, border, text, and padding. |
+| `.diary .diary-button-primary` | Primary action appearance. | Primary action colors. Use with `diary-button`. |
+| `.diary .diary-muted` | Secondary text and empty-state text. | Text color and font size. |
+| `.diary .diary-task-list` | Task list container. | List spacing and list markers. |
+| `.diary .diary-task` | One task row. | Row spacing and divider border. |
+| `.diary .diary-status` | Shared task status label. | Label border, padding, and corners. |
+| `.diary .diary-status-ready` | Ready label. | Ready status color. |
+| `.diary .diary-status-blocked` | Blocked label. | Blocked status color. |
+| `.diary .diary-status-late` | Late label. | Late status color. |
+| `.diary .errorlist` | Django form error list. | Error text color and list layout. |
+| `.diary label` | Form field label. | Label spacing and font weight. |
+| `.diary input:not([type="checkbox"]):not([type="radio"])` | Text and other non-toggle inputs. | Control surface, border, font, and padding. |
+| `.diary select` | Select control. | Control surface, border, font, and padding. |
+| `.diary textarea` | Multiline input. | Control surface, border, font, and padding. |
+| `.diary :focus-visible` | Keyboard focus indicator. | Outline color, width, and offset. |
+| `.diary .diary-button:disabled` | Disabled button state. | Opacity and cursor. |
+
+`diary-shell` identifies the standalone page's main element.
+It has no packaged CSS rule.
+The host can style it when it changes the standalone page layout.
+
+Class names are technical names and must keep their spelling.
+Use selectors with at least the same specificity as the default rule for a reliable host override.
+For example, `.diary-status-late` alone is less specific than `.diary .diary-status-late`.
+
+```css
+.diary .diary-task {
+    padding-block: 1.25rem;
+    border-bottom-style: dotted;
+}
+
+.diary .diary-button {
+    background: #e8edf3;
+}
+
+.diary .diary-status-late {
+    color: #8a1020;
+    font-weight: bold;
+}
+```
+
+The defaults reduce root padding and stack action buttons when the viewport is at most `40rem` wide.
+Host overrides must keep a usable narrow-screen layout and a visible keyboard focus indicator.
+Task states also have text labels, so color is not their only indication.
 
 ### Replace the default stylesheet
 
@@ -516,10 +644,14 @@ Use these commands on the target site after a stylesheet change:
 
 ```sh
 python manage.py findstatic Diary/styles/diary.css --first
+python manage.py findstatic Diary/styles/diary.css --verbosity 2
 python manage.py collectstatic --noinput
 ```
 
 Then reload the app and refresh the browser.
+`--first` shows the selected source.
+The second command shows all matches and the search locations for diagnosis.
+Multiple matches in its output do not mean that the browser loads every match.
 Follow the project's deployment instructions for its static mapping and cache checks.
 
 ## Data relationships
