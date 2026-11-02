@@ -54,6 +54,7 @@ Diary's only host dependencies are Django settings and the configured Django use
 Use `django.contrib.auth.get_user_model()` when Diary needs the user model class.
 Do not import a host user model class directly.
 Diary has no dependency on host event models or custom request attributes.
+The standard Django authentication, group, and permission system is a framework requirement.
 Its current models have no foreign keys to other project apps.
 The host supplies event references, dates, person references, and role names.
 All foreign keys in Diary point to Diary models.
@@ -123,9 +124,9 @@ The host supplies this configuration in settings:
 DIARY_MANAGER = 'Officer'
 DIARY_USER = 'ExecMember'
 DIARY_TIME_ZONE = 'Europe/London'
+# Optional default when a call does not select a template explicitly.
 DIARY_TEMPLATE_NAME = 'Garage Sale calendar'
 DIARY_TASK_OWNER_ROLES = ('ExecMember', 'Officer', 'SponsorshipManager')
-DIARY_ROLE_LOOKUP = 'GarageSale.diary_roles.existing_task_owner_roles'
 ```
 
 `DIARY_MANAGER` identifies the DiaryManager group.
@@ -147,8 +148,10 @@ The returned values are group-name strings.
 Finer-grained permissions may become an optional feature in a later version.
 That option is outside V1 scope and has no confirmed release number.
 
-`DIARY_TEMPLATE_NAME` selects the default template by name.
-Calls without an explicit template version use its highest approved version number.
+`DIARY_TEMPLATE_NAME` is an optional default template name.
+The calling project can supply a fixed `template_name` or `template_version_key` instead.
+No default setting is necessary when calls select their template explicitly.
+Diary creation uses the highest approved version of the selected name.
 A draft with a higher number does not replace an approved version.
 The configured name can change when another application reuses Diary.
 Existing calendars keep their original template version.
@@ -188,16 +191,11 @@ Person ownership and whole-team ownership do not require a role from this collec
 Use exact role names without surrounding spaces.
 `DiaryAPI.task_owner_roles()` returns the configured names as a `frozenset`.
 Template and calendar entry additions reject unlisted role owners.
-The caller's `OwnerDirectory.role_exists` check still verifies each role assignment.
+Diary checks role existence directly through `django.contrib.auth.models.Group`.
+Role assignments do not need a caller-supplied lookup or `OwnerDirectory`.
+The former `DIARY_ROLE_LOOKUP` setting is no longer used.
 
-`DIARY_ROLE_LOOKUP` is the dotted import path of a host database lookup callable.
-It receives the configured names and returns the names that exist in the database.
-It must return an iterable of exact role names.
-The Garage Sale implementation queries Django's `Group` model.
-Another host can supply a different database implementation without changes to Diary.
-Diary does not import host user or role model classes directly.
-
-Startup checks every configured role through this lookup.
+Startup checks every configured role against the standard Django group table.
 Missing roles raise `ImproperlyConfigured` with their names and the relevant settings.
 Invalid settings and database access failures also produce configuration errors.
 The check does not create roles or change existing task ownership.
@@ -267,8 +265,8 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryAPI(actor=actor)` | None. | Caller context. |
 | `DiaryAPI.create_template` | Optional `name`, optional `description` | `DiaryTemplate`. |
 | `DiaryAPI.template` | Optional `key` or `name` | `DiaryTemplate`. |
-| `DiaryAPI.template_version` | Optional `key` | `DiaryTemplateVersion`. Without a key, selects the configured template's latest approved version. |
-| `DiaryAPI.create_diary` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | `DiaryInstance`. |
+| `DiaryAPI.template_version` | Optional `key` or `name` | `DiaryTemplateVersion`. Names select the latest approved version. Without a selector, uses the optional default name. |
+| `DiaryAPI.create_diary` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` or `template_name` | `DiaryInstance`. |
 | `DiaryAPI.diary` | `key` | `DiaryInstance`. |
 | `DiaryTemplate.create` | Optional `name`, optional `description` | New `DiaryTemplate`. |
 | `DiaryTemplate.from_key` | `key` | Existing `DiaryTemplate`. |
@@ -278,13 +276,19 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryTemplate.latest_version` | Optional `approved_only=False` | Highest numbered version, including a draft unless `approved_only=True`. |
 | `DiaryTemplateVersion.create` | `template_key`, `number` | New draft `DiaryTemplateVersion`. |
 | `DiaryTemplateVersion.from_key` | `key` | Existing `DiaryTemplateVersion`. |
+| `DiaryTemplateVersion.from_name` | `name` | The named template's latest approved version. |
 | `DiaryTemplateVersion.from_default` | None. | The configured template's latest approved version. |
-| `DiaryInstance.create` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | New or existing `DiaryInstance`. Identical repeated inputs reuse its key. |
+| `DiaryInstance.create` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` or `template_name` | New or existing `DiaryInstance`. Identical repeated inputs reuse its key. |
 | `DiaryInstance.from_key` | `key` | Existing permitted `DiaryInstance`. |
 
 `DiaryAPI.template` rejects simultaneous `key` and `name` arguments.
 An HTTP view without a template name must still show the template chooser.
 The default-name factory is an explicit callable API convenience.
+Diary creation accepts either a template version key or a template name, but not both.
+Without either selector, it uses `DIARY_TEMPLATE_NAME` only if that optional default is set.
+A call without a selector or default raises a clear `ValidationError`.
+Approved-version selection does not require the caller to read the template first.
+The template editor can use `DiaryTemplate.latest_version()` to include draft versions.
 
 ### Operation methods
 
@@ -376,7 +380,8 @@ client.define_milestones(definitions={
     'event_date': 'Event date',
     'add_board_bookings_open': 'Advertising board bookings open',
 })
-template = client.create_template()
+template_name = 'Garage Sale calendar'
+template = client.create_template(name=template_name)
 version = template.create_version(number=1)
 entry = api.EntrySpec(
     name='Inspect advertising boards',
@@ -387,10 +392,11 @@ entry = api.EntrySpec(
 entry_key = version.add_entry(spec=entry)
 version.approve()
 
-required = client.template_version().required_milestones()
+required = client.template_version(name=template_name).required_milestones()
 assert [item['name'] for item in required] == ['add_board_bookings_open']
 
 created = client.create_diary(
+    template_name=template_name,
     event_ref='GarageSale:event:17',
     name='Garage Sale 2027',
     event_year=2027,
@@ -414,7 +420,8 @@ The host can include creation and that save in one database transaction.
 The calling project can use Diary's own UI without reading task lists itself.
 
 Supply `template_version_key=version.key` to select a particular version during diary creation.
-Otherwise, creation uses the configured template's latest approved version.
+Supply `template_name` to select the latest approved version of a caller-chosen template.
+Omit both selectors only when the optional `DIARY_TEMPLATE_NAME` default is configured.
 Identical repeated inputs return another object with the same diary key.
 Different inputs for the same reference raise `ValidationError`.
 
@@ -475,16 +482,9 @@ personal_key = member_diary.add_entry(spec=personal)
 my_tasks = member_diary.personal_tasks()
 ```
 
-A DiaryManager supplies an ownership directory for assigned entries:
+A DiaryManager can assign a configured Django group without a lookup callback:
 
 ```python
-class ExampleDirectory:
-    def person_in_groups(self, reference, group_names):
-        return reference in {'user:42', 'user:43'} and 'ExecMember' in group_names
-
-    def role_exists(self, reference):
-        return reference == 'SponsorshipManager'
-
 role_task = api.EntrySpec(
     name='Check sponsor details',
     date_kind=DateKind.ANNUAL,
@@ -493,12 +493,12 @@ role_task = api.EntrySpec(
     owner_kind=OwnerKind.ROLE,
     role_ref='SponsorshipManager',
 )
-role_key = diary.add_entry(spec=role_task, directory=ExampleDirectory())
+role_key = diary.add_entry(spec=role_task)
 ```
 
-`ExampleDirectory` contains sample data only.
-The host must supply its real identity directory in normal operation.
 The configured `DIARY_TASK_OWNER_ROLES` must include the selected role.
+The Django group must exist in the database.
+Person assignments still use `OwnerDirectory.person_in_groups` to check caller-supplied person references.
 
 The current API retains milestone mutation outside the approved V1 change workflow:
 
@@ -517,7 +517,7 @@ V1 dependency editing targets a draft template version:
 ```python
 draft = template.create_version(number=2)
 draft.add_entry(spec=entry)
-draft.add_entry(spec=role_task, directory=ExampleDirectory())
+draft.add_entry(spec=role_task)
 choices = draft.available_predecessors(entry_key=role_task.entry_key)
 draft.set_predecessors(
     entry_key=role_task.entry_key,
@@ -582,9 +582,9 @@ The requirement applies to lists, details, searches, predecessor choices, and bo
 The current calendar read API does not yet enforce this personal entry visibility rule.
 That visibility filter remains implementation work.
 
-For person and role assignments, the DiaryManager supplies an `OwnerDirectory` implementation.
+For person assignments, the DiaryManager supplies an `OwnerDirectory` implementation.
 Its `person_in_groups(reference, group_names)` method checks person eligibility.
-Its `role_exists(reference)` method checks the role reference.
+Role assignments use Django's normal group model directly.
 Diary does not implement that directory through another app's models.
 
 The personal list uses the Actor's current group membership for role-owned tasks.

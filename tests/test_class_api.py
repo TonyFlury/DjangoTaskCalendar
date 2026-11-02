@@ -2,6 +2,7 @@ from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase, override_settings
 
@@ -128,3 +129,58 @@ class ClassAPITests(TestCase):
         actor = replace(self.actor, calendar_keys=frozenset({missing}))
         with self.assertRaises(EventCalendar.DoesNotExist):
             api.DiaryInstance.from_key(actor=actor, key=missing)
+
+    def test_explicit_template_names_work_without_a_default_setting(self):
+        with self.settings(DIARY_TEMPLATE_NAME=None):
+            del settings.DIARY_TEMPLATE_NAME
+            template = self.client.create_template(name='Caller chosen template')
+            version = template.create_version(number=1)
+            version.add_entry(spec=self.entry)
+            version.approve()
+            template.create_version(number=2)
+            self.assertEqual(self.client.template(name='Caller chosen template').key, template.key)
+            self.assertEqual(self.client.template_version(name='Caller chosen template').key, version.key)
+            self.assertEqual(
+                api.DiaryTemplateVersion.from_name(actor=self.actor, name='Caller chosen template').key,
+                version.key,
+            )
+            ordinary = api.Actor('user', frozenset({'DiaryUser'}))
+            created = api.DiaryInstance.create(
+                actor=ordinary, event_ref='explicit:name', name='Explicit name diary', event_year=2027,
+                milestone_dates={'target': date(2027, 6, 27)}, template_name='Caller chosen template',
+            )
+            by_key = self.client.create_diary(
+                event_ref='explicit:key', name='Explicit key diary', event_year=2027,
+                milestone_dates={'target': date(2027, 6, 27)}, template_version_key=version.key,
+            )
+            for diary in (created, by_key):
+                self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, version.key)
+
+    def test_implicit_template_selection_requires_a_selector_or_default(self):
+        with self.settings(DIARY_TEMPLATE_NAME=None):
+            with self.assertRaisesMessage(ValidationError, 'template name or version key'):
+                self.client.create_diary(
+                    event_ref='missing-template', name='No template', event_year=2027, milestone_dates={},
+                )
+            with self.assertRaises(ValidationError):
+                self.client.template_version()
+            with self.assertRaises(ValidationError):
+                self.client.create_template()
+        self.assertFalse(EventCalendar.objects.filter(event_ref='missing-template').exists())
+
+    def test_explicit_name_overrides_default_and_rejects_ambiguous_selectors(self):
+        with self.settings(DIARY_TEMPLATE_NAME='Unused default'):
+            self.assertEqual(self.client.template_version(name='Class API template').key, self.version.key)
+            diary = self.client.create_diary(
+                event_ref='named-selection', name='Named diary', event_year=2027,
+                milestone_dates={}, template_name='Class API template',
+            )
+            self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, self.version.key)
+        with self.assertRaisesMessage(ValidationError, 'not both'):
+            self.client.template_version(key=self.version.key, name='Class API template')
+        with self.assertRaisesMessage(ValidationError, 'not both'):
+            self.client.create_diary(
+                event_ref='ambiguous-selection', name='Ambiguous', event_year=2027, milestone_dates={},
+                template_version_key=self.version.key, template_name='Class API template',
+            )
+        self.assertFalse(EventCalendar.objects.filter(event_ref='ambiguous-selection').exists())

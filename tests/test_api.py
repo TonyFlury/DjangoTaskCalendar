@@ -2,6 +2,7 @@ from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
+from django.contrib.auth.models import Group
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, override_settings
@@ -17,9 +18,6 @@ class Directory:
     def person_in_groups(self, reference, group_names):
         return reference in {'person:1', 'person:2'} and 'ExecMember' in group_names
 
-    def role_exists(self, reference):
-        return reference == 'SponsorshipManager'
-
 
 @override_settings(
     DIARY_MANAGER='Officer', DIARY_USER='ExecMember',
@@ -28,6 +26,7 @@ class Directory:
 )
 class DiaryTests(TestCase):
     def setUp(self):
+        Group.objects.get_or_create(name='SponsorshipManager')
         self.officer = api.Actor('person:1', frozenset({'Officer', 'ExecMember'}))
         self.exec_member = api.Actor('person:2', frozenset({'ExecMember'}))
         api.DiaryAPI(actor=self.officer).define_milestones(
@@ -260,6 +259,18 @@ class DiaryTests(TestCase):
                                                                                            directory=Directory())
         self.assertFalse(CalendarEntry.objects.filter(calendar_id=key, entry_key=spec.entry_key).exists())
         self.assertFalse(TemplateEntry.objects.filter(version_id=draft, entry_key=spec.entry_key).exists())
+
+    def test_role_assignment_uses_django_groups_without_an_owner_directory(self):
+        key = self.calendar()
+        diary = api.DiaryInstance.from_key(actor=self.officer, key=key)
+        spec = api.EntrySpec('Database role', DateKind.ANNUAL, month=1, day=1,
+                             owner_kind=OwnerKind.ROLE, role_ref='SponsorshipManager')
+        self.assertEqual(diary.add_entry(spec=spec), spec.entry_key)
+        draft = api.DiaryTemplateVersion.create(actor=self.officer, template_key=self.template, number=2)
+        self.assertEqual(draft.add_entry(spec=spec), spec.entry_key)
+        Group.objects.filter(name='SponsorshipManager').delete()
+        with self.assertRaisesMessage(ValidationError, 'Select an existing role.'):
+            diary.add_entry(spec=replace(spec, name='Deleted role', entry_key=uuid4()))
 
     def test_permission_groups_require_valid_two_group_configuration(self):
         with override_settings(DIARY_MANAGER=None):

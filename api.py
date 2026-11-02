@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -32,8 +33,6 @@ class Actor:
 
 class OwnerDirectory(Protocol):
     def person_in_groups(self, reference: str, group_names: frozenset[str]) -> bool: ...
-
-    def role_exists(self, reference: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -86,15 +85,15 @@ def _calendar(actor, key, action='view'):
 def _owner(spec, directory):
     if spec.owner_kind == OwnerKind.TEAM:
         return
-    if directory is None:
-        raise ValidationError('Supply an owner directory for a person or role assignment.')
     if spec.owner_kind == OwnerKind.PERSON:
+        if directory is None:
+            raise ValidationError('Supply an owner directory for a person assignment.')
         if not directory.person_in_groups(spec.person_ref, frozenset(DiaryAPI.permission_groups().values())):
             raise ValidationError('Select a DiaryUser or DiaryManager.')
     elif spec.owner_kind == OwnerKind.ROLE:
         if spec.role_ref not in DiaryAPI.task_owner_roles():
             raise ValidationError('Select a role from DIARY_TASK_OWNER_ROLES.')
-        if not directory.role_exists(spec.role_ref):
+        if not Group.objects.filter(name=spec.role_ref).exists():
             raise ValidationError('Select an existing role.')
 
 
@@ -119,16 +118,19 @@ def _copy_values(source):
     return {name: getattr(source, name) for name in fields}
 
 
-def _template_version(key=None):
+def _template_version(key=None, name=None):
     if key is not None:
+        if name is not None:
+            raise ValidationError('Select a template by version key or name, not both.')
         return TemplateVersion.objects.get(pk=key)
-    name = getattr(settings, 'DIARY_TEMPLATE_NAME', '')
+    if name is None:
+        name = getattr(settings, 'DIARY_TEMPLATE_NAME', '')
     if not isinstance(name, str) or not name.strip():
-        raise ValidationError('Configure DIARY_TEMPLATE_NAME before selecting a template.')
+        raise ValidationError('Supply a template name or version key, or set the optional DIARY_TEMPLATE_NAME default.')
     version = TemplateVersion.objects.filter(template__name__iexact=name.strip(),
                                              status=VersionStatus.APPROVED).order_by('-number').first()
     if version is None:
-        raise ValidationError('The configured template has no approved version.')
+        raise ValidationError('The selected template has no approved version.')
     return version
 
 
@@ -241,15 +243,20 @@ class DiaryAPI:
             return DiaryTemplate.from_key(actor=self.actor, key=key)
         return DiaryTemplate.from_name(actor=self.actor, name=name)
 
-    def template_version(self, *, key=None):
+    def template_version(self, *, key=None, name=None):
+        if name is not None:
+            if key is not None:
+                raise ValidationError('Select a template by version key or name, not both.')
+            return DiaryTemplateVersion.from_name(actor=self.actor, name=name)
         if key is None:
             return DiaryTemplateVersion.from_default(actor=self.actor)
         return DiaryTemplateVersion.from_key(actor=self.actor, key=key)
 
-    def create_diary(self, *, event_ref, name, event_year, milestone_dates, template_version_key=None):
+    def create_diary(self, *, event_ref, name, event_year, milestone_dates, template_version_key=None,
+                     template_name=None):
         return DiaryInstance.create(
             actor=self.actor, event_ref=event_ref, name=name, event_year=event_year,
-            milestone_dates=milestone_dates, template_version_key=template_version_key,
+            milestone_dates=milestone_dates, template_version_key=template_version_key, template_name=template_name,
         )
 
     def diary(self, *, key):
@@ -321,6 +328,11 @@ class DiaryTemplateVersion(_DependencyAPI):
         return cls(actor=actor, key=_template_version().pk)
 
     @classmethod
+    def from_name(cls, *, actor, name):
+        _require_template_access(actor)
+        return cls(actor=actor, key=_template_version(name=name).pk)
+
+    @classmethod
     def create(cls, *, actor, template_key, number):
         _require(actor, 'edit')
         version = TemplateVersion.objects.create(template_id=template_key, number=number,
@@ -387,10 +399,11 @@ class DiaryInstance(_DependencyAPI):
 
     @classmethod
     @transaction.atomic
-    def create(cls, *, actor, event_ref, name, event_year, milestone_dates, template_version_key=None):
+    def create(cls, *, actor, event_ref, name, event_year, milestone_dates, template_version_key=None,
+               template_name=None):
         """Create a diary reference with a stable key. Repeat calls with the same inputs are safe."""
         _require(actor, 'use')
-        selected = _template_version(template_version_key)
+        selected = _template_version(key=template_version_key, name=template_name)
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
         # All versions of one template share this lock for repeated calendar creation.
         CalendarTemplate.objects.select_for_update().get(pk=version.template_id)

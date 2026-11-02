@@ -66,7 +66,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 - [x] **DV1-009: Configured ownership role names and existence checks.**
   `DIARY_TASK_OWNER_ROLES` controls assignment choices.
-  Startup validates role existence through the configured database lookup.
+  Startup validates role existence directly through Django's standard group model.
   Membership validation still needs DV1-014 through DV1-017.
   Evidence: [role validation](roles.py), [startup](apps.py), and [role tests](tests/test_roles.py).
   Requirement: [D4] and [D9].
@@ -108,6 +108,13 @@ The final sections separate unresolved decisions, host integration, and deferred
   Evidence: [access configuration](roles.py), [API checks](api.py), and [permission tests](tests/test_class_api.py).
   Requirement: [D4] and [D9].
 
+- [x] **DV1-048: Standard Django groups and optional template default.**
+  Role checks use Django groups without a host lookup setting or callback.
+  Explicit template names and version keys work without `DIARY_TEMPLATE_NAME`.
+  The setting remains an optional default, and conflicting selectors are rejected.
+  Evidence: [role checks](roles.py), [group tests](tests/test_roles.py), and [factory tests](tests/test_class_api.py).
+  Requirement: [D4].
+
 ## Access and validation work
 
 - [ ] **DV1-013: Generic identity and role adapters.**
@@ -128,7 +135,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [ ] **DV1-015: Startup ownership membership validation.**
   Check that every configured task ownership role exists and has at least one member.
   Report each absent or empty role through `ImproperlyConfigured`.
-  Extend the current existence-only lookup contract as necessary.
+  Extend the current Django group checks to validate membership.
   Requirement: [D9].
 
 - [ ] **DV1-016: Ownership validation during diary creation.**
@@ -394,7 +401,8 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The simplified access settings passed 55 tests, including the Garage Sale key integration test, against a separate PostgreSQL database.
+The group and template selection changes passed 59 tests against a separate PostgreSQL database.
+The tests include the Garage Sale key integration test.
 Migration consistency checks found no model changes.
 No migration was applied to application data.
 ASD-STE100 Issue 9 was available locally.

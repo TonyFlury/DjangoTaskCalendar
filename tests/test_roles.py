@@ -1,5 +1,4 @@
-from unittest import skipUnless
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
@@ -7,10 +6,6 @@ from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from Diary.roles import access_groups, task_owner_roles, validate_task_owner_roles
-
-
-def existing_roles(names):
-    return {'ConfiguredRole'} & names
 
 
 @override_settings(DIARY_MANAGER='CustomManager', DIARY_USER='CustomUser')
@@ -36,9 +31,18 @@ class AccessGroupConfigurationTests(SimpleTestCase):
                     config.ready()
 
 
-@override_settings(DIARY_TASK_OWNER_ROLES=('ConfiguredRole',),
-                   DIARY_ROLE_LOOKUP='Diary.tests.test_roles.existing_roles')
+@override_settings(DIARY_TASK_OWNER_ROLES=('ConfiguredRole',))
 class RoleConfigurationTests(SimpleTestCase):
+    def setUp(self):
+        def groups_matching(*, name__in):
+            query = Mock()
+            query.values_list.return_value = {'ConfiguredRole'} & set(name__in)
+            return query
+
+        query_patch = patch('Diary.roles.Group.objects.filter', side_effect=groups_matching)
+        self.group_query = query_patch.start()
+        self.addCleanup(query_patch.stop)
+
     def test_configured_roles_validate_without_project_specific_names(self):
         self.assertEqual(task_owner_roles(), frozenset({'ConfiguredRole'}))
         validate_task_owner_roles()
@@ -53,17 +57,14 @@ class RoleConfigurationTests(SimpleTestCase):
             with self.settings(DIARY_TASK_OWNER_ROLES=roles):
                 with self.assertRaisesMessage(ImproperlyConfigured, 'DIARY_TASK_OWNER_ROLES'):
                     validate_task_owner_roles()
-        for lookup in ('', None, 'missing.path.lookup', 'Diary.roles.settings'):
-            with self.settings(DIARY_ROLE_LOOKUP=lookup):
-                with self.assertRaisesMessage(ImproperlyConfigured, 'DIARY_ROLE_LOOKUP'):
-                    validate_task_owner_roles()
 
     def test_empty_roles_need_no_database_lookup(self):
-        with self.settings(DIARY_TASK_OWNER_ROLES=(), DIARY_ROLE_LOOKUP=''):
+        with self.settings(DIARY_TASK_OWNER_ROLES=()):
             validate_task_owner_roles()
+        self.group_query.assert_not_called()
 
     def test_database_failure_has_configuration_context(self):
-        with patch(__name__ + '.existing_roles', side_effect=OperationalError('Unavailable')):
+        with patch('Diary.roles.Group.objects.filter', side_effect=OperationalError('Unavailable')):
             with self.assertRaisesMessage(ImproperlyConfigured, 'Check the database connection'):
                 validate_task_owner_roles()
 
@@ -80,10 +81,8 @@ class RoleConfigurationTests(SimpleTestCase):
                     validate.assert_not_called()
 
 
-@skipUnless(apps.is_installed('django.contrib.auth'), 'Requires the host Django group database.')
-@override_settings(DIARY_TASK_OWNER_ROLES=('CustomOwner',),
-                   DIARY_ROLE_LOOKUP='GarageSale.diary_roles.existing_task_owner_roles')
-class HostRoleDatabaseTests(TestCase):
+@override_settings(DIARY_TASK_OWNER_ROLES=('CustomOwner',))
+class DjangoGroupDatabaseTests(TestCase):
     def test_database_role_existence_is_required_without_creating_missing_roles(self):
         from django.contrib.auth.models import Group
 

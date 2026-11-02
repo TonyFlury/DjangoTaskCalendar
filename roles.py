@@ -1,8 +1,8 @@
-"""Configured task-owner roles and host database validation."""
+"""Configured access roles and Django group validation."""
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.exceptions import ImproperlyConfigured
 from django.db import DatabaseError
-from django.utils.module_loading import import_string
 
 
 def access_groups():
@@ -28,34 +28,17 @@ def validate_task_owner_roles():
     roles = task_owner_roles()
     if not roles:
         return
-    path = getattr(settings, 'DIARY_ROLE_LOOKUP', '')
-    if not isinstance(path, str) or not path:
-        raise ImproperlyConfigured(
-            'Set DIARY_ROLE_LOOKUP to a host database lookup callable when DIARY_TASK_OWNER_ROLES is not empty.')
     try:
-        lookup = import_string(path)
-    except (ImportError, AttributeError, ValueError) as error:
-        raise ImproperlyConfigured(f'DIARY_ROLE_LOOKUP cannot import {path!r}.') from error
-    if not callable(lookup):
-        raise ImproperlyConfigured(f'DIARY_ROLE_LOOKUP {path!r} must be callable.')
-    try:
-        existing = lookup(roles)
-        if isinstance(existing, str):
-            raise TypeError('Expected a collection of role names.')
-        existing = set(existing)
+        existing = set(Group.objects.filter(name__in=roles).values_list('name', flat=True))
     except DatabaseError as error:
         raise ImproperlyConfigured(
             'Diary cannot validate DIARY_TASK_OWNER_ROLES against the database. '
             'Check the database connection, apply migrations, and create the configured roles before startup.'
         ) from error
-    except TypeError as error:
-        raise ImproperlyConfigured(
-            f'DIARY_ROLE_LOOKUP {path!r} must return a collection of existing role names.') from error
     missing = roles - existing
     if missing:
         raise ImproperlyConfigured(
             'DIARY_TASK_OWNER_ROLES contains roles missing from the database: '
             + ', '.join(sorted(missing))
-            + '. Create these roles in the host database or correct DIARY_TASK_OWNER_ROLES. '
-            + f'Lookup: {path}.'
+            + '. Create these Django groups or correct DIARY_TASK_OWNER_ROLES.'
         )
