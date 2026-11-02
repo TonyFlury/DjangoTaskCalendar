@@ -1,0 +1,69 @@
+/* All default rules stay inside the Diary component. Host styles can override the variables. */
+.diary {
+    --diary-background: #fff;
+    --diary-surface: #fff;
+    --diary-text: #111;
+    --diary-muted: #505050;
+    --diary-accent: darkslategray;
+    --diary-accent-text: #fff;
+    --diary-border: #bbb;
+    --diary-focus: #3333dd;
+    --diary-radius: .5rem;
+    color: var(--diary-text);
+    background: var(--diary-background);
+    font: 1rem/1.5 sans-serif;
+    max-width: 75rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+.diary *, .diary *::before, .diary *::after { box-sizing: border-box; }
+.diary .diary-card {
+    background: var(--diary-surface);
+    border: 1px solid var(--diary-border);
+    border-radius: var(--diary-radius);
+    padding: 1rem;
+    margin-block: 1rem;
+}
+.diary .diary-heading {
+    background: var(--diary-accent);
+    color: var(--diary-accent-text);
+    border-radius: var(--diary-radius);
+    padding: .5rem .75rem;
+    margin-block: 0 1rem;
+}
+.diary .diary-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: 1rem; }
+.diary .diary-button {
+    display: inline-block;
+    font: inherit;
+    text-decoration: none;
+    color: var(--diary-text);
+    background: #eee;
+    border: 1px solid var(--diary-border);
+    border-radius: var(--diary-radius);
+    padding: .5rem .75rem;
+    cursor: pointer;
+}
+.diary .diary-button-primary { background: var(--diary-accent); color: var(--diary-accent-text); }
+.diary .diary-button:disabled { opacity: .5; cursor: not-allowed; }
+.diary :focus-visible { outline: 3px solid var(--diary-focus); outline-offset: 3px; }
+.diary label { display: block; font-weight: bold; margin-block: .75rem .25rem; }
+.diary input:not([type="checkbox"]):not([type="radio"]), .diary select, .diary textarea {
+    font: inherit;
+    color: var(--diary-text);
+    background: var(--diary-surface);
+    border: 1px solid var(--diary-border);
+    border-radius: var(--diary-radius);
+    max-width: 100%;
+    padding: .5rem;
+}
+.diary .diary-muted { color: var(--diary-muted); }
+.diary .diary-task-list { list-style: none; padding: 0; }
+.diary .diary-task { padding: 1rem 0; border-bottom: 1px solid var(--diary-border); }
+.diary .diary-status { display: inline-block; border: 1px solid currentColor; border-radius: .25rem; padding: .1rem .4rem; }
+.diary .diary-status-ready { color: #17532c; }
+.diary .diary-status-blocked { color: #704100; }
+.diary .diary-status-late, .diary .errorlist { color: #a31515; }
+@media (max-width: 40rem) {
+    .diary { padding: .5rem; }
+    .diary .diary-actions { flex-direction: column; align-items: stretch; }
+}

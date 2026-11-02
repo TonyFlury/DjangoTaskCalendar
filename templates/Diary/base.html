@@ -1,0 +1,20 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block diary_title %}Diary{% endblock %}</title>
+    {% block diary_styles %}
+        <link rel="stylesheet" href="{% static 'Diary/styles/diary.css' %}">
+    {% endblock %}
+    {% block diary_extra_styles %}{% endblock %}
+    {% block diary_head %}{% endblock %}
+</head>
+<body>
+    <main class="diary-shell" aria-label="Diary">
+        {% block diary_content %}{% endblock %}
+    </main>
+    {% block diary_scripts %}{% endblock %}
+</body>
+</html>

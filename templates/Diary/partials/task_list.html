@@ -1,0 +1,39 @@
+<section class="diary" aria-label="Diary tasks">
+    <div class="diary-card">
+        <h2 class="diary-heading">{{ diary_heading|default:"Tasks" }}</h2>
+        <ul class="diary-task-list">
+            {% for task in tasks %}
+                <li class="diary-task">
+                    <strong>{{ task.name }}</strong>
+                    {% if task.description %}<p>{{ task.description }}</p>{% endif %}
+                    <p>
+                        {% if task.date %}
+                            Due: <time datetime="{{ task.date|date:'Y-m-d' }}">{{ task.date|date:"j F Y" }}</time>
+                        {% else %}
+                            <span class="diary-muted">Date not set</span>
+                        {% endif %}
+                        {% if task.state == 'blocked' %}
+                            <span class="diary-status diary-status-blocked">Blocked</span>
+                        {% else %}
+                            <span class="diary-status diary-status-ready">Ready</span>
+                        {% endif %}
+                        {% if task.late %}<span class="diary-status diary-status-late">Late</span>{% endif %}
+                    </p>
+                    <p class="diary-muted">
+                        {% if task.owner_label %}
+                            {{ task.owner_label }}
+                        {% elif task.owner_kind == 'person' %}
+                            Person: {{ task.person_ref }}
+                        {% elif task.owner_kind == 'role' %}
+                            Role: {{ task.role_ref }}
+                        {% else %}
+                            Whole team
+                        {% endif %}
+                    </p>
+                </li>
+            {% empty %}
+                <li class="diary-muted">No open tasks.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</section>

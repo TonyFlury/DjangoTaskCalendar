@@ -1,0 +1,542 @@
+# Diary callable API
+
+API module: `Diary.api`.
+API version: `1`.
+
+This implementation provides models, migrations, and a Python callable API.
+It also provides a standalone task list template and its reusable content fragment.
+It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
+The routed Diary pages and the host dashboard need a subsequent implementation step.
+
+## App boundary
+
+Diary has no model imports or foreign keys to other project apps.
+The host supplies event references, dates, person references, and role names.
+All foreign keys in Diary point to Diary models.
+All database operations use PostgreSQL.
+
+A reference is an opaque string, such as `GarageSale:event:17` or `user:42`.
+The host must use a stable namespace for these references.
+The Diary key is a UUID that identifies an event calendar.
+The host stores it in `EventData.diary_key` without a foreign key.
+
+## Access configuration
+
+The host supplies this configuration in settings:
+
+```python
+DIARY_PERMISSION_GROUPS = {
+    'use': ('ExecMember', 'Officer'),
+    'view': ('ExecMember', 'Officer'),
+    'edit': ('Officer',),
+    'view_template': ('Officer',),
+}
+DIARY_TIME_ZONE = 'Europe/London'
+DIARY_TEMPLATE_NAME = 'Garage Sale calendar'
+```
+
+The `use` action permits personal entries and calendar creation from an approved template.
+The `view` action permits calendar reads within the caller's calendar scope.
+The `edit` action permits milestone definitions, template preparation, template approval, assigned entries, date updates, and dependency changes.
+The `view_template` action permits template reads and the milestone lookup.
+An absent action mapping denies access.
+
+`DIARY_TEMPLATE_NAME` selects the default template by name.
+Calls without an explicit template version use its highest approved version number.
+A draft with a higher number does not replace an approved version.
+The configured name can change when another application reuses Diary.
+Existing calendars keep their original template version.
+An absent template or approved version produces a validation error.
+The API does not silently create or approve a template.
+
+These action names are technical names for API permission checks.
+They are not Django group names or automatic database permission grants.
+The current defaults implement the confirmed Officer and ExecMember split.
+
+The host constructs an `Actor` from an authenticated, active identity.
+It supplies the user's reference, current group names, and permitted calendar keys.
+For the current event view, those keys must include only the permitted event calendar.
+The host must not take this information from an untrusted request body.
+
+```python
+from Diary.api import Actor
+
+actor = Actor(
+    reference='user:42',
+    groups=frozenset({'ExecMember', 'Officer'}),
+    calendar_keys=frozenset({stored_diary_key}),
+)
+```
+
+The API is a trusted backend interface.
+It is not an authentication service.
+HTTP adapters must authenticate users and construct the Actor before an API call.
+
+## Named milestones
+
+`define_milestones` takes a mapping from stable names to display labels.
+It returns milestone UUIDs by name.
+Repeated definitions reuse the same milestone.
+A changed label does not change its stable name.
+
+```python
+from Diary import api
+
+api.define_milestones(actor=actor, definitions={
+    'event_date': 'Event date',
+    'add_board_bookings_open': 'Advertising board bookings open',
+})
+```
+
+Template entries refer to milestone names through `EntrySpec.milestone_name`.
+`required_milestones` returns the distinct definitions used by one template version.
+Each result contains `id`, `name`, and `label`.
+It excludes definitions that this version does not use.
+
+```python
+required = api.required_milestones(
+    actor=actor,
+    template_version_key=version_key,
+)
+```
+
+The caller gathers dates for those names before calendar creation.
+A missing milestone value produces no due date.
+The task list then sets `date_not_set` in its result.
+
+## Template and calendar creation
+
+This is a complete first setup example.
+Run the setup once, with an authenticated caller that has edit access.
+The example does not depend on another app's models.
+
+```python
+from dataclasses import replace
+from datetime import date
+from Diary import api
+from Diary.choices import DateKind
+
+actor = api.Actor('user:42', frozenset({'Officer', 'ExecMember'}))
+api.define_milestones(actor=actor, definitions={
+    'event_date': 'Event date',
+    'add_board_bookings_open': 'Advertising board bookings open',
+})
+template_key = api.create_template(actor=actor)  # Uses DIARY_TEMPLATE_NAME.
+version_key = api.create_template_version(
+    actor=actor, template_key=template_key, number=1,
+)
+entry = api.EntrySpec(
+    name='Inspect advertising boards',
+    date_kind=DateKind.RELATIVE,
+    milestone_name='add_board_bookings_open',
+    day_offset=42,
+)
+entry_key = api.add_template_entry(
+    actor=actor, template_version_key=version_key, spec=entry,
+)
+api.approve_template_version(actor=actor, template_version_key=version_key)
+
+required = api.required_milestones(actor=actor)  # Uses the configured template.
+assert [item['name'] for item in required] == ['add_board_bookings_open']
+
+calendar_key = api.create_calendar(
+    actor=actor,
+    event_ref='GarageSale:event:17',
+    name='Garage Sale 2027',
+    event_year=2027,
+    milestone_dates={
+        'event_date': date(2027, 6, 27),
+        'add_board_bookings_open': date(2027, 5, 1),
+    },
+)
+actor = replace(actor, calendar_keys=frozenset({calendar_key}))
+calendar = api.get_calendar(actor=actor, calendar_key=calendar_key)
+tasks = api.active_tasks(actor=actor, calendar_key=calendar_key, today=date(2027, 6, 12))
+assert tasks[0]['late'] is True  # The due date has been reached.
+```
+
+The example task is due on 12 June 2027.
+The caller must save `calendar_key` against the event.
+The host can include the API call and that save in one database transaction.
+Diary does not save the key in another app.
+
+For this website, the caller stores the key on its event record:
+
+```python
+event.diary_key = calendar_key
+event.save(update_fields=['diary_key'])
+```
+
+Here, `event` is the caller's existing `EventData` instance.
+That save belongs in the calling application, not in Diary.
+
+To select a particular version, supply `template_version_key` to `create_calendar` or `required_milestones`.
+
+Repeated calendar creation with the same reference and inputs returns the same key.
+Different inputs for that reference raise `ValidationError`.
+Use `set_milestone_dates` for a deliberate date update.
+That call updates the supplied milestones and keeps other milestone values unchanged.
+
+The date kinds are `source`, `relative`, `annual`, and `once`.
+`source` uses a milestone directly.
+`relative` adds a signed day count to a milestone.
+`annual` uses a month, day, and offset from the event year.
+`once` uses a full date and is permitted only in an event calendar.
+An invalid annual occurrence, such as 29 February 2027, has no due date.
+
+Approved template entries and their dependencies are immutable through the API.
+A new version needs new entries before approval.
+Event entries copy the rules, names, owners, and dependency links.
+They do not read mutable template content after creation.
+
+## API calls
+
+All call arguments are keyword arguments.
+Every call except `permission_groups` requires `actor`.
+
+| Call | Other arguments | Result |
+| --- | --- | --- |
+| `permission_groups` | None. | A copy of the group mapping. |
+| `define_milestones` | `definitions` | Milestone keys by name. |
+| `create_template` | Optional `name`, optional `description` | Template UUID. |
+| `create_template_version` | `template_key`, `number` | Template version UUID. |
+| `get_template_version` | Optional `template_version_key` | Template rules, entry keys, and predecessor keys. |
+| `required_milestones` | Optional `template_version_key` | Distinct milestone definitions. |
+| `add_template_entry` | `template_version_key`, `spec`, optional `directory` | Stable entry key. |
+| `approve_template_version` | `template_version_key` | Template version UUID. |
+| `create_calendar` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | Diary key. |
+| `set_milestone_dates` | `calendar_key`, `milestone_dates`, optional `event_year` | No result. |
+| `add_entry` | `calendar_key`, `spec`, optional `directory` | Stable entry key. |
+| `get_calendar` | `calendar_key` | Calendar data and entries. |
+| `active_tasks` | `calendar_key`, optional `today` | Open tasks in date order, with late tasks first. |
+| `personal_tasks` | `calendar_key`, optional `today`, optional `include_whole_team` | Open tasks for the caller or their roles. |
+| `available_predecessors` | `scope_key`, `entry_key`, optional `template` | Safe predecessor choices. |
+| `set_predecessors` | `scope_key`, `entry_key`, `predecessor_keys`, optional `template` | No result. |
+
+For dependency calls, `scope_key` identifies a calendar unless `template=True`.
+With `template=True`, it identifies a template version.
+Entry keys remain stable when names change or templates become event calendars.
+A caller can keep the same `EntrySpec.entry_key` to repeat a safe entry addition.
+Different content with an existing entry key raises `ValidationError`.
+
+## EntrySpec fields
+
+`EntrySpec` is the input record for an entry addition.
+Its technical field names match the date and ownership rules below.
+
+| Field | Type | Default or rule |
+| --- | --- | --- |
+| `name` | String. | Required. Unique within its calendar or template version, without case differences. |
+| `date_kind` | `DateKind` value or its string value. | Required. |
+| `description` | String. | Empty string. |
+| `milestone_name` | String. | Required for `source` and `relative`. Empty for other date kinds. |
+| `day_offset` | Integer. | Zero. Signed day count for `relative`. |
+| `month`, `day` | Integers or `None`. | Required for `annual`. Otherwise `None`. |
+| `year_offset` | Integer. | Zero. Used only for `annual`. |
+| `fixed_date` | `datetime.date` or `None`. | Required for `once`. Otherwise `None`. |
+| `owner_kind` | `OwnerKind` value or its string value. | `team`. |
+| `person_ref` | String. | Required only for `person`. Otherwise empty. |
+| `role_ref` | String. | Required only for `role`. Otherwise empty. |
+| `entry_key` | UUID. | A new UUID. Keep it to repeat an addition safely. |
+
+## More callable examples
+
+These examples continue from the setup example.
+The example `actor` has edit access and includes the new calendar key.
+
+An ExecMember can add a personal entry:
+
+```python
+from Diary.choices import OwnerKind
+
+member = api.Actor('user:43', frozenset({'ExecMember'}), frozenset({calendar_key}))
+personal = api.EntrySpec(
+    name='Check my preparation notes',
+    date_kind=DateKind.ONCE,
+    fixed_date=date(2027, 6, 20),
+    owner_kind=OwnerKind.PERSON,
+    person_ref=member.reference,
+)
+personal_key = api.add_entry(actor=member, calendar_key=calendar_key, spec=personal)
+my_tasks = api.personal_tasks(actor=member, calendar_key=calendar_key)
+```
+
+An Officer can use a host directory to assign a role-owned task:
+
+```python
+class ExampleDirectory:
+    def person_in_groups(self, reference, group_names):
+        return reference in {'user:42', 'user:43'} and 'ExecMember' in group_names
+
+    def role_exists(self, reference):
+        return reference == 'SponsorshipManager'
+
+role_task = api.EntrySpec(
+    name='Check sponsor details',
+    date_kind=DateKind.ANNUAL,
+    month=5,
+    day=1,
+    owner_kind=OwnerKind.ROLE,
+    role_ref='SponsorshipManager',
+)
+role_key = api.add_entry(
+    actor=actor, calendar_key=calendar_key, spec=role_task,
+    directory=ExampleDirectory(),
+)
+```
+
+`ExampleDirectory` contains sample data for this example only.
+The host must supply its real identity directory in normal operation.
+For a person assignment, select `OwnerKind.PERSON` and set `person_ref` instead of `role_ref`.
+
+The caller can update a milestone date:
+
+```python
+api.set_milestone_dates(
+    actor=actor,
+    calendar_key=calendar_key,
+    milestone_dates={'add_board_bookings_open': date(2027, 5, 8)},
+)
+```
+
+This changes open task dates that use that milestone.
+It does not change fixed annual dates or completed due dates.
+
+The caller can read safe predecessors and add a dependency:
+
+```python
+choices = api.available_predecessors(
+    actor=actor, scope_key=calendar_key, entry_key=role_key,
+)
+api.set_predecessors(
+    actor=actor, scope_key=calendar_key, entry_key=role_key,
+    predecessor_keys=[personal_key],
+)
+```
+
+`set_predecessors` replaces the entry's complete predecessor list.
+An empty list removes all its predecessors.
+To change a draft template, use its version key as `scope_key` and set `template=True`.
+
+## Ownership
+
+`EntrySpec.owner_kind` is `team`, `person`, or `role`.
+A person entry has `person_ref` only.
+A role entry has `role_ref` only.
+A whole-team entry has neither reference.
+The database enforces these combinations.
+
+An ExecMember can add only an entry that identifies themselves as the person owner.
+An editor can add entries for people, roles, or the whole team.
+For person and role assignments, the editor supplies an `OwnerDirectory` implementation.
+Its `person_in_groups(reference, group_names)` method checks person eligibility.
+Its `role_exists(reference)` method checks the role reference.
+Diary does not implement that directory through another app's models.
+
+The personal list uses the Actor's current group membership for role-owned tasks.
+It excludes whole-team tasks unless `include_whole_team=True`.
+The list returns each task once.
+Membership changes take effect when the host supplies a new Actor.
+
+## Readiness and lateness
+
+`active_tasks` excludes completed entries.
+Each result includes `state`, `late`, `date_not_set`, ownership references, and blocking predecessor keys.
+The state is `ready` if all predecessors are complete.
+Otherwise, the state is `blocked`.
+An entry without predecessors is ready.
+
+An open task is late if its due date is today or earlier.
+A blocked task can also be late.
+A missing date is not late.
+There are no stored readiness or lateness flags.
+The caller can supply `today` for a reproducible date comparison.
+Otherwise, the API uses the date in `DIARY_TIME_ZONE`.
+
+The model keeps completion time, the completing actor reference, and the due date at completion.
+Completed records cannot change through normal model saves.
+The completion page, completion permission rules, and override workflow are not implemented yet.
+
+## Dependency integrity
+
+The selector excludes the task itself and every direct or indirect successor.
+It also excludes entries from other calendars or template versions.
+The API checks links again before save.
+It serializes dependency changes through a lock on the calendar or template version.
+A failed replacement keeps the previous links.
+
+The current selector reads saved links.
+A future editor must calculate choices for its proposed unsaved links as well.
+The API still rejects a circular link from an old form.
+
+Callers must use the API instead of ORM bulk writes or direct many-to-many manager operations.
+Those ORM operations can bypass model validation and graph locks.
+Database constraints still enforce ownership shapes, date shapes, unique keys, and self-link prevention.
+
+## Errors
+
+The API raises `PermissionDenied` for failed access checks.
+It raises `ValidationError` for invalid data or a conflicting repeated request.
+An unknown reference raises the applicable model's `DoesNotExist` exception.
+Database uniqueness constraints can raise `IntegrityError` if conflicting creations occur concurrently.
+The caller must report the conflict and read the stored record before a retry.
+A failed atomic call does not keep partial entries or dependency changes.
+
+## Deployment and verification
+
+The initial Diary migration has no dependency on another project app.
+The GarageSale migration adds the nullable `EventData.diary_key` field.
+Existing event records keep a null key.
+No calendar or milestone data is seeded automatically.
+
+Use the configured project interpreter and PostgreSQL credentials:
+
+```sh
+python manage.py test Diary.tests --noinput
+python manage.py makemigrations --check --dry-run
+python manage.py migrate
+```
+
+Apply migrations on the target site before callers use the API.
+Follow `General Deployment Instructions` for deployment.
+No migration was applied to application data during development of this feature.
+
+## Default styles and host overrides
+
+Diary includes `Diary/templates/Diary/base.html` and `Diary/static/Diary/styles/diary.css`.
+These are the styling foundation for the subsequent Diary pages.
+The stylesheet uses the `.diary` namespace to avoid changes to other pages.
+It includes default cards, buttons, form controls, and task status styles.
+
+The base template uses Django's `static` tag for its stylesheet URL.
+The host does not need a special Diary stylesheet search function.
+Django's normal static file finders select the file.
+The first matching file wins with the configured finder order.
+See [Django's static file guidance](https://docs.djangoproject.com/en/5.0/ref/contrib/staticfiles/).
+
+### Add host styles after the defaults
+
+The usual first choice is an extra stylesheet with CSS variable overrides.
+Put this template in a host template directory:
+
+```text
+templates/Diary/base.html
+```
+
+The template can extend the default with the same name:
+
+```django
+{% extends "Diary/base.html" %}
+{% load static %}
+{% block diary_extra_styles %}
+    <link rel="stylesheet" href="{% static 'site/diary-overrides.css' %}">
+{% endblock %}
+```
+
+The host stylesheet can change colors without copying the default rules:
+
+```css
+.diary {
+    --diary-accent: #263d68;
+    --diary-accent-text: white;
+    --diary-radius: .75rem;
+}
+```
+
+The `diary_styles` block contains the default link.
+The `diary_extra_styles` block follows it.
+Other blocks are `diary_title`, `diary_head`, `diary_content`, and `diary_scripts`.
+The host can replace the complete base template to use its own page structure.
+It must retain those blocks for child pages.
+Each reusable fragment supplies its own `.diary` content wrapper.
+
+### Replace the default stylesheet
+
+The host can supply the same relative path in its static directory:
+
+```text
+site_static/Diary/styles/diary.css
+```
+
+With Django's default finders, this configuration searches that directory before app static directories:
+
+```python
+STATICFILES_DIRS = [BASE_DIR / 'site_static']
+```
+
+Do not use the collected `STATIC_ROOT` as the source directory.
+An earlier app in `INSTALLED_APPS` can also supply the same relative static path.
+The finder order determines which matching file Django uses.
+
+### Template search order
+
+The host can set `TEMPLATES[0]['DIRS']` to include `BASE_DIR / 'templates'`.
+With the default loaders, project directories have priority over app template directories.
+An earlier app in `INSTALLED_APPS` can also override a template with the same relative name.
+See [Django's template override guidance](https://docs.djangoproject.com/en/5.0/howto/overriding-templates/).
+
+The default template has no dependency on a host base template or stylesheet.
+The settings name `DIARY_TEMPLATE_NAME` selects calendar data, not a Django HTML template.
+
+### Standalone pages and reusable fragments
+
+Every Diary page must have a complete browser document through `Diary/base.html`.
+The page content belongs in a reusable fragment under `Diary/partials/`.
+For example, `Diary/task_list.html` includes `Diary/partials/task_list.html`.
+The standalone page loads the default stylesheet.
+The fragment contains no document shell or stylesheet link.
+
+The caller supplies `tasks` from `active_tasks` or `personal_tasks`.
+It can also supply `diary_heading` for the section title.
+An optional `owner_label` on each task can replace its opaque person or role reference in the display.
+
+A host template can include the fragment inside its own page:
+
+```django
+{% extends "host/base.html" %}
+{% load static %}
+{% block extra_styles %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'Diary/styles/diary.css' %}">
+{% endblock %}
+{% block content %}
+    <h1>Event dashboard</h1>
+    {% include "Diary/partials/task_list.html" with tasks=diary_tasks diary_heading="Active tasks" %}
+{% endblock %}
+```
+
+`host/base.html`, `extra_styles`, and `content` are example host template names.
+The host uses its actual template and block names.
+It must include the content fragment rather than the complete Diary browser page.
+This avoids nested document elements and repeated stylesheet links.
+
+### Deployment check
+
+Use these commands on the target site after a stylesheet change:
+
+```sh
+python manage.py findstatic Diary/styles/diary.css --first
+python manage.py collectstatic --noinput
+```
+
+Then reload the app and refresh the browser.
+Follow the project's deployment instructions for its static mapping and cache checks.
+
+## Data relationships
+
+```mermaid
+erDiagram
+    CalendarTemplate ||--o{ TemplateVersion : has
+    TemplateVersion ||--o{ TemplateEntry : defines
+    Milestone ||--o{ TemplateEntry : dates
+    TemplateVersion ||--o{ EventCalendar : supplies
+    EventCalendar ||--o{ CalendarMilestone : has
+    Milestone ||--o{ CalendarMilestone : identifies
+    EventCalendar ||--o{ CalendarEntry : contains
+    TemplateEntry o|--o{ CalendarEntry : copies
+    Milestone o|--o{ CalendarEntry : dates
+    TemplateEntry ||--o{ TemplateDependency : entry
+    TemplateEntry ||--o{ TemplateDependency : predecessor
+    CalendarEntry ||--o{ EntryDependency : entry
+    CalendarEntry ||--o{ EntryDependency : predecessor
+```
