@@ -12,6 +12,10 @@ The default status filter shows open tasks.
 **Calendar** remains an explicit navigation choice for the full event list.
 Changing the preview user or resetting the sample also opens **My tasks**.
 
+The [dashboard mock-up](../dashboard/index.html) shows clickable personal Late and Ready counts within the existing dashboard design.
+It shares this preview's sample data.
+Its links select the same user and the corresponding task filter.
+
 ## Main pages
 
 The navigation opens these pages within one standalone browser document:
@@ -88,6 +92,7 @@ The configured application template and the database remain unchanged.
 ## Styling
 
 The preview uses `../../static/Diary/styles/diary.css` followed by `preview.css`.
+`sample-state.js` supplies the shared task data and date calculations for both previews.
 The second file adds page layout and preview-specific components.
 It does not replace the packaged stylesheet.
 All visible content has named classes.

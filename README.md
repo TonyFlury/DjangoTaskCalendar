@@ -834,3 +834,35 @@ Classes without a CSS rule remain available as content hooks.
 | `diary-preview-toast` | Noninteractive result notification. |
 | `diary-preview-toolbar` | Search and filter layout. |
 | `diary-preview-warning` | Warning variant of a context message. |
+
+## Dashboard count mock-up
+
+The [dashboard preview](design/dashboard/index.html) reuses the existing dashboard styles and chart renderer with sample data.
+Its [review guide](design/dashboard/README.md) explains the clickable personal task counts.
+The Late and Ready links open the matching personal Diary filter for the selected sample user.
+The two counts can overlap.
+A ready task can also be late.
+The production dashboard is unchanged.
+
+These class hooks belong to the mock-up panel.
+The surrounding host shell uses `dashboard-preview-` classes.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-dashboard` | Diary count panel root. |
+| `diary-dashboard-counter` | Counter. |
+| `diary-dashboard-counter-arrow` | Counter arrow. |
+| `diary-dashboard-counter-description` | Counter description. |
+| `diary-dashboard-counter-label` | Counter label. |
+| `diary-dashboard-counter-late` | Counter late. |
+| `diary-dashboard-counter-ready` | Counter ready. |
+| `diary-dashboard-counter-value` | Counter value. |
+| `diary-dashboard-counts` | Counts. |
+| `diary-dashboard-eyebrow` | Eyebrow. |
+| `diary-dashboard-footer` | Footer. |
+| `diary-dashboard-header` | Header. |
+| `diary-dashboard-heading` | Heading. |
+| `diary-dashboard-open` | Open. |
+| `diary-dashboard-panel` | Panel. |
+| `diary-dashboard-title` | Title. |
+| `diary-dashboard-user` | User. |
