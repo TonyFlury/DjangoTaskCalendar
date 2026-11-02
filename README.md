@@ -726,3 +726,109 @@ erDiagram
     CalendarEntry ||--o{ EntryDependency : entry
     CalendarEntry ||--o{ EntryDependency : predecessor
 ```
+
+## UI mock-up class catalog
+
+The [interactive UI mock-up](design/ui/index.html) is separate from the routed application.
+Its [review guide](design/ui/README.md) describes the pages and sample workflows.
+The preview loads the packaged stylesheet before `Diary/design/ui/preview.css`.
+These additional classes belong only to the preview.
+They are not yet part of the production template interface.
+Classes without a CSS rule remain available as content hooks.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-preview` | Standalone preview root. |
+| `diary-preview-back` | Back navigation link. |
+| `diary-preview-badges` | Task status label container. |
+| `diary-preview-banner` | Sample-data notice and reset action. |
+| `diary-preview-banner-text` | Banner text. |
+| `diary-preview-banner-title` | Banner title. |
+| `diary-preview-brand` | Diary name and icon link. |
+| `diary-preview-brand-icon` | Brand icon. |
+| `diary-preview-brand-name` | Brand name. |
+| `diary-preview-check-label` | Checkbox label and control layout. |
+| `diary-preview-checkbox` | Checkbox. |
+| `diary-preview-columns` | Task details column layout. |
+| `diary-preview-completion-form` | Completion form. |
+| `diary-preview-completion-note` | Completion note. |
+| `diary-preview-completion-record` | Completion record. |
+| `diary-preview-control` | Named form control. |
+| `diary-preview-date` | Task row date container. |
+| `diary-preview-date-day` | Date day. |
+| `diary-preview-date-year` | Date year. |
+| `diary-preview-dependency-item` | Dependency item. |
+| `diary-preview-dependency-list` | Dependency list. |
+| `diary-preview-detail-description` | Detail description. |
+| `diary-preview-detail-main` | Detail main. |
+| `diary-preview-detail-side` | Detail side. |
+| `diary-preview-editor` | Template list and editor layout. |
+| `diary-preview-editor-card` | Editor card. |
+| `diary-preview-empty` | Empty. |
+| `diary-preview-entry-form` | Entry form. |
+| `diary-preview-error` | Form validation message. |
+| `diary-preview-eyebrow` | Eyebrow. |
+| `diary-preview-fact-name` | Fact name. |
+| `diary-preview-fact-value` | Fact value. |
+| `diary-preview-facts` | Facts. |
+| `diary-preview-field` | Field. |
+| `diary-preview-field-label` | Field label. |
+| `diary-preview-field-wide` | Field wide. |
+| `diary-preview-fieldset` | Form control group. |
+| `diary-preview-filter` | Task status filter. |
+| `diary-preview-form-grid` | Form field grid. |
+| `diary-preview-graph` | Read-only dependency connection list. |
+| `diary-preview-graph-edge` | Graph edge. |
+| `diary-preview-graph-row` | Graph row. |
+| `diary-preview-graph-task` | Graph task. |
+| `diary-preview-graph-title` | Graph title. |
+| `diary-preview-header` | Header. |
+| `diary-preview-header-actions` | Header actions. |
+| `diary-preview-header-text` | Header text. |
+| `diary-preview-help` | Field help or explanatory text. |
+| `diary-preview-hidden-field` | Hidden form value. |
+| `diary-preview-layout` | Navigation and page grid. |
+| `diary-preview-list` | List. |
+| `diary-preview-main` | Active page content. |
+| `diary-preview-milestone-description` | Milestone description. |
+| `diary-preview-milestone-form` | Milestone form. |
+| `diary-preview-milestone-key` | Milestone key. |
+| `diary-preview-milestone-row` | Milestone row. |
+| `diary-preview-nav` | Primary navigation. |
+| `diary-preview-nav-icon` | Nav icon. |
+| `diary-preview-nav-label` | Nav label. |
+| `diary-preview-nav-link` | Nav link. |
+| `diary-preview-noscript` | Noscript. |
+| `diary-preview-note` | Context message. |
+| `diary-preview-optional` | Optional field indication. |
+| `diary-preview-persona` | Sample user selector area. |
+| `diary-preview-persona-note` | Persona note. |
+| `diary-preview-predecessor-choice` | Predecessor choice. |
+| `diary-preview-predecessor-name` | Predecessor name. |
+| `diary-preview-predecessors` | Scrollable predecessor choices. |
+| `diary-preview-reset` | Sample reset button. |
+| `diary-preview-row-arrow` | Row arrow. |
+| `diary-preview-rule-caption` | Rule caption. |
+| `diary-preview-rule-fields` | Rule fields. |
+| `diary-preview-search` | Task search input. |
+| `diary-preview-section-title` | Section title. |
+| `diary-preview-sidebar` | Sidebar container. |
+| `diary-preview-sidebar-caption` | Sidebar caption. |
+| `diary-preview-sidebar-note` | Sidebar note. |
+| `diary-preview-status-completed` | Status completed. |
+| `diary-preview-status-neutral` | Status neutral. |
+| `diary-preview-subtitle` | Subtitle. |
+| `diary-preview-summary` | Task count summary. |
+| `diary-preview-summary-item` | Summary item. |
+| `diary-preview-summary-number` | Summary number. |
+| `diary-preview-task-content` | Task content. |
+| `diary-preview-task-link` | Task link. |
+| `diary-preview-task-owner` | Task owner. |
+| `diary-preview-task-row` | One event task row. |
+| `diary-preview-template-list` | Template list. |
+| `diary-preview-template-switch` | Template switch. |
+| `diary-preview-template-task` | Template entry selection button. |
+| `diary-preview-title` | Title. |
+| `diary-preview-toast` | Noninteractive result notification. |
+| `diary-preview-toolbar` | Search and filter layout. |
+| `diary-preview-warning` | Warning variant of a context message. |

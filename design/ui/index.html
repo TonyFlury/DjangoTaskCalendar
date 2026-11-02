@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" class="diary-document">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Diary · UI preview</title>
+    <link rel="stylesheet" href="../../static/Diary/styles/diary.css">
+    <link rel="stylesheet" href="preview.css">
+    <script defer src="preview.js"></script>
+</head>
+<body class="diary-page">
+<div class="diary diary-preview">
+    <div class="diary-preview-banner"><span class="diary-preview-banner-text"><strong class="diary-preview-banner-title">Interactive mock-up</strong> · Sample data only · Today: 12 June 2027</span><button type="button" class="diary-button diary-preview-reset" data-action="reset">Reset sample</button></div>
+    <div class="diary-preview-layout">
+        <aside class="diary-preview-sidebar" aria-label="Diary navigation">
+            <a class="diary-preview-brand" href="#calendar"><span class="diary-preview-brand-icon" aria-hidden="true">▦</span><span class="diary-preview-brand-name">Diary</span></a>
+            <p class="diary-preview-sidebar-caption">PLAN · PREPARE · COMPLETE</p>
+            <nav class="diary-preview-nav" id="preview-nav"></nav>
+            <div class="diary-preview-persona"><label class="diary-preview-field-label" for="preview-persona">Preview as</label><select class="diary-preview-control" id="preview-persona"><option value="riley">Riley Evans · Officer</option><option value="sam">Sam Patel · ExecMember</option><option value="jess">Jess Morgan · SponsorshipManager + ExecMember</option></select><p class="diary-preview-persona-note" id="preview-persona-note"></p></div>
+            <p class="diary-preview-sidebar-note">Changes stay in this preview.<br>No emails are sent.</p>
+        </aside>
+        <main class="diary-preview-main" id="preview-main" tabindex="-1"></main>
+    </div>
+    <div class="diary-preview-toast" id="preview-toast" role="status" aria-live="polite" hidden></div>
+<noscript class="diary-preview-noscript">Enable JavaScript to use this interactive preview.</noscript>
+</div>
+</body>
+</html>
