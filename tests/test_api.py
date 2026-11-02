@@ -60,6 +60,76 @@ class DiaryTests(TestCase):
     def test_postgresql(self):
         self.assertEqual(connection.vendor, 'postgresql')
 
+    def test_close_calendar_preserves_open_tasks_and_completion_records(self):
+        key = self.calendar()
+        personal = api.EntrySpec('My open task', DateKind.ONCE, fixed_date=date(2027, 6, 1),
+                                  owner_kind=OwnerKind.PERSON, person_ref=self.exec_member.reference)
+        api.add_entry(actor=self.exec_member, calendar_key=key, spec=personal)
+        completed = CalendarEntry.objects.get(calendar_id=key, entry_key=self.annual.entry_key)
+        completed.completed_at = timezone.now()
+        completed.completed_by_ref = self.officer.reference
+        completed.completed_due_date = completed.due_date
+        completed.save()
+        before = list(CalendarEntry.objects.filter(calendar_id=key).order_by('pk').values())
+        milestones = list(CalendarMilestone.objects.filter(calendar_id=key).order_by('pk').values())
+        dependencies = list(EntryDependency.objects.filter(entry__calendar_id=key).order_by('pk').values())
+        self.assertTrue(api.personal_tasks(actor=self.exec_member, calendar_key=key))
+
+        self.assertEqual(api.close_calendar(actor=self.officer, calendar_key=key), key)
+
+        result = api.get_calendar(actor=self.officer, calendar_key=key)
+        self.assertTrue(result['closed'])
+        self.assertIsNotNone(result['closed_at'])
+        self.assertEqual(result['closed_by_ref'], self.officer.reference)
+        self.assertEqual(len(result['entries']), 4)
+        self.assertEqual(list(CalendarEntry.objects.filter(calendar_id=key).order_by('pk').values()), before)
+        self.assertEqual(list(CalendarMilestone.objects.filter(calendar_id=key).order_by('pk').values()), milestones)
+        self.assertEqual(list(EntryDependency.objects.filter(entry__calendar_id=key).order_by('pk').values()), dependencies)
+        self.assertEqual(api.active_tasks(actor=self.officer, calendar_key=key), ())
+        self.assertEqual(api.personal_tasks(actor=self.exec_member, calendar_key=key), ())
+
+    def test_close_calendar_is_idempotent_and_does_not_reopen_on_creation_retry(self):
+        key = self.calendar()
+        api.close_calendar(actor=self.officer, calendar_key=key)
+        original = api.get_calendar(actor=self.officer, calendar_key=key)
+        other_manager = replace(self.officer, reference='another-manager')
+        self.assertEqual(api.close_calendar(actor=other_manager, calendar_key=str(key)), key)
+        self.assertEqual(api.get_calendar(actor=self.officer, calendar_key=key), original)
+        self.assertEqual(self.calendar(), key)
+        self.assertTrue(api.get_calendar(actor=self.officer, calendar_key=key)['closed'])
+
+    def test_close_calendar_requires_configured_edit_access_and_host_scope(self):
+        key = self.calendar()
+        for actor in (self.exec_member, replace(self.officer, calendar_keys=frozenset())):
+            with self.assertRaises(PermissionDenied):
+                api.close_calendar(actor=actor, calendar_key=key)
+        self.assertFalse(EventCalendar.objects.get(pk=key).closed_at)
+        with self.settings(DIARY_PERMISSION_GROUPS={'edit': ('CustomManager',)}):
+            with self.assertRaises(PermissionDenied):
+                api.close_calendar(actor=self.officer, calendar_key=key)
+            manager = api.Actor('custom-manager', frozenset({'CustomManager'}), frozenset({key}))
+            self.assertEqual(api.close_calendar(actor=manager, calendar_key=key), key)
+        with self.settings(DIARY_PERMISSION_GROUPS={}):
+            with self.assertRaises(PermissionDenied):
+                api.close_calendar(actor=self.officer, calendar_key=key)
+
+    def test_closed_calendar_rejects_api_changes(self):
+        key = self.calendar()
+        api.close_calendar(actor=self.officer, calendar_key=key)
+        operations = (
+            lambda: api.add_entry(actor=self.officer, calendar_key=key,
+                                  spec=api.EntrySpec('New task', DateKind.ONCE, fixed_date=date(2027, 7, 1))),
+            lambda: api.set_milestone_dates(actor=self.officer, calendar_key=key,
+                                            milestone_dates={'event_date': date(2027, 7, 1)}),
+            lambda: api.set_predecessors(actor=self.officer, scope_key=key,
+                                         entry_key=self.second.entry_key, predecessor_keys=[]),
+        )
+        before = api.get_calendar(actor=self.officer, calendar_key=key)
+        for operation in operations:
+            with self.assertRaisesMessage(ValidationError, 'This diary is closed.'):
+                operation()
+        self.assertEqual(api.get_calendar(actor=self.officer, calendar_key=key), before)
+
     def test_models_have_no_foreign_keys_to_other_apps(self):
         from django.apps import apps
         for model in apps.get_app_config('Diary').get_models():

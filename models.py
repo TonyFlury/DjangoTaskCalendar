@@ -123,12 +123,19 @@ class EventCalendar(ValidatedModel):
     template_version = models.ForeignKey(TemplateVersion, on_delete=models.PROTECT, related_name='calendars')
     created_by_ref = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by_ref = models.CharField(max_length=200, blank=True)
 
     class Meta:
         ordering = ('event_year', 'name')
         constraints = [
             models.CheckConstraint(check=Q(event_year__gte=1, event_year__lte=9999), name='diary_calendar_year_valid'),
             models.CheckConstraint(check=~Q(event_ref=''), name='diary_calendar_event_ref_present'),
+            models.CheckConstraint(
+                check=(Q(closed_at__isnull=True, closed_by_ref='')
+                       | (Q(closed_at__isnull=False) & ~Q(closed_by_ref=''))),
+                name='diary_calendar_closure_state',
+            ),
         ]
 
     def __str__(self):

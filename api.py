@@ -19,7 +19,7 @@ __all__ = [
     'API_VERSION', 'Actor', 'OwnerDirectory', 'EntrySpec', 'permission_groups',
     'define_milestones', 'required_milestones', 'create_template', 'create_template_version',
     'get_template_version', 'add_template_entry', 'approve_template_version',
-    'create_calendar', 'set_milestone_dates', 'add_entry', 'get_calendar',
+    'create_calendar', 'close_calendar', 'set_milestone_dates', 'add_entry', 'get_calendar',
     'active_tasks', 'personal_tasks', 'available_predecessors', 'set_predecessors',
 ]
 
@@ -92,6 +92,14 @@ def _owner(spec, directory):
     elif spec.owner_kind == OwnerKind.ROLE:
         if not directory.role_exists(spec.role_ref):
             raise ValidationError('Select an existing role.')
+
+
+def _open_calendar(actor, key, action):
+    calendar = _calendar(actor, key, action)
+    calendar = EventCalendar.objects.select_for_update().get(pk=calendar.pk)
+    if calendar.closed_at is not None:
+        raise ValidationError('This diary is closed.')
+    return calendar
 
 
 def _values(spec):
@@ -215,6 +223,18 @@ def create_calendar(*, actor, event_ref, name, event_year, milestone_dates, temp
     return calendar.pk
 
 
+@transaction.atomic
+def close_calendar(*, actor, calendar_key):
+    """Close an instance without completing or deleting any of its tasks."""
+    calendar = _calendar(actor, calendar_key, 'edit')
+    calendar = EventCalendar.objects.select_for_update().get(pk=calendar.pk)
+    if calendar.closed_at is None:
+        calendar.closed_at = timezone.now()
+        calendar.closed_by_ref = actor.reference
+        calendar.save(update_fields=['closed_at', 'closed_by_ref'])
+    return calendar.pk
+
+
 def _set_dates(calendar, dates):
     for name, value in dates.items():
         if value is not None and type(value) is not date:
@@ -225,8 +245,7 @@ def _set_dates(calendar, dates):
 
 @transaction.atomic
 def set_milestone_dates(*, actor, calendar_key, milestone_dates, event_year=None):
-    calendar = _calendar(actor, calendar_key, 'edit')
-    calendar = EventCalendar.objects.select_for_update().get(pk=calendar.pk)
+    calendar = _open_calendar(actor, calendar_key, 'edit')
     if event_year is not None:
         calendar.event_year = event_year
         calendar.save()
@@ -235,8 +254,7 @@ def set_milestone_dates(*, actor, calendar_key, milestone_dates, event_year=None
 
 @transaction.atomic
 def add_entry(*, actor, calendar_key, spec, directory=None):
-    calendar = _calendar(actor, calendar_key, 'use')
-    EventCalendar.objects.select_for_update().get(pk=calendar.pk)
+    calendar = _open_calendar(actor, calendar_key, 'use')
     if not _allowed(actor, 'edit'):
         if spec.owner_kind != OwnerKind.PERSON or spec.person_ref != actor.reference:
             raise PermissionDenied('A personal entry must belong to its creator.')
@@ -256,7 +274,8 @@ def _scope(actor, scope_key, template, action):
         _require(actor, 'view_template' if action == 'view' else 'edit')
         scope = TemplateVersion.objects.get(pk=scope_key)
         return scope, TemplateEntry, TemplateDependency, 'version'
-    return _calendar(actor, scope_key, action), CalendarEntry, EntryDependency, 'calendar'
+    calendar = _calendar(actor, scope_key) if action == 'view' else _open_calendar(actor, scope_key, action)
+    return calendar, CalendarEntry, EntryDependency, 'calendar'
 
 
 def available_predecessors(*, actor, scope_key, entry_key, template=False):
@@ -306,6 +325,8 @@ def get_calendar(*, actor, calendar_key):
                         'completed_at': entry.completed_at,
                         'ready': entry.completed_at is None and all(item.completed_at is not None for item in predecessors)})
     return {'key': calendar.pk, 'name': calendar.name, 'event_ref': calendar.event_ref,
+            'closed': calendar.closed_at is not None, 'closed_at': calendar.closed_at,
+            'closed_by_ref': calendar.closed_by_ref,
             'event_year': calendar.event_year, 'milestones': context, 'entries': tuple(entries)}
 
 
@@ -316,6 +337,8 @@ def active_tasks(*, actor, calendar_key, today=None):
     if type(today) is not date:
         raise ValidationError('Supply a date for today.')
     calendar = get_calendar(actor=actor, calendar_key=calendar_key)
+    if calendar['closed']:
+        return ()
     result = []
     for entry in calendar['entries']:
         if entry['completed_at'] is not None:

@@ -3,6 +3,8 @@
 API module: `Diary.api`.
 API version: `1`.
 
+`close_calendar` closes an existing diary instance even when tasks remain open.
+
 This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
 It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
@@ -383,6 +385,7 @@ Every call except `permission_groups` requires `actor`.
 | `add_template_entry` | `template_version_key`, `spec`, optional `directory` | Stable entry key. |
 | `approve_template_version` | `template_version_key` | Template version UUID. |
 | `create_calendar` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | Diary key. |
+| `close_calendar` | `calendar_key` | The existing Diary key. |
 | `set_milestone_dates` | `calendar_key`, `milestone_dates`, optional `event_year` | No result. |
 | `add_entry` | `calendar_key`, `spec`, optional `directory` | Stable entry key. |
 | `get_calendar` | `calendar_key` | Calendar data and entries. |
@@ -499,6 +502,36 @@ api.set_predecessors(
 An empty list removes all its predecessors.
 To change a draft template, use its version key as `scope_key` and set `template=True`.
 
+## Close a diary instance
+
+Use `close_calendar` to close an existing diary, regardless of its open tasks:
+
+```python
+api.close_calendar(actor=actor, calendar_key=calendar_key)
+```
+
+The caller needs the configured `edit` permission and the target key in `Actor.calendar_keys`.
+Garage Sale maps that permission to its DiaryManager group.
+The operation returns the existing Diary key.
+Repeated calls keep the original closure time and caller reference.
+
+Closing records `closed_at` and `closed_by_ref` on the calendar.
+It does not complete, delete, or change tasks.
+It preserves milestone dates, dependencies, and completion records.
+`get_calendar` remains available within the host's permitted scope.
+Its result includes `closed`, `closed_at`, and `closed_by_ref`.
+`active_tasks` and `personal_tasks` return empty tuples for a closed diary.
+
+The API rejects entry additions, milestone changes, and dependency changes after closure.
+These writes and closure use the same calendar lock.
+No reopen operation is provided.
+A repeated `create_calendar` call cannot reopen the diary.
+The caller decides when to close a diary.
+Diary does not connect closure to an external event lifecycle automatically.
+
+Apply migration `Diary/0003_calendar_closure` before using this operation.
+Existing diaries remain open after the migration.
+
 ## Ownership
 
 `EntrySpec.owner_kind` is `team`, `person`, or `role`.
@@ -506,6 +539,10 @@ A person entry has `person_ref` only.
 A role entry has `role_ref` only.
 A whole-team entry has neither reference.
 The database enforces these combinations.
+The template author can select a person, a role, or the whole team for each task.
+A specific person or role is optional.
+Calendar creation copies that ownership from the template.
+The selection is template content, not a fixed Diary policy.
 
 An ExecMember can add only an entry that identifies themselves as the person owner.
 An editor can add entries for people, roles, or the whole team.
