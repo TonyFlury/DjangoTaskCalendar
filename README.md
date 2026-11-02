@@ -27,6 +27,8 @@ A separate approval step is outside V1 scope.
 Only DiaryManagers can modify tasks copied from a template into a calendar instance.
 Task assignment does not grant permission to modify those tasks.
 Completion permissions remain a separate decision.
+Template changes leave existing diaries unchanged by default.
+V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
 
 ## Remaining work
 
@@ -55,6 +57,11 @@ The previews use sample data and do not complete application requirements.
 - [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
 - [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
 - [ ] Restrict changes to template-sourced instance tasks to DiaryManagers through every interface.
+- [ ] Add a DiaryManager action to copy a selected new template item into an existing active diary.
+- [ ] Show the target diary, selected item, and calculated date before the save.
+- [ ] Permit late additions with the original calculated date and normal Late highlighting.
+- [ ] Prevent duplicate additions through the template item's stable entry key.
+- [ ] Preserve existing tasks, completion records, and other diaries during the addition.
 - [ ] Approve the resulting template version through the DiaryManager's save action in V1.
 - [ ] Show the event name and event date on the current calendar page.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
@@ -86,7 +93,8 @@ These items do not authorize implementation.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
-- [ ] Decide whether existing calendars need template updates with a date review.
+- [ ] Define handling of absent milestones and predecessor tasks during an explicit template item addition.
+- [ ] Define any broader template replacement workflow separately from item additions.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
 
 ### Garage Sale integration
@@ -352,6 +360,12 @@ The preview's separate draft approval control remains a demonstration, not the c
 A new version needs new entries before approval.
 Event entries copy the rules, names, owners, and dependency links.
 They do not read mutable template content after creation.
+Template changes do not update those instance entries automatically.
+A DiaryManager must be able to add a selected new template item to an active diary explicitly.
+The item uses that diary's milestone dates and can be late when added.
+This addition must not replace existing tasks or change their completion records.
+The current API has no dedicated operation to copy a selected template item into an existing diary.
+That action remains implementation work for V1.
 
 ## API calls
 
