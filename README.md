@@ -334,6 +334,8 @@ Its `role_exists(reference)` method checks the role reference.
 Diary does not implement that directory through another app's models.
 
 The personal list uses the Actor's current group membership for role-owned tasks.
+The default logged-in Diary page must use `personal_tasks` for its task list.
+The full event list from `active_tasks` is an explicit view choice, not the default landing page.
 It excludes whole-team tasks unless `include_whole_team=True`.
 The list returns each task once.
 Membership changes take effect when the host supplies a new Actor.

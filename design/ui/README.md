@@ -5,6 +5,13 @@ No server or database is necessary.
 The preview uses the packaged Diary stylesheet and a separate preview stylesheet.
 Keep this directory inside the checkout so the relative paths remain valid.
 
+The default page is **My tasks**.
+It shows tasks owned by the selected person or by a role that includes that person.
+It excludes whole-team tasks unless the user selects **Include whole-team tasks**.
+The default status filter shows open tasks.
+**Calendar** remains an explicit navigation choice for the full event list.
+Changing the preview user or resetting the sample also opens **My tasks**.
+
 ## Main pages
 
 The navigation opens these pages within one standalone browser document:
@@ -24,6 +31,7 @@ A blocked task can also be late.
 
 Saved preview images:
 
+- [Default personal view on desktop](previews/my-tasks-desktop.png).
 - [Calendar on desktop](previews/calendar-desktop.png).
 - [Template editor on desktop](previews/template-desktop.png).
 - [Calendar on a phone](previews/calendar-mobile.png).
