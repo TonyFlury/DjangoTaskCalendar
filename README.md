@@ -15,6 +15,8 @@ The selection of template tasks and their dates is outside the feature definitio
 Template content is application data and does not prevent implementation of the feature.
 Task progress through completion is required in the first feature release.
 The progress states, permitted transitions, and completion permissions still need definition.
+The first release uses a simple date-ordered list.
+A month display is not required for the first release.
 
 ## Remaining work
 
@@ -27,6 +29,7 @@ The previews use sample data and do not complete application requirements.
 - [ ] Implement task progress and completion through the callable API and Diary pages in the first feature release.
 - [ ] Preserve completion records and due dates at completion when milestone dates change.
 - [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
+- [ ] Show calendar entries in a simple date-ordered list.
 - [ ] Make the personal task view the default Diary page for a logged-in user.
 - [ ] Add navigation to the full event calendar for users with view permission.
 - [ ] Connect the pages to the callable API with trusted identity and current role membership.
@@ -58,7 +61,6 @@ The previews use sample data and do not complete application requirements.
 These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
-- [ ] Decide whether a month display is necessary.
 - [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
 - [ ] Define the host calls that save the Diary key and supply changed milestone dates.
 - [ ] Decide whether event date changes require a date review before save.
