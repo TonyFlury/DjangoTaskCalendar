@@ -10,6 +10,9 @@ The routed Diary pages and the host dashboard need a subsequent implementation s
 Diary is for ExecMembers who have actions to complete for a successful event.
 Diary has no public view.
 Role ownership does not grant access to users outside ExecMember.
+Diary provides a generic capability to hold an event diary.
+The selection of template tasks and their dates is outside the feature definition.
+Template content is application data and does not prevent implementation of the feature.
 
 ## Remaining work
 
@@ -51,7 +54,6 @@ The previews use sample data and do not complete application requirements.
 These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
-- [ ] Agree on the initial template tasks, annual dates, year offsets, and initial owners.
 - [ ] Confirm the permitted date sources and the need for a month display.
 - [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
 - [ ] Define the host calls that save the Diary key and supply changed milestone dates.
