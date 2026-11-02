@@ -40,131 +40,13 @@ DiaryManagers cannot remove or replace live diary predecessors through dependenc
 Template changes leave existing diaries unchanged by default.
 V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
 
-## Remaining work
+## V1 implementation tracking
 
-This list follows the [event calendar design](../docs/design/event-calendar.md), dated 2 November 2026.
-The design contains confirmed requirements and proposals that still need approval.
-The previews use sample data and do not complete application requirements.
-
-### Requirements still to implement
-
-- [ ] List open predecessors throughout the blocking chain when a user attempts task completion.
-- [ ] Add “Complete” for permitted users when no open predecessors remain.
-- [ ] Add the DiaryManager “Close all” action for a task with open predecessors.
-- [ ] Complete the blocking chain and selected task together with explanatory predecessor comments.
-- [ ] Keep completion records, due dates at completion, and dependency links consistent during concurrent changes.
-- [ ] Implement task progress and completion through the callable API and Diary pages in the first feature release.
-- [ ] Preserve completion records and due dates at completion when milestone dates change.
-- [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
-- [ ] Show calendar entries in a simple date-ordered list.
-- [ ] Highlight Late tasks with a red shadowed border in every task view.
-- [ ] Highlight Blocked tasks with an amber shadowed border when a direct predecessor is late.
-- [ ] Give the red highlight priority when the task itself is late.
-- [ ] Keep text state labels and a dashed border for other Blocked tasks.
-- [ ] Make the personal task view the default Diary page for a logged-in user.
-- [ ] Add navigation to the full event calendar for users with view permission.
-- [ ] Connect the pages to the callable API with trusted identity and current role membership.
-- [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
-- [ ] Validate configured DiaryManager and DiaryUser groups at startup, including at least one user in each group.
-- [ ] Validate membership of every configured task ownership role at startup and diary creation.
-- [ ] Reject diary creation when a configured ownership role is absent or empty without leaving partial data.
-- [ ] Show template editor warnings for selected ownership groups without members.
-- [ ] Support personal tasks across all host-permitted calendar instances or one selected instance in the callable API.
-- [ ] Add an authenticated HTTP API with the same instance selection and access rules.
-- [ ] Accept `diary_key` or `template_name` in HTML views through URL parameters or trusted view context.
-- [ ] Group the default personal task list by diary name across all permitted open diaries when no key is supplied.
-- [ ] Show the most recent named template version, including a draft when it has the highest version number.
-- [ ] Show a template chooser when no template name is supplied.
-- [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
-- [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
-- [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
-- [ ] Restrict changes to template-sourced instance tasks to DiaryManagers through every interface.
-- [ ] Add a DiaryManager action to copy a selected new template item into an existing active diary.
-- [ ] Show the target diary, selected item, and calculated date before the save.
-- [ ] Permit late additions with the original calculated date and normal Late highlighting.
-- [ ] Prevent duplicate additions through the template item's stable entry key.
-- [ ] Preserve existing tasks, completion records, and other diaries during the addition.
-- [ ] Approve the resulting template version through the DiaryManager's save action in V1.
-- [ ] Show the event name and event date on the current calendar page.
-- [ ] Show “No current event” or “Calendar not prepared” when applicable.
-- [ ] Keep calendar reads free from calendar creation actions.
-- [ ] Add the personal entry form with the current user as its enforced owner.
-- [ ] Restrict personal entry visibility to its owner and DiaryManagers in every view and API.
-- [ ] Exclude other users' personal entries from searches and predecessor choices.
-- [ ] Add the DiaryManager entry form with person and role choices.
-- [ ] Add the DiaryManager choice “Add to template for future diaries”, initially off.
-- [ ] Show the reusable date rule and owner choice before a combined save.
-- [ ] Save one event entry and one new template entry together without repeated additions.
-- [ ] Keep other event calendars unchanged after a template addition.
-- [ ] Show person names, current role members, and whole-team ownership.
-- [ ] Show “No role members” with the role name when applicable.
-- [ ] Add the template predecessor editor with safe choices for proposed unsaved links.
-- [ ] Restrict dependency editing to templates in every V1 interface, including the callable API.
-- [ ] Keep server checks for circular dependencies and concurrent changes.
-- [ ] Add the dashboard's personal Late, Ready, and Blocked counts with matching task filters.
-- [ ] Check Diary availability before the dashboard imports or calls its API.
-- [ ] Use the current event's stored Diary key for the dashboard.
-- [ ] Show the missing-calendar state and keep zero counts as links.
-- [ ] Use complete Diary pages and reusable content fragments for the new views.
-- [ ] Use existing team navigation and styles with keyboard access and text state labels.
-- [ ] Document each new styling class and CSS variable.
-
-### Proposals and decisions still open
-
-These items do not authorize implementation.
-[Section 12](../docs/design/event-calendar.md#12-open-decisions) contains the full decision list.
-
-- [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
-- [ ] Define other task editing rules, owner changes, and any additional progress states.
-- [ ] Define handling of absent milestones and predecessor tasks during an explicit template item addition.
-- [ ] Define any broader template replacement workflow separately from item additions.
-- [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
-
-### Garage Sale integration
-
-The host decides when to call the calendar creation API.
-Diary does not define event creation or activation callbacks.
-The [Garage Sale integration design](../GarageSale/DIARY_INTEGRATION.md) records the lifecycle proposal and remaining host work.
-It includes calendar creation timing, activation checks, and storage of the returned Diary key.
-These decisions are outside the generic Diary feature definition.
-
-### Reminders: deferred beyond V1
-
-Reminder design does not prevent the V1 release.
-These items remain deferred until a later release:
-
-- [ ] Define reminder recipients, including recipients for whole-team tasks.
-- [ ] Define timing, delivery channels, retries, and cancellation rules.
-- [ ] Define reminder permissions and send records before implementation.
-
-### V2 completion review
-
-- [ ] Review the V1 “Close all” behavior and decide which force completion features V2 needs.
-
-Dependency editing in live diaries remains a separate review item for a future release.
-It is outside V1 scope.
-
-### V2 milestone date changes
-
-The user deferred milestone date changes and their impact review to V2.
-These changes can affect whether the team can complete all diary tasks.
-The following work remains necessary for V2:
-
-- [ ] Design the presentation of changed dates and their effects on tasks and dependencies.
-- [ ] Define the review, approval, and permission rules before changed dates are applied.
-- [ ] Define the caller's API workflow for changed milestone dates.
-- [ ] Preserve completion records and their due dates during changes.
-
-The current API can update milestone dates without an impact review.
-The preview milestone editor also permits direct changes for demonstration.
-Neither interface completes the V2 design or approves a first-release date change workflow.
-
-### Documentation review
-
-The official ASD-STE100 Issue 9 PDF initially returned HTTP 403.
-An existing local copy was available for the task highlighting update.
-A full dictionary and technical-name review remains necessary.
-This update does not claim full ASD-STE100 compliance.
+Use the [Diary V1 checklist](TODO_V1.md) to track implementation.
+It gives each item a stable identifier, completion conditions, and links to the requirements.
+It separates implemented components, outstanding work, unresolved details, host integration, and deferred features.
+The checklist replaces the earlier duplicated remaining-work list.
+Previews do not complete production page requirements.
 
 ## App boundary
 
