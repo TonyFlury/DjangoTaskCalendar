@@ -14,6 +14,7 @@ from .choices import DateKind, OwnerKind, VersionStatus
 from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
                      EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
 from .roles import task_owner_roles as _task_owner_roles
+from .roles import access_groups
 
 API_VERSION = 1
 __all__ = [
@@ -53,17 +54,25 @@ class EntrySpec:
 
 
 def _allowed(actor, action):
-    return bool(actor.reference.strip() and actor.groups & DiaryAPI.permission_groups().get(action, frozenset()))
+    groups = DiaryAPI.permission_groups()
+    if not actor.reference.strip():
+        return False
+    if action in {'use', 'view'}:
+        return bool(actor.groups & {groups['manager'], groups['user']})
+    if action in {'edit', 'view_template'}:
+        return groups['manager'] in actor.groups
+    return False
 
 
 def _require(actor, action):
     if not _allowed(actor, action):
-        raise PermissionDenied(f'Diary permission required: {action}.')
+        if action in {'edit', 'view_template'}:
+            raise PermissionDenied('DiaryManager membership is required for this operation.')
+        raise PermissionDenied('DiaryUser or DiaryManager membership is required for this operation.')
 
 
 def _require_template_access(actor):
-    if not (_allowed(actor, 'edit') or _allowed(actor, 'view_template')):
-        raise PermissionDenied('Diary template permission required.')
+    _require(actor, 'view_template')
 
 
 def _calendar(actor, key, action='view'):
@@ -80,8 +89,8 @@ def _owner(spec, directory):
     if directory is None:
         raise ValidationError('Supply an owner directory for a person or role assignment.')
     if spec.owner_kind == OwnerKind.PERSON:
-        if not directory.person_in_groups(spec.person_ref, DiaryAPI.permission_groups().get('use', frozenset())):
-            raise ValidationError('Select a person with Diary use access.')
+        if not directory.person_in_groups(spec.person_ref, frozenset(DiaryAPI.permission_groups().values())):
+            raise ValidationError('Select a DiaryUser or DiaryManager.')
     elif spec.owner_kind == OwnerKind.ROLE:
         if spec.role_ref not in DiaryAPI.task_owner_roles():
             raise ValidationError('Select a role from DIARY_TASK_OWNER_ROLES.')
@@ -201,14 +210,8 @@ class DiaryAPI:
 
     @staticmethod
     def permission_groups():
-        """Return a copy of the configured groups; missing actions deny access."""
-        configured = getattr(settings, 'DIARY_PERMISSION_GROUPS', {})
-        result = {}
-        for action, groups in configured.items():
-            if not isinstance(groups, (list, tuple, set, frozenset)) or any(not isinstance(g, str) for g in groups):
-                raise ValidationError('Diary permission groups must be collections of group names.')
-            result[action] = frozenset(groups)
-        return result
+        """Return the V1 manager and user group names."""
+        return access_groups()
 
     @staticmethod
     def task_owner_roles():

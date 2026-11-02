@@ -71,6 +71,7 @@ The host stores it in `EventData.diary_key` without a foreign key.
 DiaryManager and DiaryUser are technical names for configurable Diary roles.
 They are not fixed Django group names.
 The host maps its groups through `settings.py`.
+V1 uses `DIARY_MANAGER` and `DIARY_USER`, each containing one Django group name.
 Garage Sale uses Officer for DiaryManager and ExecMember for DiaryUser.
 Other projects can select different group names.
 
@@ -119,23 +120,32 @@ The expanded view behavior above is a confirmed requirement and remains implemen
 The host supplies this configuration in settings:
 
 ```python
-DIARY_PERMISSION_GROUPS = {
-    'use': ('ExecMember', 'Officer'),
-    'view': ('ExecMember', 'Officer'),
-    'edit': ('Officer',),
-    'view_template': ('Officer',),
-}
+DIARY_MANAGER = 'Officer'
+DIARY_USER = 'ExecMember'
 DIARY_TIME_ZONE = 'Europe/London'
 DIARY_TEMPLATE_NAME = 'Garage Sale calendar'
 DIARY_TASK_OWNER_ROLES = ('ExecMember', 'Officer', 'SponsorshipManager')
 DIARY_ROLE_LOOKUP = 'GarageSale.diary_roles.existing_task_owner_roles'
 ```
 
-The `use` action permits personal entries and calendar creation from an approved template.
-The `view` action permits calendar reads within the caller's calendar scope.
-The `edit` action permits milestone definitions, template preparation, template approval, assigned entries, date updates, and dependency changes.
-The `view_template` action permits template reads and the milestone lookup.
-An absent action mapping denies access.
+`DIARY_MANAGER` identifies the DiaryManager group.
+`DIARY_USER` identifies the DiaryUser group.
+Both settings must contain a nonempty group name without surrounding spaces.
+Missing or invalid values raise `ImproperlyConfigured`, including during application startup.
+
+Managers inherit DiaryUser capabilities without membership in the `DIARY_USER` group.
+They also have all template permissions, including viewing, creation, editing, and approval.
+DiaryUsers have no template permissions through their user role.
+Instance access remains limited by the host's permitted diary keys.
+The V1 task and dependency rules continue to limit permitted operations.
+
+Replace the former `DIARY_PERMISSION_GROUPS` setting with these two settings.
+V1 does not read the old action mapping.
+`DiaryAPI.permission_groups()` returns `{'manager': DIARY_MANAGER, 'user': DIARY_USER}`.
+The returned values are group-name strings.
+
+Finer-grained permissions may become an optional feature in a later version.
+That option is outside V1 scope and has no confirmed release number.
 
 `DIARY_TEMPLATE_NAME` selects the default template by name.
 Calls without an explicit template version use its highest approved version number.
@@ -145,9 +155,8 @@ Existing calendars keep their original template version.
 An absent template or approved version produces a validation error.
 The API does not silently create or approve a template.
 
-These action names are technical names for API permission checks.
-They are not Django group names or automatic database permission grants.
-The current defaults implement the confirmed Officer and ExecMember split.
+These settings select groups and do not create automatic Django database permission grants.
+The current host values implement the confirmed Officer and ExecMember split.
 These exact group names in the examples are Garage Sale configuration, not required Diary role names.
 
 The host constructs an `Actor` from an authenticated, active identity.
@@ -200,7 +209,7 @@ All other startup paths perform the check when the configured collection is not 
 
 ### Startup and ownership validation requirements
 
-At startup, both DiaryManager and DiaryUser mappings must be specified in Django settings.
+At startup, `DIARY_MANAGER` and `DIARY_USER` must be specified in Django settings.
 Every referenced group must exist and contain at least one user.
 Every role in `DIARY_TASK_OWNER_ROLES` must also exist and have at least one member.
 Invalid startup configuration must raise `ImproperlyConfigured` with the relevant settings and group names.
@@ -215,8 +224,9 @@ The warning must identify the group and affected task.
 If a group becomes empty or is deleted, Diary gives no automatic runtime warning.
 The next server restart, diary creation, or template edit is the next validation or warning point.
 
-The current implementation checks configured ownership-role existence at startup and role assignment.
-Access-group validation, membership checks, creation checks, and template editor warnings remain implementation work.
+The current implementation validates the two access setting values and checks configured ownership-role existence.
+Database checks for access-group existence, membership, and diary creation remain implementation work.
+Template editor warnings also remain implementation work.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
 
 ## API objects and factories
@@ -284,7 +294,7 @@ The static configuration methods do not need an actor.
 
 | Method | Arguments | Result |
 | --- | --- | --- |
-| `DiaryAPI.permission_groups` | None. | Copy of the configured access groups. |
+| `DiaryAPI.permission_groups` | None. | `manager` and `user` group-name strings in a new dictionary. |
 | `DiaryAPI.task_owner_roles` | None. | A `frozenset` of permitted task-owner role names. |
 | `DiaryAPI.define_milestones` | `definitions` | Milestone UUIDs by name. |
 | `DiaryTemplateVersion.required_milestones` | None. | Distinct milestone definitions used by this version. |
@@ -351,7 +361,7 @@ An entry without a resolvable date has `date_not_set=True` in its task result.
 ## Template and diary creation
 
 This is a complete first setup example.
-Run the setup once with an authenticated caller that has edit access.
+Run the setup once with an authenticated DiaryManager.
 The example uses the Garage Sale group configuration without importing host models.
 
 ```python
@@ -529,7 +539,7 @@ assert closed is diary
 assert diary.read()['closed'] is True
 ```
 
-The actor needs the configured `edit` permission and the diary key in its permitted scope.
+The actor needs DiaryManager membership and the diary key in its permitted scope.
 Repeated calls preserve the original closure time and caller reference.
 The operation returns the same diary object.
 
@@ -561,8 +571,8 @@ Calendar creation copies that ownership from the template.
 The selection is template content, not a fixed Diary policy.
 
 An ordinary DiaryUser can add only an entry that identifies themselves as the person owner.
-An editor can add entries for people, roles, or the whole team.
-The host must map the `edit` permission to its DiaryManager groups.
+A DiaryManager can add entries for people, roles, or the whole team.
+The host selects the DiaryManager group through `DIARY_MANAGER`.
 Only DiaryManagers can add tasks owned by another person.
 These assignment checks already exist in the callable API.
 
@@ -572,7 +582,7 @@ The requirement applies to lists, details, searches, predecessor choices, and bo
 The current calendar read API does not yet enforce this personal entry visibility rule.
 That visibility filter remains implementation work.
 
-For person and role assignments, the editor supplies an `OwnerDirectory` implementation.
+For person and role assignments, the DiaryManager supplies an `OwnerDirectory` implementation.
 Its `person_in_groups(reference, group_names)` method checks person eligibility.
 Its `role_exists(reference)` method checks the role reference.
 Diary does not implement that directory through another app's models.

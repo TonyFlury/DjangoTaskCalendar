@@ -10,7 +10,7 @@ from Diary.choices import DateKind
 from Diary.models import EntryDependency
 
 
-@override_settings(DIARY_PERMISSION_GROUPS={'use': ('Officer',), 'edit': ('Officer',)})
+@override_settings(DIARY_MANAGER='Officer', DIARY_USER='ExecMember')
 class DependencyConcurrencyTests(TransactionTestCase):
     available_apps = ['Diary']
 

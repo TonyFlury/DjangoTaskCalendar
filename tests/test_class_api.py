@@ -11,17 +11,12 @@ from Diary.models import EventCalendar
 
 
 @override_settings(
-    DIARY_PERMISSION_GROUPS={
-        'use': ('DiaryUser', 'DiaryManager'),
-        'view': ('DiaryUser', 'DiaryManager', 'Reviewer'),
-        'edit': ('DiaryManager',),
-        'view_template': ('DiaryManager',),
-    },
+    DIARY_MANAGER='DiaryManager', DIARY_USER='DiaryUser',
     DIARY_TEMPLATE_NAME='Class API template',
 )
 class ClassAPITests(TestCase):
     def setUp(self):
-        self.actor = api.Actor('manager', frozenset({'DiaryManager', 'DiaryUser'}))
+        self.actor = api.Actor('manager', frozenset({'DiaryManager'}))
         self.client = api.DiaryAPI(actor=self.actor)
         self.client.define_milestones(definitions={'target': 'Target date'})
         self.template = self.client.create_template()
@@ -71,7 +66,7 @@ class ClassAPITests(TestCase):
         self.assertEqual(self.diary.active_tasks(), ())
         with self.assertRaisesMessage(ValidationError, 'This diary is closed.'):
             self.diary.add_entry(spec=api.EntrySpec('Another task', DateKind.ANNUAL, month=1, day=1))
-        with self.settings(DIARY_PERMISSION_GROUPS={}):
+        with self.settings(DIARY_MANAGER='AnotherManager', DIARY_USER='AnotherUser'):
             with self.assertRaises(PermissionDenied):
                 self.diary.read()
             with self.assertRaises(PermissionDenied):
@@ -79,8 +74,8 @@ class ClassAPITests(TestCase):
             with self.assertRaises(PermissionDenied):
                 self.template.create_version(number=3)
 
-    def test_a_view_reference_does_not_authorize_writes(self):
-        reviewer = api.Actor('reviewer', frozenset({'Reviewer'}), frozenset({self.diary.key}))
+    def test_user_reference_does_not_authorize_manager_actions(self):
+        reviewer = api.Actor('reviewer', frozenset({'DiaryUser'}), frozenset({self.diary.key}))
         diary = api.DiaryInstance.from_key(actor=reviewer, key=self.diary.key)
         self.assertEqual(diary.read()['name'], 'Class API diary')
         with self.assertRaises(PermissionDenied):
@@ -89,6 +84,29 @@ class ClassAPITests(TestCase):
             diary.add_entry(spec=api.EntrySpec('Denied', DateKind.ANNUAL, month=1, day=1))
         with self.assertRaises(PermissionDenied):
             api.DiaryTemplate.from_key(actor=reviewer, key=self.template.key)
+
+    def test_user_role_does_not_grant_any_template_operation(self):
+        user = api.Actor('ordinary-user', frozenset({'DiaryUser'}))
+        version = api.DiaryTemplateVersion(actor=user, key=self.version.key)
+        operations = (
+            version.read,
+            version.required_milestones,
+            version.approve,
+            lambda: version.add_entry(spec=self.entry),
+            lambda: version.available_predecessors(entry_key=self.entry.entry_key),
+            lambda: version.set_predecessors(entry_key=self.entry.entry_key, predecessor_keys=[]),
+            lambda: api.DiaryTemplate.create(actor=user, name='Not permitted'),
+            lambda: api.DiaryTemplate(actor=user, key=self.template.key).create_version(number=3),
+        )
+        for operation in operations:
+            with self.assertRaises(PermissionDenied):
+                operation()
+
+    def test_legacy_action_mapping_cannot_grant_extra_access(self):
+        user = api.Actor('legacy-user', frozenset({'LegacyEditors'}))
+        with self.settings(DIARY_PERMISSION_GROUPS={'edit': ('LegacyEditors',)}):
+            with self.assertRaises(PermissionDenied):
+                api.DiaryTemplate.create(actor=user, name='Legacy grant ignored')
 
     def test_existing_template_version_handle_observes_approval(self):
         draft = self.template.create_version(number=2)

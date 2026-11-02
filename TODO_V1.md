@@ -99,17 +99,27 @@ The final sections separate unresolved decisions, host integration, and deferred
   Evidence: [API implementation](api.py), [class API tests](tests/test_class_api.py), and [migration guidance](README.md#migration-from-module-functions).
   Requirement: [D4].
 
+- [x] **DV1-047: Simple V1 access settings.**
+  `DIARY_MANAGER` and `DIARY_USER` each select one group.
+  Managers inherit user capabilities and have all template permissions.
+  Startup rejects missing or invalid setting values.
+  The old configurable action mapping grants no access in V1.
+  Database checks for group existence and membership still need DV1-014.
+  Evidence: [access configuration](roles.py), [API checks](api.py), and [permission tests](tests/test_class_api.py).
+  Requirement: [D4] and [D9].
+
 ## Access and validation work
 
 - [ ] **DV1-013: Generic identity and role adapters.**
-  Use configured DiaryManager and DiaryUser mappings throughout Diary.
+  Use the `DIARY_MANAGER` and `DIARY_USER` group names throughout Diary.
   Retrieve the configured user model through `get_user_model()` when model access is necessary.
   Keep host business models and custom request attributes outside Diary.
   Completion requires access tests with different host group names.
   Requirement: [D4] and [D8].
 
 - [ ] **DV1-014: Startup access-group validation.**
-  Require both Diary role mappings.
+  Require `DIARY_MANAGER` and `DIARY_USER`.
+  Setting-value validation exists, but database existence and membership checks remain outstanding.
   Check that every referenced group exists and has at least one user.
   Raise `ImproperlyConfigured` with setting names and distinct missing-group or empty-group explanations.
   Keep database and group setup commands available.
@@ -379,11 +389,12 @@ The following work is not a generic Diary V1 requirement:
 - A separate template approval step is outside V1.
 - Template task content is application data.
 - Diary has no public view.
+- Finer-grained permissions may become an optional feature in a later version, outside V1.
 
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The class API refactor passed 50 tests, including the Garage Sale key integration test, against a separate PostgreSQL database.
+The simplified access settings passed 55 tests, including the Garage Sale key integration test, against a separate PostgreSQL database.
 Migration consistency checks found no model changes.
 No migration was applied to application data.
 ASD-STE100 Issue 9 was available locally.

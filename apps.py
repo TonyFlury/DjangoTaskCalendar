@@ -9,8 +9,9 @@ class DiaryConfig(AppConfig):
     verbose_name = 'Diary'
 
     def ready(self):
-        from .roles import task_owner_roles, validate_task_owner_roles
+        from .roles import access_groups, task_owner_roles, validate_task_owner_roles
 
+        access_groups()
         task_owner_roles()
         # Bootstrap commands must be able to create the tables and host roles.
         if len(sys.argv) > 1 and sys.argv[1] in {'migrate', 'sync_access_policy'}:

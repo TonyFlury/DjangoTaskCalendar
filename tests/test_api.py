@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -22,8 +22,7 @@ class Directory:
 
 
 @override_settings(
-    DIARY_PERMISSION_GROUPS={'use': ('ExecMember', 'Officer'), 'view': ('ExecMember', 'Officer'),
-                             'edit': ('Officer',), 'view_template': ('Officer',)},
+    DIARY_MANAGER='Officer', DIARY_USER='ExecMember',
     DIARY_TEMPLATE_NAME='Garage Sale calendar', DIARY_TIME_ZONE='Europe/London',
     DIARY_TASK_OWNER_ROLES=('SponsorshipManager',),
 )
@@ -98,19 +97,19 @@ class DiaryTests(TestCase):
         self.assertEqual(self.calendar(), key)
         self.assertTrue(api.DiaryInstance.from_key(actor=self.officer, key=key).read()['closed'])
 
-    def test_close_calendar_requires_configured_edit_access_and_host_scope(self):
+    def test_close_calendar_requires_manager_membership_and_host_scope(self):
         key = self.calendar()
         for actor in (self.exec_member, replace(self.officer, calendar_keys=frozenset())):
             with self.assertRaises(PermissionDenied):
                 api.DiaryInstance.from_key(actor=actor, key=key).close()
         self.assertFalse(EventCalendar.objects.get(pk=key).closed_at)
-        with self.settings(DIARY_PERMISSION_GROUPS={'edit': ('CustomManager',)}):
+        with self.settings(DIARY_MANAGER='CustomManager'):
             with self.assertRaises(PermissionDenied):
                 api.DiaryInstance.from_key(actor=self.officer, key=key).close()
             manager = api.Actor('custom-manager', frozenset({'CustomManager'}), frozenset({key}))
             self.assertEqual(api.DiaryInstance.from_key(actor=manager, key=key).close().key, key)
-        with self.settings(DIARY_PERMISSION_GROUPS={}):
-            with self.assertRaises(PermissionDenied):
+        with self.settings(DIARY_MANAGER=None):
+            with self.assertRaises(ImproperlyConfigured):
                 api.DiaryInstance.from_key(actor=self.officer, key=key).close()
 
     def test_closed_calendar_rejects_api_changes(self):
@@ -262,16 +261,16 @@ class DiaryTests(TestCase):
         self.assertFalse(CalendarEntry.objects.filter(calendar_id=key, entry_key=spec.entry_key).exists())
         self.assertFalse(TemplateEntry.objects.filter(version_id=draft, entry_key=spec.entry_key).exists())
 
-    def test_permission_groups_are_configurable_and_missing_configuration_denies(self):
-        with override_settings(DIARY_PERMISSION_GROUPS={}):
-            with self.assertRaises(PermissionDenied):
+    def test_permission_groups_require_valid_two_group_configuration(self):
+        with override_settings(DIARY_MANAGER=None):
+            with self.assertRaises(ImproperlyConfigured):
                 api.DiaryAPI(actor=self.officer).template_version(key=self.version).required_milestones()
-        custom = api.Actor('custom:1', frozenset({'DiaryReviewer'}))
-        with override_settings(DIARY_PERMISSION_GROUPS={'view_template': ['DiaryReviewer']}):
+        custom = api.Actor('custom:1', frozenset({'CustomManager'}))
+        with override_settings(DIARY_MANAGER='CustomManager'):
             self.assertEqual(len(api.DiaryAPI(actor=custom).template_version(key=self.version).required_milestones()),
                              2)
-        with override_settings(DIARY_PERMISSION_GROUPS={'view_template': 'Officer'}):
-            with self.assertRaises(ValidationError):
+        with override_settings(DIARY_USER=('ExecMember',)):
+            with self.assertRaises(ImproperlyConfigured):
                 api.DiaryAPI.permission_groups()
 
     def test_view_and_calendar_scope_are_checked(self):

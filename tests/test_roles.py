@@ -6,11 +6,34 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from Diary.roles import task_owner_roles, validate_task_owner_roles
+from Diary.roles import access_groups, task_owner_roles, validate_task_owner_roles
 
 
 def existing_roles(names):
     return {'ConfiguredRole'} & names
+
+
+@override_settings(DIARY_MANAGER='CustomManager', DIARY_USER='CustomUser')
+class AccessGroupConfigurationTests(SimpleTestCase):
+    def test_two_group_names_are_sufficient_and_not_shared_mutable_state(self):
+        self.assertEqual(access_groups(), {'manager': 'CustomManager', 'user': 'CustomUser'})
+        changed = access_groups()
+        changed['manager'] = 'Changed'
+        self.assertEqual(access_groups()['manager'], 'CustomManager')
+
+    def test_each_setting_requires_one_nonempty_group_name(self):
+        for name in ('DIARY_MANAGER', 'DIARY_USER'):
+            for value in (None, '', ' ', ' Role ', ('Role',), ['Role']):
+                with self.settings(**{name: value}):
+                    with self.assertRaisesMessage(ImproperlyConfigured, name):
+                        access_groups()
+
+    def test_startup_validates_both_settings_even_without_ownership_roles(self):
+        config = apps.get_app_config('Diary')
+        with self.settings(DIARY_TASK_OWNER_ROLES=(), DIARY_USER=None):
+            with patch('sys.argv', ['manage.py', 'runserver']):
+                with self.assertRaisesMessage(ImproperlyConfigured, 'DIARY_USER'):
+                    config.ready()
 
 
 @override_settings(DIARY_TASK_OWNER_ROLES=('ConfiguredRole',),

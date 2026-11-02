@@ -5,11 +5,22 @@ from django.db import DatabaseError
 from django.utils.module_loading import import_string
 
 
+def access_groups():
+    result = {}
+    for role, name in (('manager', 'DIARY_MANAGER'), ('user', 'DIARY_USER')):
+        value = getattr(settings, name, None)
+        if not isinstance(value, str) or not value.strip() or value != value.strip():
+            raise ImproperlyConfigured(f'{name} must name one Django group without surrounding spaces.')
+        result[role] = value
+    return result
+
+
 def task_owner_roles():
     roles = getattr(settings, 'DIARY_TASK_OWNER_ROLES', ())
     if (not isinstance(roles, (list, tuple, set, frozenset))
             or any(not isinstance(role, str) or not role.strip() or role != role.strip() for role in roles)):
-        raise ImproperlyConfigured('DIARY_TASK_OWNER_ROLES must be a collection of nonempty role names without surrounding spaces.')
+        raise ImproperlyConfigured(
+            'DIARY_TASK_OWNER_ROLES must be a collection of nonempty role names without surrounding spaces.')
     return frozenset(roles)
 
 
@@ -19,7 +30,8 @@ def validate_task_owner_roles():
         return
     path = getattr(settings, 'DIARY_ROLE_LOOKUP', '')
     if not isinstance(path, str) or not path:
-        raise ImproperlyConfigured('Set DIARY_ROLE_LOOKUP to a host database lookup callable when DIARY_TASK_OWNER_ROLES is not empty.')
+        raise ImproperlyConfigured(
+            'Set DIARY_ROLE_LOOKUP to a host database lookup callable when DIARY_TASK_OWNER_ROLES is not empty.')
     try:
         lookup = import_string(path)
     except (ImportError, AttributeError, ValueError) as error:
@@ -37,7 +49,8 @@ def validate_task_owner_roles():
             'Check the database connection, apply migrations, and create the configured roles before startup.'
         ) from error
     except TypeError as error:
-        raise ImproperlyConfigured(f'DIARY_ROLE_LOOKUP {path!r} must return a collection of existing role names.') from error
+        raise ImproperlyConfigured(
+            f'DIARY_ROLE_LOOKUP {path!r} must return a collection of existing role names.') from error
     missing = roles - existing
     if missing:
         raise ImproperlyConfigured(
