@@ -65,6 +65,10 @@ The previews use sample data and do not complete application requirements.
 - [ ] Add navigation to the full event calendar for users with view permission.
 - [ ] Connect the pages to the callable API with trusted identity and current role membership.
 - [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
+- [ ] Validate configured DiaryManager and DiaryUser groups at startup, including at least one user in each group.
+- [ ] Validate membership of every configured task ownership role at startup and diary creation.
+- [ ] Reject diary creation when a configured ownership role is absent or empty without leaving partial data.
+- [ ] Show template editor warnings for selected ownership groups without members.
 - [ ] Support personal tasks across all host-permitted calendar instances or one selected instance in the callable API.
 - [ ] Add an authenticated HTTP API with the same instance selection and access rules.
 - [ ] Accept `diary_key` or `template_name` in HTML views through URL parameters or trusted view context.
@@ -108,7 +112,7 @@ The previews use sample data and do not complete application requirements.
 ### Proposals and decisions still open
 
 These items do not authorize implementation.
-[Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
+[Section 12](../docs/design/event-calendar.md#12-open-decisions) contains the full decision list.
 
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define other task editing rules, owner changes, and any additional progress states.
@@ -310,6 +314,27 @@ The `migrate` and `sync_access_policy` commands omit the database existence chec
 They still check the form of `DIARY_TASK_OWNER_ROLES`.
 After setup, restart the application to perform the full startup check.
 All other startup paths perform the check when the configured collection is not empty.
+
+### Startup and ownership validation requirements
+
+At startup, both DiaryManager and DiaryUser mappings must be specified in Django settings.
+Every referenced group must exist and contain at least one user.
+Every role in `DIARY_TASK_OWNER_ROLES` must also exist and have at least one member.
+Invalid startup configuration must raise `ImproperlyConfigured` with the relevant settings and group names.
+The error must distinguish missing groups from empty groups.
+
+Diary creation must repeat the ownership-role checks against current database values.
+An absent or empty configured role must prevent creation without leaving partial data.
+Template editing must show an on-screen warning for a selected ownership group with no members.
+The warning must identify the group and affected task.
+
+**Warning:** Diary does not continuously monitor task-owning groups after startup.
+If a group becomes empty or is deleted, Diary gives no automatic runtime warning.
+The next server restart, diary creation, or template edit is the next validation or warning point.
+
+The current implementation checks configured ownership-role existence at startup and role assignment.
+Access-group validation, membership checks, creation checks, and template editor warnings remain implementation work.
+See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
 
 ## Named milestones
 
