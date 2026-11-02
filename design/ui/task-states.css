@@ -1,0 +1,26 @@
+/* Shared preview task states. All selectors remain within the Diary namespace. */
+.diary {
+    --diary-preview-late-border: #b42318;
+    --diary-preview-late-shadow: 0 0 0 1px #b4231840, 0 3px 9px #b4231838;
+    --diary-preview-blocked-late-border: #a66300;
+    --diary-preview-blocked-late-shadow: 0 0 0 1px #a6630040, 0 3px 9px #a6630038;
+    --diary-preview-blocked-border: #65756f;
+}
+.diary .diary-preview-task-blocked {
+    border: 1px dashed var(--diary-preview-blocked-border);
+    border-radius: var(--diary-radius);
+    padding: .75rem;
+    margin-block: .75rem;
+}
+.diary .diary-preview-task-blocked-late,
+.diary .diary-preview-task-late {
+    border: 2px solid var(--diary-preview-blocked-late-border);
+    border-radius: var(--diary-radius);
+    box-shadow: var(--diary-preview-blocked-late-shadow);
+    padding: .75rem;
+    margin-block: .75rem;
+}
+.diary .diary-preview-task-late {
+    border-color: var(--diary-preview-late-border);
+    box-shadow: var(--diary-preview-late-shadow);
+}

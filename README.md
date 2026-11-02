@@ -30,6 +30,10 @@ The previews use sample data and do not complete application requirements.
 - [ ] Preserve completion records and due dates at completion when milestone dates change.
 - [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
 - [ ] Show calendar entries in a simple date-ordered list.
+- [ ] Highlight Late tasks with a red shadowed border in every task view.
+- [ ] Highlight Blocked tasks with an amber shadowed border when a direct predecessor is late.
+- [ ] Give the red highlight priority when the task itself is late.
+- [ ] Keep text state labels and a dashed border for other Blocked tasks.
 - [ ] Make the personal task view the default Diary page for a logged-in user.
 - [ ] Add navigation to the full event calendar for users with view permission.
 - [ ] Connect the pages to the callable API with trusted identity and current role membership.
@@ -76,7 +80,8 @@ These items do not authorize implementation.
 
 ### Documentation review
 
-The official ASD-STE100 Issue 9 PDF was unavailable during this update because its server returned HTTP 403.
+The official ASD-STE100 Issue 9 PDF initially returned HTTP 403.
+An existing local copy was available for the task highlighting update.
 A full dictionary and technical-name review remains necessary.
 This update does not claim full ASD-STE100 compliance.
 
@@ -906,6 +911,10 @@ Classes without a CSS rule remain available as content hooks.
 | `diary-preview-task-link` | Task link. |
 | `diary-preview-task-owner` | Task owner. |
 | `diary-preview-task-row` | One event task row. |
+| `diary-preview-task-late` | Red shadowed border for a Late task. |
+| `diary-preview-task-blocked-late` | Amber shadowed border for a task blocked by a late direct predecessor. |
+| `diary-preview-task-blocked` | Dashed border for other Blocked tasks. |
+| `diary-preview-status-blocked-late` | Text label for a late predecessor. |
 | `diary-preview-template-list` | Template list. |
 | `diary-preview-template-switch` | Template switch. |
 | `diary-preview-template-task` | Template entry selection button. |
@@ -913,6 +922,29 @@ Classes without a CSS rule remain available as content hooks.
 | `diary-preview-toast` | Noninteractive result notification. |
 | `diary-preview-toolbar` | Search and filter layout. |
 | `diary-preview-warning` | Warning variant of a context message. |
+
+### Preview task highlights
+
+The Diary UI preview loads `design/ui/task-states.css` after its layout stylesheet.
+No existing styling class was renamed.
+The new state classes also apply to task details, edit forms, and dependency items.
+Red takes priority when a task is both Late and Blocked.
+Amber identifies a Blocked task with a late direct predecessor.
+Other Blocked tasks use a dashed border.
+Completed tasks have no task highlight.
+Template definitions have no instance dates and receive no lateness highlight.
+Text labels remain visible with the borders.
+
+The preview defines these CSS variables within `.diary`.
+The shadow variables contain complete CSS `box-shadow` values.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `--diary-preview-late-border` | `#b42318` | Red border color. |
+| `--diary-preview-late-shadow` | `0 0 0 1px #b4231840, 0 3px 9px #b4231838` | Red shadow. |
+| `--diary-preview-blocked-late-border` | `#a66300` | Amber border color. |
+| `--diary-preview-blocked-late-shadow` | `0 0 0 1px #a6630040, 0 3px 9px #a6630038` | Amber shadow. |
+| `--diary-preview-blocked-border` | `#65756f` | Dashed border color for other Blocked tasks. |
 
 ## Dashboard count mock-up
 

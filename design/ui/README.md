@@ -33,6 +33,24 @@ The preview date is 12 June 2027.
 An incomplete task is late when its due date is today or earlier.
 A blocked task can also be late.
 
+## Task highlights
+
+Late tasks have a red shadowed border.
+Blocked tasks have an amber shadowed border when a direct predecessor is late.
+Red takes priority when the task itself is late.
+Other Blocked tasks have a dashed border.
+Completed tasks have no highlight.
+Text labels identify the states without color alone.
+The same rules apply to personal lists, the calendar, task details, entry edit forms, and dependency lists.
+Template definitions have no instance dates and do not receive lateness highlights.
+
+Open **Calendar** to inspect the sample highlights.
+**Confirm sponsor list** is red because it is late.
+**Prepare sponsor artwork** is amber because that late task blocks it.
+**Approve sponsor artwork** has a dashed border because its direct predecessor is not late.
+Complete **Confirm sponsor list** to remove its red highlight.
+**Prepare sponsor artwork** then becomes Ready and loses its amber highlight.
+
 Saved preview images:
 
 - [Default personal view on desktop](previews/my-tasks-desktop.png).
@@ -92,6 +110,7 @@ The configured application template and the database remain unchanged.
 ## Styling
 
 The preview uses `../../static/Diary/styles/diary.css` followed by `preview.css`.
+It then loads `task-states.css` for shared task highlights.
 `sample-state.js` supplies the shared task data and date calculations for both previews.
 The second file adds page layout and preview-specific components.
 It does not replace the packaged stylesheet.
