@@ -7,6 +7,9 @@ This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
 It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
 The routed Diary pages and the host dashboard need a subsequent implementation step.
+Diary is for ExecMembers who have actions to complete for a successful event.
+Diary has no public view.
+Role ownership does not grant access to users outside ExecMember.
 
 ## Remaining work
 
@@ -54,7 +57,6 @@ These items do not authorize implementation.
 - [ ] Define the host calls that save the Diary key and supply changed milestone dates.
 - [ ] Decide whether event date changes require a date review before save.
 - [ ] Define access to other events and personal entry visibility.
-- [ ] Define access for role members outside ExecMember.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define template editing and approval permissions beyond the confirmed Officer additions.
 - [ ] Decide whether an Officer's template addition also approves the new version.
@@ -63,7 +65,7 @@ These items do not authorize implementation.
 - [ ] Implement completion actions after approval of their rules.
 - [ ] Decide whether existing calendars need template updates with a date review.
 - [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
-- [ ] Decide whether to add public views or calendar exports and define their access rules.
+- [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
 
 ### Documentation review
 
