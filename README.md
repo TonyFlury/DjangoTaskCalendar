@@ -54,7 +54,7 @@ The previews use sample data and do not complete application requirements.
 These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
-- [ ] Confirm the permitted date sources and the need for a month display.
+- [ ] Decide whether a month display is necessary.
 - [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
 - [ ] Define the host calls that save the Diary key and supply changed milestone dates.
 - [ ] Decide whether event date changes require a date review before save.
@@ -168,6 +168,13 @@ required = api.required_milestones(
 ```
 
 The caller gathers dates for those names before calendar creation.
+Each template identifies the named milestones that its task date rules require.
+The caller supplies a date for each required milestone when it creates a calendar through the API.
+The caller determines the source and meaning of those dates.
+For this website, the Garage Sale app supplies the dates.
+Diary does not need knowledge of the caller's event fields or booking rules.
+
+The current API also accepts missing milestone values.
 A missing milestone value produces no due date.
 The task list then sets `date_not_set` in its result.
 
