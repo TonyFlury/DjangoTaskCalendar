@@ -25,6 +25,7 @@ class Directory:
     DIARY_PERMISSION_GROUPS={'use': ('ExecMember', 'Officer'), 'view': ('ExecMember', 'Officer'),
                              'edit': ('Officer',), 'view_template': ('Officer',)},
     DIARY_TEMPLATE_NAME='Garage Sale calendar', DIARY_TIME_ZONE='Europe/London',
+    DIARY_TASK_OWNER_ROLES=('SponsorshipManager',),
 )
 class DiaryTests(TestCase):
     def setUp(self):
@@ -236,6 +237,19 @@ class DiaryTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 CalendarEntry.objects.filter(pk=entry.pk).update(owner_kind='person', person_ref='p', role_ref='g')
+
+    def test_role_assignment_requires_a_configured_role_for_entries_and_templates(self):
+        key = self.calendar()
+        spec = api.EntrySpec('Unconfigured role', DateKind.ANNUAL, month=1, day=1,
+                              owner_kind=OwnerKind.ROLE, role_ref='SponsorshipManager')
+        draft = api.create_template_version(actor=self.officer, template_key=self.template, number=2)
+        with self.settings(DIARY_TASK_OWNER_ROLES=('AnotherRole',)):
+            with self.assertRaisesMessage(ValidationError, 'DIARY_TASK_OWNER_ROLES'):
+                api.add_entry(actor=self.officer, calendar_key=key, spec=spec, directory=Directory())
+            with self.assertRaisesMessage(ValidationError, 'DIARY_TASK_OWNER_ROLES'):
+                api.add_template_entry(actor=self.officer, template_version_key=draft, spec=spec, directory=Directory())
+        self.assertFalse(CalendarEntry.objects.filter(calendar_id=key, entry_key=spec.entry_key).exists())
+        self.assertFalse(TemplateEntry.objects.filter(version_id=draft, entry_key=spec.entry_key).exists())
 
     def test_permission_groups_are_configurable_and_missing_configuration_denies(self):
         with override_settings(DIARY_PERMISSION_GROUPS={}):

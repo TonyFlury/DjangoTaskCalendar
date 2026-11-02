@@ -29,6 +29,8 @@ A separate approval step is outside V1 scope.
 Only DiaryManagers can modify tasks copied from a template into a calendar instance.
 Task assignment does not grant permission to modify those tasks.
 Completion permissions remain a separate decision.
+Multiple sign-offs are outside V1 scope.
+V1 keeps one completion record per task, including a role-owned task.
 Template changes leave existing diaries unchanged by default.
 V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
 
@@ -193,6 +195,8 @@ DIARY_PERMISSION_GROUPS = {
 }
 DIARY_TIME_ZONE = 'Europe/London'
 DIARY_TEMPLATE_NAME = 'Garage Sale calendar'
+DIARY_TASK_OWNER_ROLES = ('ExecMember', 'Officer', 'SponsorshipManager')
+DIARY_ROLE_LOOKUP = 'GarageSale.diary_roles.existing_task_owner_roles'
 ```
 
 The `use` action permits personal entries and calendar creation from an approved template.
@@ -234,6 +238,33 @@ actor = Actor(
 The API is a trusted backend interface.
 It is not an authentication service.
 HTTP adapters must authenticate users and construct the Actor before an API call.
+
+### Configurable task-owner roles
+
+`DIARY_TASK_OWNER_ROLES` is the collection of role names permitted as task owners.
+An absent or empty collection permits no role assignments.
+Person ownership and whole-team ownership do not require a role from this collection.
+Use exact role names without surrounding spaces.
+`task_owner_roles()` returns the configured names as a `frozenset`.
+Template and calendar entry additions reject unlisted role owners.
+The caller's `OwnerDirectory.role_exists` check still verifies each role assignment.
+
+`DIARY_ROLE_LOOKUP` is the dotted import path of a host database lookup callable.
+It receives the configured names and returns the names that exist in the database.
+It must return an iterable of exact role names.
+The Garage Sale implementation queries Django's `Group` model.
+Another host can supply a different database implementation without changes to Diary.
+Diary does not import the host's user or role models.
+
+Startup checks every configured role through this lookup.
+Missing roles raise `ImproperlyConfigured` with their names and the relevant settings.
+Invalid settings and database access failures also produce configuration errors.
+The check does not create roles or change existing task ownership.
+
+The `migrate` and `sync_access_policy` commands omit the database existence check so administrators can prepare the database.
+They still check the form of `DIARY_TASK_OWNER_ROLES`.
+After setup, restart the application to perform the full startup check.
+All other startup paths perform the check when the configured collection is not empty.
 
 ## Named milestones
 
@@ -372,11 +403,12 @@ That action remains implementation work for V1.
 ## API calls
 
 All call arguments are keyword arguments.
-Every call except `permission_groups` requires `actor`.
+Every call except `permission_groups` and `task_owner_roles` requires `actor`.
 
 | Call | Other arguments | Result |
 | --- | --- | --- |
 | `permission_groups` | None. | A copy of the group mapping. |
+| `task_owner_roles` | None. | A `frozenset` of configured task-owner role names. |
 | `define_milestones` | `definitions` | Milestone keys by name. |
 | `create_template` | Optional `name`, optional `description` | Template UUID. |
 | `create_template_version` | `template_key`, `number` | Template version UUID. |

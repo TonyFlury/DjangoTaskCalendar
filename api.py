@@ -13,10 +13,11 @@ from django.utils import timezone
 from .choices import DateKind, OwnerKind, VersionStatus
 from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
                      EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
+from .roles import task_owner_roles
 
 API_VERSION = 1
 __all__ = [
-    'API_VERSION', 'Actor', 'OwnerDirectory', 'EntrySpec', 'permission_groups',
+    'API_VERSION', 'Actor', 'OwnerDirectory', 'EntrySpec', 'permission_groups', 'task_owner_roles',
     'define_milestones', 'required_milestones', 'create_template', 'create_template_version',
     'get_template_version', 'add_template_entry', 'approve_template_version',
     'create_calendar', 'close_calendar', 'set_milestone_dates', 'add_entry', 'get_calendar',
@@ -90,6 +91,8 @@ def _owner(spec, directory):
         if not directory.person_in_groups(spec.person_ref, permission_groups().get('use', frozenset())):
             raise ValidationError('Select a person with Diary use access.')
     elif spec.owner_kind == OwnerKind.ROLE:
+        if spec.role_ref not in task_owner_roles():
+            raise ValidationError('Select a role from DIARY_TASK_OWNER_ROLES.')
         if not directory.role_exists(spec.role_ref):
             raise ValidationError('Select an existing role.')
 
