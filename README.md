@@ -7,9 +7,9 @@ This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
 It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
 The routed Diary pages and the host dashboard need a subsequent implementation step.
-Diary is for ExecMembers who have actions to complete for a successful event.
+Diary is for configured DiaryUsers and DiaryManagers who have actions to complete for a successful event.
 Diary has no public view.
-Role ownership does not grant access to users outside ExecMember.
+Task role ownership alone does not grant Diary access.
 Diary provides a generic capability to hold an event diary.
 The selection of template tasks and their dates is outside the feature definition.
 Template content is application data and does not prevent implementation of the feature.
@@ -40,13 +40,17 @@ The previews use sample data and do not complete application requirements.
 - [ ] Add navigation to the full event calendar for users with view permission.
 - [ ] Connect the pages to the callable API with trusted identity and current role membership.
 - [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
-- [ ] Limit current-event access to `request.current_event`.
+- [ ] Use `request.current_event` for the Garage Sale current-event view.
+- [ ] Support personal tasks across all host-permitted calendar instances or one selected instance in the callable API.
+- [ ] Add an authenticated HTTP API with the same instance selection and access rules.
+- [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
+- [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
 - [ ] Show the event name and event date on the current calendar page.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
 - [ ] Keep calendar reads free from calendar creation actions.
 - [ ] Add the personal entry form with the current user as its enforced owner.
-- [ ] Add the Officer entry form with person and role choices.
-- [ ] Add the Officer choice “Add to template for future events”, initially off.
+- [ ] Add the DiaryManager entry form with person and role choices.
+- [ ] Add the DiaryManager choice “Add to template for future events”, initially off.
 - [ ] Show the reusable date rule and owner choice before a combined save.
 - [ ] Save one event entry and one new template entry together without repeated additions.
 - [ ] Keep other event calendars unchanged after a template addition.
@@ -69,12 +73,12 @@ These items do not authorize implementation.
 
 - [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
 - [ ] Define the host calls that save the Diary key.
-- [ ] Define access to other events and personal entry visibility.
+- [ ] Define personal entry visibility beyond the associated user's task view.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
-- [ ] Define template editing and approval permissions beyond the confirmed Officer additions.
-- [ ] Decide whether an Officer's template addition also approves the new version.
+- [ ] Define template editing and approval permissions beyond the confirmed DiaryManager additions.
+- [ ] Decide whether a DiaryManager's template addition also approves the new version.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
-- [ ] Decide whether dependencies prevent completion and whether Officers can override them.
+- [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
 - [ ] Decide whether existing calendars need template updates with a date review.
 - [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
@@ -115,6 +119,31 @@ The host stores it in `EventData.diary_key` without a foreign key.
 
 ## Access configuration
 
+### Confirmed role and calendar scope
+
+DiaryManager and DiaryUser are technical names for configurable Diary roles.
+They are not fixed Django group names.
+The host maps its groups through `settings.py`.
+Garage Sale uses Officer for DiaryManager and ExecMember for DiaryUser.
+Other projects can select different group names.
+
+A DiaryManager can view any calendar instance that the host permits.
+Diary adds no current-event restriction or separate calendar selection policy for managers.
+A DiaryUser can view associated tasks in the instances permitted by the host.
+Associated tasks include personal tasks and tasks owned by the user's current roles.
+
+The callable API and HTTP API must support all permitted instances or one selected permitted instance.
+The host supplies the trusted identity, role memberships, and permitted instance scope.
+Diary enforces that scope on each request.
+An all-instances selection cannot expand the host's permission grant.
+These read rules do not grant task-change or completion permissions.
+
+The current implementation has a callable API with one required `calendar_key` for `personal_tasks`.
+It has no HTTP API or task query across multiple instances yet.
+The role terminology and expanded interface above are confirmed requirements, not descriptions of completed implementation.
+
+### Current API configuration
+
 The host supplies this configuration in settings:
 
 ```python
@@ -145,10 +174,13 @@ The API does not silently create or approve a template.
 These action names are technical names for API permission checks.
 They are not Django group names or automatic database permission grants.
 The current defaults implement the confirmed Officer and ExecMember split.
+These exact group names in the examples are Garage Sale configuration, not required Diary role names.
 
 The host constructs an `Actor` from an authenticated, active identity.
 It supplies the user's reference, current group names, and permitted calendar keys.
-For the current event view, those keys must include only the permitted event calendar.
+For a current-event request, the host supplies the permitted current calendar key.
+For other requests, the host can supply multiple permitted calendar keys.
+The current `personal_tasks` call still reads only its selected key.
 The host must not take this information from an untrusted request body.
 
 ```python
