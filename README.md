@@ -16,7 +16,8 @@ Diary provides a generic capability to hold an event diary.
 The selection of template tasks and their dates is outside the feature definition.
 Template content is application data and does not prevent implementation of the feature.
 Task progress through completion is required in the first feature release.
-The progress states, permitted transitions, and completion permissions still need definition.
+The V1 completion rules below define permissions and predecessor checks.
+Any additional progress states and transitions still need definition.
 The first release uses a simple date-ordered list.
 A month display is not required for the first release.
 Milestone date changes and their impact review belong in V2.
@@ -28,7 +29,7 @@ DiaryManagers approve new templates and template versions through the save actio
 A separate approval step is outside V1 scope.
 Only DiaryManagers can modify tasks copied from a template into a calendar instance.
 Task assignment does not grant permission to modify those tasks.
-Completion permissions remain a separate decision.
+Permitted users can complete accessible tasks under the V1 predecessor rules.
 Multiple sign-offs are outside V1 scope.
 V1 keeps one completion record per task, including a role-owned task.
 Personally added tasks are visible only to their owner and DiaryManagers within the host's permitted calendar scope.
@@ -44,6 +45,11 @@ The previews use sample data and do not complete application requirements.
 
 ### Requirements still to implement
 
+- [ ] List open predecessors throughout the blocking chain when a user attempts task completion.
+- [ ] Add “Complete” for permitted users when no open predecessors remain.
+- [ ] Add the DiaryManager “Close all” action for a task with open predecessors.
+- [ ] Complete the blocking chain and selected task together with explanatory predecessor comments.
+- [ ] Keep completion records, due dates at completion, and dependency links consistent during concurrent changes.
 - [ ] Implement task progress and completion through the callable API and Diary pages in the first feature release.
 - [ ] Preserve completion records and due dates at completion when milestone dates change.
 - [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
@@ -98,8 +104,7 @@ These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
-- [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
-- [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
+- [ ] Define other task editing rules, owner changes, and any additional progress states.
 - [ ] Define handling of absent milestones and predecessor tasks during an explicit template item addition.
 - [ ] Define any broader template replacement workflow separately from item additions.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
@@ -120,6 +125,10 @@ These items remain deferred until a later release:
 - [ ] Define reminder recipients, including recipients for whole-team tasks.
 - [ ] Define timing, delivery channels, retries, and cancellation rules.
 - [ ] Define reminder permissions and send records before implementation.
+
+### V2 completion review
+
+- [ ] Review the V1 “Close all” behavior and decide which force completion features V2 needs.
 
 ### V2 milestone date changes
 
@@ -620,7 +629,29 @@ Otherwise, the API uses the date in `DIARY_TIME_ZONE`.
 
 The model keeps completion time, the completing actor reference, and the due date at completion.
 Completed records cannot change through normal model saves.
-The completion page, completion permission rules, and override workflow are not implemented yet.
+The completion API, pages, and DiaryManager “Close all” workflow are not implemented yet.
+
+### Confirmed V1 task completion workflow
+
+An attempt to complete a task lists all open predecessors in its blocking dependency chain.
+The list includes indirect predecessors that block the open predecessors.
+The display must preserve personal-entry visibility and host calendar permissions.
+
+Every permitted DiaryUser and DiaryManager has a “Complete” button for a task they can access.
+The action succeeds only when the open predecessor list is empty.
+The server must check that condition again before saving completion.
+
+A DiaryManager has a “Close all” button when open predecessors remain.
+The action completes the blocking chain and the selected task in one transaction.
+Each forced predecessor completion needs a comment that identifies the action and selected task.
+Completion records keep the manager reference, completion time, and due date at completion.
+The action preserves existing completion records and dependency links.
+Ordinary DiaryUsers cannot use “Close all”.
+
+These actions apply to tasks in an open diary.
+`close_calendar` remains a separate instance operation and does not complete tasks.
+The existing preview has no “Close all” action and remains incomplete for this requirement.
+V2 must review whether this force completion behavior remains appropriate.
 
 ## Dependency integrity
 
