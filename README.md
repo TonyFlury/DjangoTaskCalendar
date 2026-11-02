@@ -31,6 +31,8 @@ Task assignment does not grant permission to modify those tasks.
 Completion permissions remain a separate decision.
 Multiple sign-offs are outside V1 scope.
 V1 keeps one completion record per task, including a role-owned task.
+Personally added tasks are visible only to their owner and DiaryManagers within the host's permitted calendar scope.
+Only DiaryManagers can add tasks owned by another person.
 Template changes leave existing diaries unchanged by default.
 V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
 
@@ -71,6 +73,8 @@ The previews use sample data and do not complete application requirements.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
 - [ ] Keep calendar reads free from calendar creation actions.
 - [ ] Add the personal entry form with the current user as its enforced owner.
+- [ ] Restrict personal entry visibility to its owner and DiaryManagers in every view and API.
+- [ ] Exclude other users' personal entries from searches and predecessor choices.
 - [ ] Add the DiaryManager entry form with person and role choices.
 - [ ] Add the DiaryManager choice “Add to template for future events”, initially off.
 - [ ] Show the reusable date rule and owner choice before a combined save.
@@ -93,7 +97,6 @@ The previews use sample data and do not complete application requirements.
 These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
-- [ ] Define personal entry visibility beyond the associated user's task view.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
@@ -576,8 +579,18 @@ A specific person or role is optional.
 Calendar creation copies that ownership from the template.
 The selection is template content, not a fixed Diary policy.
 
-An ExecMember can add only an entry that identifies themselves as the person owner.
+An ordinary DiaryUser can add only an entry that identifies themselves as the person owner.
 An editor can add entries for people, roles, or the whole team.
+The host must map the `edit` permission to its DiaryManager groups.
+Only DiaryManagers can add tasks owned by another person.
+These assignment checks already exist in the callable API.
+
+A personal entry is a task that a user adds with themselves as its owner.
+Only that owner and permitted DiaryManagers may view the entry.
+The requirement applies to lists, details, searches, predecessor choices, and both API interfaces.
+The current calendar read API does not yet enforce this personal entry visibility rule.
+That visibility filter remains implementation work.
+
 For person and role assignments, the editor supplies an `OwnerDirectory` implementation.
 Its `person_in_groups(reference, group_names)` method checks person eligibility.
 Its `role_exists(reference)` method checks the role reference.
