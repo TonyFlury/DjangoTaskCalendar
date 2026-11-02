@@ -67,6 +67,10 @@ The previews use sample data and do not complete application requirements.
 - [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
 - [ ] Support personal tasks across all host-permitted calendar instances or one selected instance in the callable API.
 - [ ] Add an authenticated HTTP API with the same instance selection and access rules.
+- [ ] Accept `diary_key` or `template_name` in HTML views through URL parameters or trusted view context.
+- [ ] Group the default personal task list by diary name across all permitted open diaries when no key is supplied.
+- [ ] Show the most recent named template version, including a draft when it has the highest version number.
+- [ ] Show a template chooser when no template name is supplied.
 - [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
 - [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
 - [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
@@ -200,9 +204,28 @@ DiaryManagers approve new templates and versions through their save action in V1
 This includes an event entry addition to the template for future events.
 V1 has no separate approval step.
 
+### Confirmed HTML view inputs and defaults
+
+Each HTML view accepts its applicable selector through a URL parameter or trusted server-supplied context.
+Use `diary_key` for diary views and `template_name` for template views.
+The view maps `diary_key` to the callable API's `calendar_key`.
+Both input methods use the same permission and personal-entry visibility checks.
+
+With a diary key, the personal task view shows the user's open tasks and their current role-owned tasks in that diary.
+Without a key, it shows those tasks across all permitted open diaries, grouped by diary name.
+Each group retains the diary key and uses the diary name as its heading.
+Calendar creation requires a nonempty name, which the current model and API already enforce.
+Completed tasks and closed diaries do not contribute tasks to this view.
+
+With a template name, the template view shows the version with the highest version number, including a draft.
+Without a name, the view lists available templates so the user can select one for editing.
+Only DiaryManagers can edit templates.
+An absent name must open the chooser rather than select `DIARY_TEMPLATE_NAME` automatically.
+This view behavior differs from the current callable API's default selection of an approved template version.
+
 The current implementation has a callable API with one required `calendar_key` for `personal_tasks`.
 It has no HTTP API or task query across multiple instances yet.
-The role terminology and expanded interface above are confirmed requirements, not descriptions of completed implementation.
+The expanded view behavior above is a confirmed requirement and remains implementation work.
 
 ### Current API configuration
 
