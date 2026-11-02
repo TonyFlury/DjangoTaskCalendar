@@ -65,7 +65,6 @@ The previews use sample data and do not complete application requirements.
 - [ ] Add navigation to the full event calendar for users with view permission.
 - [ ] Connect the pages to the callable API with trusted identity and current role membership.
 - [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
-- [ ] Use `request.current_event` for the Garage Sale current-event view.
 - [ ] Support personal tasks across all host-permitted calendar instances or one selected instance in the callable API.
 - [ ] Add an authenticated HTTP API with the same instance selection and access rules.
 - [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
@@ -161,7 +160,11 @@ This update does not claim full ASD-STE100 compliance.
 
 ## App boundary
 
-Diary has no model imports or foreign keys to other project apps.
+Diary's only host dependencies are Django settings and the configured Django user model.
+Use `django.contrib.auth.get_user_model()` when Diary needs the user model class.
+Do not import a host user model class directly.
+Diary has no dependency on host event models or custom request attributes.
+Its current models have no foreign keys to other project apps.
 The host supplies event references, dates, person references, and role names.
 All foreign keys in Diary point to Diary models.
 All database operations use PostgreSQL.
@@ -273,7 +276,7 @@ It receives the configured names and returns the names that exist in the databas
 It must return an iterable of exact role names.
 The Garage Sale implementation queries Django's `Group` model.
 Another host can supply a different database implementation without changes to Diary.
-Diary does not import the host's user or role models.
+Diary does not import host user or role model classes directly.
 
 Startup checks every configured role through this lookup.
 Missing roles raise `ImproperlyConfigured` with their names and the relevant settings.
