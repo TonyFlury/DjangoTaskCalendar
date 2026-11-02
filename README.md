@@ -17,6 +17,8 @@ Task progress through completion is required in the first feature release.
 The progress states, permitted transitions, and completion permissions still need definition.
 The first release uses a simple date-ordered list.
 A month display is not required for the first release.
+Milestone date changes and their impact review belong in V2.
+The first release uses the milestone dates supplied during calendar creation.
 
 ## Remaining work
 
@@ -66,8 +68,7 @@ These items do not authorize implementation.
 [Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
 
 - [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
-- [ ] Define the host calls that save the Diary key and supply changed milestone dates.
-- [ ] Decide whether event date changes require a date review before save.
+- [ ] Define the host calls that save the Diary key.
 - [ ] Define access to other events and personal entry visibility.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
 - [ ] Define template editing and approval permissions beyond the confirmed Officer additions.
@@ -77,6 +78,21 @@ These items do not authorize implementation.
 - [ ] Decide whether existing calendars need template updates with a date review.
 - [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
+
+### V2 milestone date changes
+
+The user deferred milestone date changes and their impact review to V2.
+These changes can affect whether the team can complete all diary tasks.
+The following work remains necessary for V2:
+
+- [ ] Design the presentation of changed dates and their effects on tasks and dependencies.
+- [ ] Define the review, approval, and permission rules before changed dates are applied.
+- [ ] Define the caller's API workflow for changed milestone dates.
+- [ ] Preserve completion records and their due dates during changes.
+
+The current API can update milestone dates without an impact review.
+The preview milestone editor also permits direct changes for demonstration.
+Neither interface completes the V2 design or approves a first-release date change workflow.
 
 ### Documentation review
 
@@ -373,7 +389,10 @@ role_key = api.add_entry(
 The host must supply its real identity directory in normal operation.
 For a person assignment, select `OwnerKind.PERSON` and set `person_ref` instead of `role_ref`.
 
-The caller can update a milestone date:
+The current API can update a milestone date.
+This example describes existing behavior, not an approved first-release workflow.
+The impact review and the supported change workflow belong in V2.
+The following call changes one milestone date:
 
 ```python
 api.set_milestone_dates(
