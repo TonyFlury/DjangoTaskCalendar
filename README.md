@@ -22,7 +22,8 @@ The first release uses the milestone dates supplied during calendar creation.
 Reminders are outside V1 scope.
 No later release number is confirmed for reminders.
 Only DiaryManagers can change calendar templates.
-Template version approval rules remain a separate open decision.
+DiaryManagers approve new templates and template versions through the save action in V1.
+A separate approval step is outside V1 scope.
 
 ## Remaining work
 
@@ -50,6 +51,7 @@ The previews use sample data and do not complete application requirements.
 - [ ] Identify the calendar instance in each task result from a list that includes multiple instances.
 - [ ] Use configurable DiaryManager and DiaryUser role names within Diary.
 - [ ] Enforce DiaryManager-only template changes in pages, the callable API, and the HTTP API.
+- [ ] Approve the resulting template version through the DiaryManager's save action in V1.
 - [ ] Show the event name and event date on the current calendar page.
 - [ ] Show “No current event” or “Calendar not prepared” when applicable.
 - [ ] Keep calendar reads free from calendar creation actions.
@@ -80,8 +82,6 @@ These items do not authorize implementation.
 - [ ] Define the host calls that save the Diary key.
 - [ ] Define personal entry visibility beyond the associated user's task view.
 - [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
-- [ ] Define template version approval rules.
-- [ ] Decide whether a DiaryManager's template addition also approves the new version.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
 - [ ] Decide whether existing calendars need template updates with a date review.
@@ -152,7 +152,9 @@ An all-instances selection cannot expand the host's permission grant.
 These read rules do not grant task-change or completion permissions.
 Only DiaryManagers can change templates, including their entries, date rules, owners, and dependencies.
 DiaryUsers cannot change templates through any interface.
-Template version approval rules remain a separate open decision.
+DiaryManagers approve new templates and versions through their save action in V1.
+This includes an event entry addition to the template for future events.
+V1 has no separate approval step.
 
 The current implementation has a callable API with one required `calendar_key` for `personal_tasks`.
 It has no HTTP API or task query across multiple instances yet.
@@ -333,6 +335,10 @@ The date kinds are `source`, `relative`, `annual`, and `once`.
 An invalid annual occurrence, such as 29 February 2027, has no due date.
 
 Approved template entries and their dependencies are immutable through the API.
+A DiaryManager's save must create and approve the resulting version without a separate approval step in V1.
+The current API exposes `approve_template_version` as a separate callable operation.
+The V1 save workflow must include that operation rather than require another user action.
+The preview's separate draft approval control remains a demonstration, not the confirmed V1 workflow.
 A new version needs new entries before approval.
 Event entries copy the rules, names, owners, and dependency links.
 They do not read mutable template content after creation.
