@@ -308,6 +308,8 @@ Template entries refer to milestone names through `EntrySpec.milestone_name`.
 `required_milestones` returns the distinct definitions used by one template version.
 Each result contains `id`, `name`, and `label`.
 It excludes definitions that this version does not use.
+This lookup is an optional safety check, not a prerequisite for calendar creation.
+The caller can supply the expected named milestone dates without reading this list first.
 
 ```python
 required = api.required_milestones(
@@ -380,6 +382,8 @@ assert tasks[0]['late'] is True  # The due date has been reached.
 
 The example task is due on 12 June 2027.
 The caller must save `calendar_key` against the event.
+The calling project does not need to call `active_tasks` or `personal_tasks` itself.
+It can use Diary's own UI for task display and actions.
 The host can include the API call and that save in one database transaction.
 Diary does not save the key in another app.
 
