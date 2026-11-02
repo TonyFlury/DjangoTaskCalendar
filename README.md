@@ -8,6 +8,69 @@ It also provides a standalone task list template and its reusable content fragme
 It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
 The routed Diary pages and the host dashboard need a subsequent implementation step.
 
+## Remaining work
+
+This list follows the [event calendar design](../docs/design/event-calendar.md), dated 2 November 2026.
+The design contains confirmed requirements and proposals that still need approval.
+The previews use sample data and do not complete application requirements.
+
+### Requirements still to implement
+
+- [ ] Add URL routes and browser views for personal tasks, the event calendar, and the template editor.
+- [ ] Make the personal task view the default Diary page for a logged-in user.
+- [ ] Add navigation to the full event calendar for users with view permission.
+- [ ] Connect the pages to the callable API with trusted identity and current role membership.
+- [ ] Enforce separate calendar view, template view, and entry creation permissions on each request.
+- [ ] Limit current-event access to `request.current_event`.
+- [ ] Show the event name and event date on the current calendar page.
+- [ ] Show “No current event” or “Calendar not prepared” when applicable.
+- [ ] Keep calendar reads free from calendar creation actions.
+- [ ] Add the personal entry form with the current user as its enforced owner.
+- [ ] Add the Officer entry form with person and role choices.
+- [ ] Add the Officer choice “Add to template for future events”, initially off.
+- [ ] Show the reusable date rule and owner choice before a combined save.
+- [ ] Save one event entry and one new template entry together without repeated additions.
+- [ ] Keep other event calendars unchanged after a template addition.
+- [ ] Show person names, current role members, and whole-team ownership.
+- [ ] Show “No role members” with the role name when applicable.
+- [ ] Add the predecessor editor with safe choices for proposed unsaved links.
+- [ ] Keep server checks for circular dependencies and concurrent changes.
+- [ ] Add the dashboard's personal Late, Ready, and Blocked counts with matching task filters.
+- [ ] Check Diary availability before the dashboard imports or calls its API.
+- [ ] Use the current event's stored Diary key for the dashboard.
+- [ ] Show the missing-calendar state and keep zero counts as links.
+- [ ] Use complete Diary pages and reusable content fragments for the new views.
+- [ ] Use existing team navigation and styles with keyboard access and text state labels.
+- [ ] Document each new styling class and CSS variable.
+
+### Proposals and decisions still open
+
+These items do not authorize implementation.
+[Section 11](../docs/design/event-calendar.md#11-open-decisions) contains the full decision list.
+
+- [ ] Agree on the initial template tasks, annual dates, year offsets, and initial owners.
+- [ ] Confirm the permitted date sources and the need for a month display.
+- [ ] Confirm calendar creation during event creation and an activation check for an absent calendar.
+- [ ] Define the host calls that save the Diary key and supply changed milestone dates.
+- [ ] Decide whether event date changes require a date review before save.
+- [ ] Define access to other events and personal entry visibility.
+- [ ] Define access for role members outside ExecMember.
+- [ ] Define the review procedure for open tasks when their person owner leaves ExecMember.
+- [ ] Define template editing and approval permissions beyond the confirmed Officer additions.
+- [ ] Decide whether an Officer's template addition also approves the new version.
+- [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
+- [ ] Decide whether dependencies prevent completion and whether Officers can override them.
+- [ ] Implement completion actions after approval of their rules.
+- [ ] Decide whether existing calendars need template updates with a date review.
+- [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
+- [ ] Decide whether to add public views or calendar exports and define their access rules.
+
+### Documentation review
+
+The official ASD-STE100 Issue 9 PDF was unavailable during this update because its server returned HTTP 403.
+A full dictionary and technical-name review remains necessary.
+This update does not claim full ASD-STE100 compliance.
+
 ## App boundary
 
 Diary has no model imports or foreign keys to other project apps.
@@ -839,9 +902,14 @@ Classes without a CSS rule remain available as content hooks.
 
 The [dashboard preview](design/dashboard/index.html) reuses the existing dashboard styles and chart renderer with sample data.
 Its [review guide](design/dashboard/README.md) explains the clickable personal task counts.
-The Late and Ready links open the matching personal Diary filter for the selected sample user.
-The two counts can overlap.
-A ready task can also be late.
+The Late, Ready, and Blocked links open the matching personal Diary filter for the selected sample user.
+Each open task contributes to one count only.
+Late counts tasks due today or earlier, including tasks with unfinished predecessors.
+Ready counts other tasks with no unfinished predecessors.
+Blocked counts other tasks with unfinished predecessors.
+The counts include tasks owned by the selected user or their current roles.
+They exclude completed tasks and whole-team tasks.
+Each zero count still opens its corresponding empty task list.
 The production dashboard is unchanged.
 
 These class hooks belong to the mock-up panel.
@@ -852,6 +920,7 @@ The surrounding host shell uses `dashboard-preview-` classes.
 | `diary-dashboard` | Diary count panel root. |
 | `diary-dashboard-counter` | Counter. |
 | `diary-dashboard-counter-arrow` | Counter arrow. |
+| `diary-dashboard-counter-blocked` | Blocked counter. |
 | `diary-dashboard-counter-description` | Counter description. |
 | `diary-dashboard-counter-label` | Counter label. |
 | `diary-dashboard-counter-late` | Counter late. |
