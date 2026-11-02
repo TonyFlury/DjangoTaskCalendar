@@ -1,17 +1,17 @@
 """Class-based callable API. Callers supply trusted identities, groups and dates."""
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from .choices import DateKind, OwnerKind, VersionStatus
+from .entry_mapping import EntryMapper, validate_entry_owner
 from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
                      EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
 from .roles import task_owner_roles as _task_owner_roles
@@ -38,6 +38,7 @@ class OwnerDirectory(Protocol):
     """Define caller-provided eligibility checks for opaque person references.
     Role ownership uses Django groups directly.
     """
+
     def person_in_groups(self, reference: str, group_names: frozenset[str]) -> bool:
         """Return whether the person reference belongs to any supplied group name."""
         ...
@@ -47,6 +48,7 @@ class OwnerDirectory(Protocol):
 class EntrySpec:
     """Describe entry identity, text, date rules, and ownership for an addition.
     Keep entry_key unchanged when repeating the same addition.
+    EntryMapper handles database conversion and comparison.
     """
     name: str
     date_kind: str
@@ -113,39 +115,6 @@ def _calendar(actor, key, action='view'):
     return EventCalendar.objects.get(pk=key)
 
 
-def _owner(spec, directory):
-    """Validate ownership before saving an entry.
-    Person references require directory eligibility checks.
-    Roles must be configured and exist as Django groups.
-    """
-
-    # Whole-team ownership has no person or role reference to resolve.
-    if spec.owner_kind == OwnerKind.TEAM:
-        return
-
-    # Opaque person references need the caller eligibility contract.
-    if spec.owner_kind == OwnerKind.PERSON:
-
-        # Reject person assignments when no eligibility check is available.
-        if directory is None:
-            raise ValidationError('Supply an owner directory for a person assignment.')
-
-        # Person owners must qualify through the configured user or manager group.
-        if not directory.person_in_groups(spec.person_ref, frozenset(DiaryAPI.permission_groups().values())):
-            raise ValidationError('Select a DiaryUser or DiaryManager.')
-
-    # Role assignments use configured names and the standard Django group database.
-    elif spec.owner_kind == OwnerKind.ROLE:
-
-        # A database group alone must not bypass the configured ownership role list.
-        if spec.role_ref not in DiaryAPI.task_owner_roles():
-            raise ValidationError('Select a role from DIARY_TASK_OWNER_ROLES.')
-
-        # A group may have disappeared since startup, so assignment checks its current existence.
-        if not Group.objects.filter(name=spec.role_ref).exists():
-            raise ValidationError('Select an existing role.')
-
-
 def _open_calendar(actor, key, action):
     """Return an authorized calendar with a database lock for a write operation.
     Raise ValidationError when the instance is closed.
@@ -158,23 +127,6 @@ def _open_calendar(actor, key, action):
     if calendar.closed_at is not None:
         raise ValidationError('This diary is closed.')
     return calendar
-
-
-def _values(spec):
-    """Convert an EntrySpec into model field values and resolve its optional milestone name."""
-    values = asdict(spec)
-    name = values.pop('milestone_name')
-
-    # Fixed-date rules have no milestone reference to resolve.
-    values['milestone'] = Milestone.objects.get(name=name) if name else None
-    return values
-
-
-def _copy_values(source):
-    """Copy entry identity, text, date rules, and ownership for a diary snapshot."""
-    fields = ('entry_key', 'name', 'description', 'date_kind', 'milestone_id', 'month', 'day',
-              'year_offset', 'day_offset', 'fixed_date', 'owner_kind', 'person_ref', 'role_ref')
-    return {name: getattr(source, name) for name in fields}
 
 
 def _template_version(key=None, name=None):
@@ -205,16 +157,6 @@ def _template_version(key=None, name=None):
     if version is None:
         raise ValidationError('The selected template has no approved version.')
     return version
-
-
-def _values_without_milestone(values):
-    """Normalize a milestone object to its UUID for repeated-entry comparisons."""
-    result = dict(values)
-    milestone = result.pop('milestone')
-
-    # Normalize absent milestones to None so repeated fixed-date additions compare correctly.
-    result['milestone_id'] = milestone.pk if milestone else None
-    return result
 
 
 def _set_dates(calendar, dates):
@@ -532,18 +474,18 @@ class DiaryTemplateVersion(_DependencyAPI):
         actor, template_version_key = self.actor, self.key
         _require(actor, 'edit')
         TemplateVersion.objects.select_for_update().get(pk=template_version_key)
-        _owner(spec, directory)
-        values = _values(spec)
+        validate_entry_owner(spec, directory)
         existing = TemplateEntry.objects.filter(version_id=template_version_key, entry_key=spec.entry_key).first()
 
         # A repeated entry key must reuse its original template entry.
         if existing:
 
             # The same key must not silently overwrite different template content.
-            if _copy_values(existing) != _values_without_milestone(values):
+            if not EntryMapper.matches_spec(existing, spec):
                 raise ValidationError('The entry key already identifies a different entry.')
             return existing.entry_key
-        return TemplateEntry.objects.create(version_id=template_version_key, **values).entry_key
+        return TemplateEntry.objects.create(version_id=template_version_key,
+                                            **EntryMapper.to_model_fields(spec)).entry_key
 
     @transaction.atomic
     def approve(self):
@@ -571,7 +513,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         # Only milestone-based rules have a milestone name to include in the result.
         return {'key': version.pk, 'template_key': version.template_id, 'number': version.number,
                 'status': version.status,
-                'entries': tuple({**_copy_values(entry),
+                'entries': tuple({**EntryMapper.snapshot_fields(entry),
                                   'milestone_name': entry.milestone.name if entry.milestone_id else None,
                                   'predecessors': tuple(entry.predecessors.values_list('entry_key', flat=True))}
                                  for entry in version.entries.select_related('milestone'))}
@@ -627,7 +569,8 @@ class DiaryInstance(_DependencyAPI):
         copied = {}
         for source in version.entries.all():
             copied[source.pk] = CalendarEntry.objects.create(calendar=calendar, source_entry=source,
-                                                             created_by_ref=actor.reference, **_copy_values(source))
+                                                             created_by_ref=actor.reference,
+                                                             **EntryMapper.snapshot_fields(source))
         for link in TemplateDependency.objects.filter(entry__version=version):
             EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
         return cls(actor=actor, key=calendar.pk)
@@ -681,18 +624,18 @@ class DiaryInstance(_DependencyAPI):
 
         # Managers can select another owner after the normal ownership checks.
         else:
-            _owner(spec, directory)
-        values = _values(spec)
+            validate_entry_owner(spec, directory)
         existing = calendar.entries.filter(entry_key=spec.entry_key).first()
 
         # Repeated entry requests reuse their stable identity within this diary.
         if existing:
 
             # Reject conflicting content rather than changing an entry during a repeated addition.
-            if _copy_values(existing) != _values_without_milestone(values):
+            if not EntryMapper.matches_spec(existing, spec):
                 raise ValidationError('The entry key already identifies a different entry.')
             return existing.entry_key
-        return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference, **values).entry_key
+        return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
+                                            **EntryMapper.to_model_fields(spec)).entry_key
 
     def read(self):
         """Return current diary metadata, milestone values, entries, and dependency state.

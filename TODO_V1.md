@@ -401,7 +401,7 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The group and template selection changes passed 59 tests against a separate PostgreSQL database.
+The entry mapping refactor passed 67 tests against a separate PostgreSQL database.
 The tests include the Garage Sale key integration test.
 Migration consistency checks found no model changes.
 No migration was applied to application data.

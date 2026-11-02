@@ -459,6 +459,35 @@ Its technical field names match the date and ownership rules below.
 | `role_ref` | String. | Required only for `role`. Otherwise empty. |
 | `entry_key` | UUID. | A new UUID. Keep it to repeat an addition safely. |
 
+### Entry mapping and ownership validation
+
+`EntrySpec` holds input data for an entry addition.
+`EntryMapper` is the internal conversion class in `Diary/entry_mapping.py`.
+`validate_entry_owner` checks proposed ownership in that module.
+The public addition methods use this layer while retaining their permission checks and transactions.
+
+| Internal operation | Responsibility |
+| --- | --- |
+| `EntryMapper.to_model_fields(spec)` | Return model creation values and resolve an optional milestone name. |
+| `EntryMapper.snapshot_fields(entry)` | Extract reusable entry fields with stored milestone IDs. |
+| `EntryMapper.matches_spec(entry, spec)` | Compare stored content with the proposed specification using milestone IDs. |
+| `validate_entry_owner(spec, directory=None)` | Check person eligibility or configured Django group existence. Whole-team ownership needs neither lookup. |
+
+Snapshots include the stable entry key, text, date rules, milestone ID, and ownership.
+They exclude the entry row ID, container links, completion records, and audit metadata.
+The snapshot path reads `milestone_id` without loading the related milestone object.
+Template reads and diary creation use the same explicit snapshot field list.
+
+Repeated additions use comparison, while new additions use model conversion.
+Each path resolves a named milestone once within the mapping layer.
+A matching repeated addition returns the existing entry key.
+Conflicting content raises `ValidationError` without overwriting the stored entry.
+
+Pass `EntrySpec` to `DiaryTemplateVersion.add_entry()` or `DiaryInstance.add_entry()` as before.
+These public methods handle conversion, ownership validation, and repeated requests.
+The mapper and validation helper are internal implementation details outside the exported callable API.
+Keep `SNAPSHOT_FIELDS` aligned with the reusable `EntrySpec` fields when extending the entry contract.
+
 ## More callable examples
 
 These examples continue from the setup example.
