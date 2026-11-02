@@ -34,6 +34,9 @@ Multiple sign-offs are outside V1 scope.
 V1 keeps one completion record per task, including a role-owned task.
 Personally added tasks are visible only to their owner and DiaryManagers within the host's permitted calendar scope.
 Only DiaryManagers can add tasks owned by another person.
+In V1, DiaryManagers can edit dependencies only in templates.
+Template dependency changes do not propagate into live diaries.
+DiaryManagers cannot remove or replace live diary predecessors through dependency editing.
 Template changes leave existing diaries unchanged by default.
 V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
 
@@ -88,7 +91,8 @@ The previews use sample data and do not complete application requirements.
 - [ ] Keep other event calendars unchanged after a template addition.
 - [ ] Show person names, current role members, and whole-team ownership.
 - [ ] Show “No role members” with the role name when applicable.
-- [ ] Add the predecessor editor with safe choices for proposed unsaved links.
+- [ ] Add the template predecessor editor with safe choices for proposed unsaved links.
+- [ ] Restrict dependency editing to templates in every V1 interface, including the callable API.
 - [ ] Keep server checks for circular dependencies and concurrent changes.
 - [ ] Add the dashboard's personal Late, Ready, and Blocked counts with matching task filters.
 - [ ] Check Diary availability before the dashboard imports or calls its API.
@@ -129,6 +133,9 @@ These items remain deferred until a later release:
 ### V2 completion review
 
 - [ ] Review the V1 “Close all” behavior and decide which force completion features V2 needs.
+
+Dependency editing in live diaries remains a separate review item for a future release.
+It is outside V1 scope.
 
 ### V2 milestone date changes
 
@@ -530,20 +537,23 @@ api.set_milestone_dates(
 This changes open task dates that use that milestone.
 It does not change fixed annual dates or completed due dates.
 
-The caller can read safe predecessors and add a dependency:
+V1 permits dependency changes only in draft templates by DiaryManagers.
+In this example, `draft_version_key` identifies a draft template version.
+`task_entry_key` and `predecessor_entry_key` identify tasks in that version.
 
 ```python
 choices = api.available_predecessors(
-    actor=actor, scope_key=calendar_key, entry_key=role_key,
+    actor=actor, scope_key=draft_version_key, entry_key=task_entry_key, template=True,
 )
 api.set_predecessors(
-    actor=actor, scope_key=calendar_key, entry_key=role_key,
-    predecessor_keys=[personal_key],
+    actor=actor, scope_key=draft_version_key, entry_key=task_entry_key,
+    predecessor_keys=[predecessor_entry_key], template=True,
 )
 ```
 
 `set_predecessors` replaces the entry's complete predecessor list.
 An empty list removes all its predecessors.
+That removal is permitted only in the draft template under the V1 requirements.
 To change a draft template, use its version key as `scope_key` and set `template=True`.
 
 ## Close a diary instance
@@ -654,6 +664,12 @@ The existing preview has no “Close all” action and remains incomplete for th
 V2 must review whether this force completion behavior remains appropriate.
 
 ## Dependency integrity
+
+The confirmed V1 policy permits dependency edits only in templates by DiaryManagers.
+Existing diary dependency links must remain unchanged during template edits and task completion.
+The current `set_predecessors` API also permits changes to open calendar instances.
+Restricting that existing behavior remains implementation work for V1.
+The preview's live entry dependency controls also need restriction.
 
 The selector excludes the task itself and every direct or indirect successor.
 It also excludes entries from other calendars or template versions.
