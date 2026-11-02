@@ -19,6 +19,8 @@ The first release uses a simple date-ordered list.
 A month display is not required for the first release.
 Milestone date changes and their impact review belong in V2.
 The first release uses the milestone dates supplied during calendar creation.
+Reminders are outside V1 scope.
+No later release number is confirmed for reminders.
 
 ## Remaining work
 
@@ -80,8 +82,16 @@ These items do not authorize implementation.
 - [ ] Define task editing, owner changes, completion permissions, and role or whole-team completion rules.
 - [ ] Decide whether dependencies prevent completion and whether DiaryManagers can override them.
 - [ ] Decide whether existing calendars need template updates with a date review.
-- [ ] Define reminders, recipients, timing, retries, and cancellation rules before implementation.
 - [ ] Decide whether to add calendar exports for permitted ExecMembers and define their access rules.
+
+### Reminders: deferred beyond V1
+
+Reminder design does not prevent the V1 release.
+These items remain deferred until a later release:
+
+- [ ] Define reminder recipients, including recipients for whole-team tasks.
+- [ ] Define timing, delivery channels, retries, and cancellation rules.
+- [ ] Define reminder permissions and send records before implementation.
 
 ### V2 milestone date changes
 
