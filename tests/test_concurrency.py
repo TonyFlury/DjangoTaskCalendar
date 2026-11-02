@@ -17,14 +17,14 @@ class DependencyConcurrencyTests(TransactionTestCase):
     def test_concurrent_opposite_links_cannot_form_a_cycle(self):
         self.assertEqual(connection.vendor, 'postgresql')
         actor = api.Actor('officer', frozenset({'Officer'}))
-        template = api.create_template(actor=actor, name='Concurrent template')
-        version = api.create_template_version(actor=actor, template_key=template, number=1)
+        template = api.DiaryTemplate.create(actor=actor, name='Concurrent template').key
+        version = api.DiaryTemplate.from_key(actor=actor, key=template).create_version(number=1).key
         specs = [api.EntrySpec(name, DateKind.ANNUAL, month=1, day=1) for name in ('First', 'Second')]
         for spec in specs:
-            api.add_template_entry(actor=actor, template_version_key=version, spec=spec)
-        api.approve_template_version(actor=actor, template_version_key=version)
-        key = api.create_calendar(actor=actor, template_version_key=version, event_ref='concurrency',
-                                  name='Concurrent event', event_year=2027, milestone_dates={})
+            api.DiaryTemplateVersion.from_key(actor=actor, key=version).add_entry(spec=spec)
+        api.DiaryTemplateVersion.from_key(actor=actor, key=version).approve()
+        key = api.DiaryInstance.create(actor=actor, template_version_key=version, event_ref='concurrency',
+                                       name='Concurrent event', event_year=2027, milestone_dates={}).key
         actor = api.Actor(actor.reference, actor.groups, frozenset({key}))
         start = Barrier(2)
 
@@ -32,8 +32,9 @@ class DependencyConcurrencyTests(TransactionTestCase):
             close_old_connections()
             try:
                 start.wait(timeout=10)
-                api.set_predecessors(actor=actor, scope_key=key, entry_key=entry.entry_key,
-                                     predecessor_keys=[predecessor.entry_key])
+                api.DiaryInstance.from_key(actor=actor, key=key).set_predecessors(entry_key=entry.entry_key,
+                                                                                  predecessor_keys=[
+                                                                                      predecessor.entry_key])
                 return 'saved'
             except ValidationError:
                 return 'rejected'

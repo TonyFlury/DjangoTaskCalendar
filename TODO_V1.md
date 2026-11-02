@@ -52,14 +52,14 @@ The final sections separate unresolved decisions, host integration, and deferred
   Requirement: [D6].
 
 - [x] **DV1-007: Task reads for one diary.**
-  `active_tasks` and `personal_tasks` calculate readiness and lateness without stored status flags.
+  `DiaryInstance.active_tasks()` and `DiaryInstance.personal_tasks()` calculate readiness and lateness without stored status flags.
   Personal selection uses current user and role references.
   Personal-entry privacy still needs DV1-031.
   Evidence: [callable API](api.py) and [API tests](tests/test_api.py).
   Requirement: [D6] and [D8].
 
 - [x] **DV1-008: Close a diary instance.**
-  `close_calendar` accepts open tasks, preserves records, and safely handles repeated calls.
+  `DiaryInstance.close()` accepts open tasks, preserves records, and safely handles repeated calls.
   Closed diaries remain readable but reject API changes and contribute no active tasks.
   Evidence: [migration 0003](migrations/0003_calendar_closure.py) and [API tests](tests/test_api.py).
   Requirement: [D4].
@@ -90,6 +90,14 @@ The final sections separate unresolved decisions, host integration, and deferred
   Restart, creation, and template editing remain the documented validation points.
   Evidence: [startup and ownership requirements](README.md#startup-and-ownership-validation-requirements).
   Requirement: [D9].
+
+- [x] **DV1-046: Class-based callable API and factories.**
+  `DiaryAPI` holds the actor context and provides shared services.
+  `DiaryInstance`, `DiaryTemplate`, and `DiaryTemplateVersion` provide factories and object operations.
+  Factories return references with stable keys without granting extra scope.
+  Operations check permissions and current database state each time.
+  Evidence: [API implementation](api.py), [class API tests](tests/test_class_api.py), and [migration guidance](README.md#migration-from-module-functions).
+  Requirement: [D4].
 
 ## Access and validation work
 
@@ -198,7 +206,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [ ] **DV1-028: Template-only dependency editing.**
   Reject dependency edits to existing live diary tasks through every V1 interface.
   Keep template changes from propagating into live diaries.
-  The current calendar form of `set_predecessors` still needs restriction.
+  The current `DiaryInstance.set_predecessors()` operation still needs restriction.
   Requirement: [D6] and [D12].
 
 - [ ] **DV1-029: Personal entry form.**
@@ -375,7 +383,9 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-This documentation update did not run application tests or apply migrations.
+The class API refactor passed 50 tests, including the Garage Sale key integration test, against a separate PostgreSQL database.
+Migration consistency checks found no model changes.
+No migration was applied to application data.
 ASD-STE100 Issue 9 was available locally.
 A full dictionary and technical-name review remains necessary.
 This checklist does not claim full ASD-STE100 compliance.

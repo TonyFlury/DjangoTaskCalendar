@@ -3,7 +3,7 @@
 API module: `Diary.api`.
 API version: `1`.
 
-`close_calendar` closes an existing diary instance even when tasks remain open.
+`DiaryInstance.close()` closes an existing diary instance even when tasks remain open.
 
 This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
@@ -94,7 +94,7 @@ V1 has no separate approval step.
 
 Each HTML view accepts its applicable selector through a URL parameter or trusted server-supplied context.
 Use `diary_key` for diary views and `template_name` for template views.
-The view maps `diary_key` to the callable API's `calendar_key`.
+The view supplies `diary_key` as `key` to `DiaryAPI.diary()` or `DiaryInstance.from_key()`.
 Both input methods use the same permission and personal-entry visibility checks.
 
 With a diary key, the personal task view shows the user's open tasks and their current role-owned tasks in that diary.
@@ -110,7 +110,7 @@ Only DiaryManagers can edit templates.
 An absent name must open the chooser rather than select `DIARY_TEMPLATE_NAME` automatically.
 This view behavior differs from the current callable API's default selection of an approved template version.
 
-The current implementation has a callable API with one required `calendar_key` for `personal_tasks`.
+The current `DiaryInstance.personal_tasks()` method reads one diary instance.
 It has no HTTP API or task query across multiple instances yet.
 The expanded view behavior above is a confirmed requirement and remains implementation work.
 
@@ -154,7 +154,7 @@ The host constructs an `Actor` from an authenticated, active identity.
 It supplies the user's reference, current group names, and permitted calendar keys.
 For a current-event request, the host supplies the permitted current calendar key.
 For other requests, the host can supply multiple permitted calendar keys.
-The current `personal_tasks` call still reads only its selected key.
+The current `DiaryInstance.personal_tasks()` method still reads only its selected instance.
 The host must not take this information from an untrusted request body.
 
 ```python
@@ -177,7 +177,7 @@ HTTP adapters must authenticate users and construct the Actor before an API call
 An absent or empty collection permits no role assignments.
 Person ownership and whole-team ownership do not require a role from this collection.
 Use exact role names without surrounding spaces.
-`task_owner_roles()` returns the configured names as a `frozenset`.
+`DiaryAPI.task_owner_roles()` returns the configured names as a `frozenset`.
 Template and calendar entry additions reject unlisted role owners.
 The caller's `OwnerDirectory.role_exists` check still verifies each role assignment.
 
@@ -219,52 +219,140 @@ The current implementation checks configured ownership-role existence at startup
 Access-group validation, membership checks, creation checks, and template editor warnings remain implementation work.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
 
+## API objects and factories
+
+The public interface uses `DiaryAPI`, `DiaryInstance`, `DiaryTemplate`, and `DiaryTemplateVersion`.
+These technical names identify API classes, not Django models.
+`Actor`, `EntrySpec`, and `OwnerDirectory` remain the identity, entry input, and assignment-check contracts.
+
+A `DiaryAPI` object holds the trusted caller context.
+Template and diary objects hold that context and a stable UUID in their `key` property.
+They do not cache Django model instances, permission decisions, or task status.
+Each operation reads the database and checks its applicable permissions again.
+Write operations retain their database transactions and locks.
+
+Create a fresh `Actor` from the authenticated identity for each request.
+Create the `DiaryAPI` with that actor.
+Reuse references only while their actor's membership and calendar scope remain current.
+Changed membership requires a new actor and new API references.
+
+Factories return API objects rather than UUIDs.
+Use the returned object's `key` property when the host stores a reference.
+`close()` and `approve()` return the same API object.
+Entry additions still return a stable entry UUID.
+Read methods still return dictionaries or tuples.
+
+Creation does not expand the actor's permitted calendar keys.
+The host must authorize the returned key before reading or changing that diary.
+An object reference alone does not grant access.
+
+### Factory methods
+
+All factory arguments are keyword arguments.
+Class factories receive `actor` explicitly.
+A `DiaryAPI` factory supplies its stored actor.
+
+| Factory | Other arguments | Result |
+| --- | --- | --- |
+| `DiaryAPI(actor=actor)` | None. | Caller context. |
+| `DiaryAPI.create_template` | Optional `name`, optional `description` | `DiaryTemplate`. |
+| `DiaryAPI.template` | Optional `key` or `name` | `DiaryTemplate`. |
+| `DiaryAPI.template_version` | Optional `key` | `DiaryTemplateVersion`. Without a key, selects the configured template's latest approved version. |
+| `DiaryAPI.create_diary` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | `DiaryInstance`. |
+| `DiaryAPI.diary` | `key` | `DiaryInstance`. |
+| `DiaryTemplate.create` | Optional `name`, optional `description` | New `DiaryTemplate`. |
+| `DiaryTemplate.from_key` | `key` | Existing `DiaryTemplate`. |
+| `DiaryTemplate.from_name` | Optional `name` | Existing `DiaryTemplate`. An absent name uses `DIARY_TEMPLATE_NAME`. |
+| `DiaryTemplate.create_version` | `number` | New draft `DiaryTemplateVersion` for this template. |
+| `DiaryTemplate.version` | `number` | Existing `DiaryTemplateVersion` for this template. |
+| `DiaryTemplate.latest_version` | Optional `approved_only=False` | Highest numbered version, including a draft unless `approved_only=True`. |
+| `DiaryTemplateVersion.create` | `template_key`, `number` | New draft `DiaryTemplateVersion`. |
+| `DiaryTemplateVersion.from_key` | `key` | Existing `DiaryTemplateVersion`. |
+| `DiaryTemplateVersion.from_default` | None. | The configured template's latest approved version. |
+| `DiaryInstance.create` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | New or existing `DiaryInstance`. Identical repeated inputs reuse its key. |
+| `DiaryInstance.from_key` | `key` | Existing permitted `DiaryInstance`. |
+
+`DiaryAPI.template` rejects simultaneous `key` and `name` arguments.
+An HTTP view without a template name must still show the template chooser.
+The default-name factory is an explicit callable API convenience.
+
+### Operation methods
+
+Operation arguments are keyword arguments.
+The object supplies its actor and applicable object key.
+The static configuration methods do not need an actor.
+
+| Method | Arguments | Result |
+| --- | --- | --- |
+| `DiaryAPI.permission_groups` | None. | Copy of the configured access groups. |
+| `DiaryAPI.task_owner_roles` | None. | A `frozenset` of permitted task-owner role names. |
+| `DiaryAPI.define_milestones` | `definitions` | Milestone UUIDs by name. |
+| `DiaryTemplateVersion.required_milestones` | None. | Distinct milestone definitions used by this version. |
+| `DiaryTemplateVersion.read` | None. | Version rules, entry keys, and predecessor keys. |
+| `DiaryTemplateVersion.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
+| `DiaryTemplateVersion.approve` | None. | The same version object after approval. |
+| `DiaryTemplateVersion.available_predecessors` | `entry_key` | Safe predecessor choices. |
+| `DiaryTemplateVersion.set_predecessors` | `entry_key`, `predecessor_keys` | No result. |
+| `DiaryInstance.read` | None. | Diary data and entries. |
+| `DiaryInstance.close` | None. | The same diary object after closure. |
+| `DiaryInstance.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
+| `DiaryInstance.active_tasks` | Optional `today` | Open tasks in date order, with late tasks first. |
+| `DiaryInstance.personal_tasks` | Optional `today`, optional `include_whole_team` | Open tasks for the actor or their roles. |
+| `DiaryInstance.set_milestone_dates` | `milestone_dates`, optional `event_year` | No result. Existing behavior outside the approved V1 change workflow. |
+| `DiaryInstance.available_predecessors` | `entry_key` | Safe predecessor choices. |
+| `DiaryInstance.set_predecessors` | `entry_key`, `predecessor_keys` | No result. Existing mutation that still needs the V1 template-only restriction. |
+
+Dependency methods use the receiving object's scope.
+They do not take `scope_key` or a `template` flag.
+Entry keys remain stable across template versions and diary copies.
+Repeated entry additions need the same `EntrySpec.entry_key` and identical content.
+A conflicting addition raises `ValidationError`.
+
+### Migration from module functions
+
+This V1 development interface replaces the former module-level operations.
+The former function names are no longer exported.
+Database tables and stored keys do not change.
+No migration is required for this interface refactor.
+
+| Former call | Class-based replacement |
+| --- | --- |
+| `define_milestones` | `DiaryAPI.define_milestones` |
+| `create_template` | `DiaryTemplate.create` or `DiaryAPI.create_template` |
+| `create_template_version` | `DiaryTemplate.create_version` or `DiaryTemplateVersion.create` |
+| `required_milestones` | `DiaryTemplateVersion.required_milestones` |
+| `get_template_version` | `DiaryTemplateVersion.read` |
+| `add_template_entry` | `DiaryTemplateVersion.add_entry` |
+| `approve_template_version` | `DiaryTemplateVersion.approve` |
+| `create_calendar` | `DiaryInstance.create` or `DiaryAPI.create_diary` |
+| `get_calendar` | `DiaryInstance.read` |
+| `close_calendar` | `DiaryInstance.close` |
+| `add_entry` | `DiaryInstance.add_entry` |
+| `active_tasks`, `personal_tasks` | The corresponding `DiaryInstance` methods. |
+| `set_milestone_dates` | `DiaryInstance.set_milestone_dates` |
+| `available_predecessors`, `set_predecessors` | Methods on `DiaryTemplateVersion` or `DiaryInstance`. |
+| `permission_groups`, `task_owner_roles` | Static methods on `DiaryAPI`. |
+
 ## Named milestones
 
-`define_milestones` takes a mapping from stable names to display labels.
-It returns milestone UUIDs by name.
-Repeated definitions reuse the same milestone.
-A changed label does not change its stable name.
+`DiaryAPI.define_milestones` takes stable names and display labels.
+Changed labels preserve milestone identity.
+Template entries refer to names through `EntrySpec.milestone_name`.
 
-```python
-from Diary import api
+`DiaryTemplateVersion.required_milestones()` returns each used milestone once with `id`, `name`, and `label`.
+It excludes milestones used only by other versions.
+This lookup is an optional safety check before creation.
+The caller can supply the expected named dates without this lookup.
 
-api.define_milestones(actor=actor, definitions={
-    'event_date': 'Event date',
-    'add_board_bookings_open': 'Advertising board bookings open',
-})
-```
-
-Template entries refer to milestone names through `EntrySpec.milestone_name`.
-`required_milestones` returns the distinct definitions used by one template version.
-Each result contains `id`, `name`, and `label`.
-It excludes definitions that this version does not use.
-This lookup is an optional safety check, not a prerequisite for calendar creation.
-The caller can supply the expected named milestone dates without reading this list first.
-
-```python
-required = api.required_milestones(
-    actor=actor,
-    template_version_key=version_key,
-)
-```
-
-The caller gathers dates for those names before calendar creation.
-Each template identifies the named milestones that its task date rules require.
-The caller supplies a date for each required milestone when it creates a calendar through the API.
-The caller determines the source and meaning of those dates.
-For this website, the Garage Sale app supplies the dates.
-Diary does not need knowledge of the caller's event fields or booking rules.
-
+The caller supplies each required milestone date when creating the diary.
 The current API also accepts missing milestone values.
-A missing milestone value produces no due date.
-The task list then sets `date_not_set` in its result.
+An entry without a resolvable date has `date_not_set=True` in its task result.
 
-## Template and calendar creation
+## Template and diary creation
 
 This is a complete first setup example.
-Run the setup once, with an authenticated caller that has edit access.
-The example does not depend on another app's models.
+Run the setup once with an authenticated caller that has edit access.
+The example uses the Garage Sale group configuration without importing host models.
 
 ```python
 from dataclasses import replace
@@ -273,30 +361,26 @@ from Diary import api
 from Diary.choices import DateKind
 
 actor = api.Actor('user:42', frozenset({'Officer', 'ExecMember'}))
-api.define_milestones(actor=actor, definitions={
+client = api.DiaryAPI(actor=actor)
+client.define_milestones(definitions={
     'event_date': 'Event date',
     'add_board_bookings_open': 'Advertising board bookings open',
 })
-template_key = api.create_template(actor=actor)  # Uses DIARY_TEMPLATE_NAME.
-version_key = api.create_template_version(
-    actor=actor, template_key=template_key, number=1,
-)
+template = client.create_template()
+version = template.create_version(number=1)
 entry = api.EntrySpec(
     name='Inspect advertising boards',
     date_kind=DateKind.RELATIVE,
     milestone_name='add_board_bookings_open',
     day_offset=42,
 )
-entry_key = api.add_template_entry(
-    actor=actor, template_version_key=version_key, spec=entry,
-)
-api.approve_template_version(actor=actor, template_version_key=version_key)
+entry_key = version.add_entry(spec=entry)
+version.approve()
 
-required = api.required_milestones(actor=actor)  # Uses the configured template.
+required = client.template_version().required_milestones()
 assert [item['name'] for item in required] == ['add_board_bookings_open']
 
-calendar_key = api.create_calendar(
-    actor=actor,
+created = client.create_diary(
     event_ref='GarageSale:event:17',
     name='Garage Sale 2027',
     event_year=2027,
@@ -305,89 +389,38 @@ calendar_key = api.create_calendar(
         'add_board_bookings_open': date(2027, 5, 1),
     },
 )
-actor = replace(actor, calendar_keys=frozenset({calendar_key}))
-calendar = api.get_calendar(actor=actor, calendar_key=calendar_key)
-tasks = api.active_tasks(actor=actor, calendar_key=calendar_key, today=date(2027, 6, 12))
-assert tasks[0]['late'] is True  # The due date has been reached.
+diary_key = created.key
+actor = replace(actor, calendar_keys=frozenset({diary_key}))
+client = api.DiaryAPI(actor=actor)
+diary = client.diary(key=diary_key)
+calendar = diary.read()
+tasks = diary.active_tasks(today=date(2027, 6, 12))
+assert tasks[0]['late'] is True
 ```
 
 The example task is due on 12 June 2027.
-The caller must save `calendar_key` against the event.
-The calling project does not need to call `active_tasks` or `personal_tasks` itself.
-It can use Diary's own UI for task display and actions.
-The host can include the API call and that save in one database transaction.
-Diary does not save the key in another app.
+The host stores `diary_key` against its own record.
+The host can include creation and that save in one database transaction.
+The calling project can use Diary's own UI without reading task lists itself.
 
-For this website, the caller stores the key on its event record:
+Supply `template_version_key=version.key` to select a particular version during diary creation.
+Otherwise, creation uses the configured template's latest approved version.
+Identical repeated inputs return another object with the same diary key.
+Different inputs for the same reference raise `ValidationError`.
 
-```python
-event.diary_key = calendar_key
-event.save(update_fields=['diary_key'])
-```
+The date kinds remain `source`, `relative`, `annual`, and `once`.
+Annual dates use the supplied `event_year` and year offset.
+A one-time date belongs only to a diary instance.
+An invalid annual occurrence has no due date.
 
-Here, `event` is the caller's existing `EventData` instance.
-That save belongs in the calling application, not in Diary.
+Approved template entries and dependencies remain immutable.
+A changed version needs its own entries before approval.
+The V1 application save must include `DiaryTemplateVersion.approve()` without another user approval action.
+The class refactor does not implement that combined save workflow.
 
-To select a particular version, supply `template_version_key` to `create_calendar` or `required_milestones`.
-
-Repeated calendar creation with the same reference and inputs returns the same key.
-Different inputs for that reference raise `ValidationError`.
-Use `set_milestone_dates` for a deliberate date update.
-That call updates the supplied milestones and keeps other milestone values unchanged.
-
-The date kinds are `source`, `relative`, `annual`, and `once`.
-`source` uses a milestone directly.
-`relative` adds a signed day count to a milestone.
-`annual` uses a month, day, and offset from the event year.
-`once` uses a full date and is permitted only in an event calendar.
-An invalid annual occurrence, such as 29 February 2027, has no due date.
-
-Approved template entries and their dependencies are immutable through the API.
-A DiaryManager's save must create and approve the resulting version without a separate approval step in V1.
-The current API exposes `approve_template_version` as a separate callable operation.
-The V1 save workflow must include that operation rather than require another user action.
-The preview's separate draft approval control remains a demonstration, not the confirmed V1 workflow.
-A new version needs new entries before approval.
-Event entries copy the rules, names, owners, and dependency links.
-They do not read mutable template content after creation.
-Template changes do not update those instance entries automatically.
-A DiaryManager must be able to add a selected new template item to an active diary explicitly.
-The item uses that diary's milestone dates and can be late when added.
-This addition must not replace existing tasks or change their completion records.
-The current API has no dedicated operation to copy a selected template item into an existing diary.
-That action remains implementation work for V1.
-
-## API calls
-
-All call arguments are keyword arguments.
-Every call except `permission_groups` and `task_owner_roles` requires `actor`.
-
-| Call | Other arguments | Result |
-| --- | --- | --- |
-| `permission_groups` | None. | A copy of the group mapping. |
-| `task_owner_roles` | None. | A `frozenset` of configured task-owner role names. |
-| `define_milestones` | `definitions` | Milestone keys by name. |
-| `create_template` | Optional `name`, optional `description` | Template UUID. |
-| `create_template_version` | `template_key`, `number` | Template version UUID. |
-| `get_template_version` | Optional `template_version_key` | Template rules, entry keys, and predecessor keys. |
-| `required_milestones` | Optional `template_version_key` | Distinct milestone definitions. |
-| `add_template_entry` | `template_version_key`, `spec`, optional `directory` | Stable entry key. |
-| `approve_template_version` | `template_version_key` | Template version UUID. |
-| `create_calendar` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` | Diary key. |
-| `close_calendar` | `calendar_key` | The existing Diary key. |
-| `set_milestone_dates` | `calendar_key`, `milestone_dates`, optional `event_year` | No result. |
-| `add_entry` | `calendar_key`, `spec`, optional `directory` | Stable entry key. |
-| `get_calendar` | `calendar_key` | Calendar data and entries. |
-| `active_tasks` | `calendar_key`, optional `today` | Open tasks in date order, with late tasks first. |
-| `personal_tasks` | `calendar_key`, optional `today`, optional `include_whole_team` | Open tasks for the caller or their roles. |
-| `available_predecessors` | `scope_key`, `entry_key`, optional `template` | Safe predecessor choices. |
-| `set_predecessors` | `scope_key`, `entry_key`, `predecessor_keys`, optional `template` | No result. |
-
-For dependency calls, `scope_key` identifies a calendar unless `template=True`.
-With `template=True`, it identifies a template version.
-Entry keys remain stable when names change or templates become event calendars.
-A caller can keep the same `EntrySpec.entry_key` to repeat a safe entry addition.
-Different content with an existing entry key raises `ValidationError`.
+Diary entries retain their copied template content after creation.
+An explicit addition of a selected new template item remains V1 implementation work.
+The class refactor does not implement that addition workflow.
 
 ## EntrySpec fields
 
@@ -412,14 +445,15 @@ Its technical field names match the date and ownership rules below.
 ## More callable examples
 
 These examples continue from the setup example.
-The example `actor` has edit access and includes the new calendar key.
+The actor includes the new diary key in its permitted scope.
 
-An ExecMember can add a personal entry:
+A DiaryUser can add a self-owned personal entry:
 
 ```python
 from Diary.choices import OwnerKind
 
-member = api.Actor('user:43', frozenset({'ExecMember'}), frozenset({calendar_key}))
+member = api.Actor('user:43', frozenset({'ExecMember'}), frozenset({diary_key}))
+member_diary = api.DiaryInstance.from_key(actor=member, key=diary_key)
 personal = api.EntrySpec(
     name='Check my preparation notes',
     date_kind=DateKind.ONCE,
@@ -427,11 +461,11 @@ personal = api.EntrySpec(
     owner_kind=OwnerKind.PERSON,
     person_ref=member.reference,
 )
-personal_key = api.add_entry(actor=member, calendar_key=calendar_key, spec=personal)
-my_tasks = api.personal_tasks(actor=member, calendar_key=calendar_key)
+personal_key = member_diary.add_entry(spec=personal)
+my_tasks = member_diary.personal_tasks()
 ```
 
-An Officer can use a host directory to assign a role-owned task:
+A DiaryManager supplies an ownership directory for assigned entries:
 
 ```python
 class ExampleDirectory:
@@ -449,80 +483,70 @@ role_task = api.EntrySpec(
     owner_kind=OwnerKind.ROLE,
     role_ref='SponsorshipManager',
 )
-role_key = api.add_entry(
-    actor=actor, calendar_key=calendar_key, spec=role_task,
-    directory=ExampleDirectory(),
-)
+role_key = diary.add_entry(spec=role_task, directory=ExampleDirectory())
 ```
 
-`ExampleDirectory` contains sample data for this example only.
+`ExampleDirectory` contains sample data only.
 The host must supply its real identity directory in normal operation.
-For a person assignment, select `OwnerKind.PERSON` and set `person_ref` instead of `role_ref`.
+The configured `DIARY_TASK_OWNER_ROLES` must include the selected role.
 
-The current API can update a milestone date.
-This example describes existing behavior, not an approved first-release workflow.
-The impact review and the supported change workflow belong in V2.
-The following call changes one milestone date:
+The current API retains milestone mutation outside the approved V1 change workflow:
 
 ```python
-api.set_milestone_dates(
-    actor=actor,
-    calendar_key=calendar_key,
+diary.set_milestone_dates(
     milestone_dates={'add_board_bookings_open': date(2027, 5, 8)},
 )
 ```
 
-This changes open task dates that use that milestone.
-It does not change fixed annual dates or completed due dates.
+This changes open task dates that use the milestone.
+It preserves fixed annual dates and completed due dates.
+The supported change workflow and impact review belong in V2.
 
-V1 permits dependency changes only in draft templates by DiaryManagers.
-In this example, `draft_version_key` identifies a draft template version.
-`task_entry_key` and `predecessor_entry_key` identify tasks in that version.
+V1 dependency editing targets a draft template version:
 
 ```python
-choices = api.available_predecessors(
-    actor=actor, scope_key=draft_version_key, entry_key=task_entry_key, template=True,
-)
-api.set_predecessors(
-    actor=actor, scope_key=draft_version_key, entry_key=task_entry_key,
-    predecessor_keys=[predecessor_entry_key], template=True,
+draft = template.create_version(number=2)
+draft.add_entry(spec=entry)
+draft.add_entry(spec=role_task, directory=ExampleDirectory())
+choices = draft.available_predecessors(entry_key=role_task.entry_key)
+draft.set_predecessors(
+    entry_key=role_task.entry_key,
+    predecessor_keys=[entry.entry_key],
 )
 ```
 
-`set_predecessors` replaces the entry's complete predecessor list.
-An empty list removes all its predecessors.
-That removal is permitted only in the draft template under the V1 requirements.
-To change a draft template, use its version key as `scope_key` and set `template=True`.
+`set_predecessors` replaces that template entry's complete predecessor list.
+An empty list removes the predecessors from the draft template only under the V1 requirements.
+The existing instance mutation still needs the restriction recorded in the V1 checklist.
 
 ## Close a diary instance
 
-Use `close_calendar` to close an existing diary, regardless of its open tasks:
+Use `DiaryInstance.close()` regardless of open tasks:
 
 ```python
-api.close_calendar(actor=actor, calendar_key=calendar_key)
+closed = diary.close()
+assert closed is diary
+assert diary.read()['closed'] is True
 ```
 
-The caller needs the configured `edit` permission and the target key in `Actor.calendar_keys`.
-Garage Sale maps that permission to its DiaryManager group.
-The operation returns the existing Diary key.
-Repeated calls keep the original closure time and caller reference.
+The actor needs the configured `edit` permission and the diary key in its permitted scope.
+Repeated calls preserve the original closure time and caller reference.
+The operation returns the same diary object.
 
-Closing records `closed_at` and `closed_by_ref` on the calendar.
-It does not complete, delete, or change tasks.
-It preserves milestone dates, dependencies, and completion records.
-`get_calendar` remains available within the host's permitted scope.
-Its result includes `closed`, `closed_at`, and `closed_by_ref`.
-`active_tasks` and `personal_tasks` return empty tuples for a closed diary.
-
+Closing preserves tasks, milestone dates, dependencies, and completion records.
+`read()` includes `closed`, `closed_at`, and `closed_by_ref`.
+`active_tasks()` and `personal_tasks()` return empty tuples after closure.
 The API rejects entry additions, milestone changes, and dependency changes after closure.
 These writes and closure use the same calendar lock.
-No reopen operation is provided.
-A repeated `create_calendar` call cannot reopen the diary.
-The caller decides when to close a diary.
-Diary does not connect closure to an external event lifecycle automatically.
 
-Apply migration `Diary/0003_calendar_closure` before using this operation.
-Existing diaries remain open after the migration.
+No reopen operation is provided.
+Repeated creation cannot reopen a closed diary.
+The caller decides when to close a diary.
+Diary does not connect closure to an external lifecycle automatically.
+
+Apply migration `Diary/0003_calendar_closure` before using closure.
+Existing diaries remain open after that migration.
+This API class refactor requires no additional migration.
 
 ## Ownership
 
@@ -597,7 +621,7 @@ The action preserves existing completion records and dependency links.
 Ordinary DiaryUsers cannot use “Close all”.
 
 These actions apply to tasks in an open diary.
-`close_calendar` remains a separate instance operation and does not complete tasks.
+`DiaryInstance.close()` remains a separate instance operation and does not complete tasks.
 The existing preview has no “Close all” action and remains incomplete for this requirement.
 V2 must review whether this force completion behavior remains appropriate.
 
@@ -605,7 +629,7 @@ V2 must review whether this force completion behavior remains appropriate.
 
 The confirmed V1 policy permits dependency edits only in templates by DiaryManagers.
 Existing diary dependency links must remain unchanged during template edits and task completion.
-The current `set_predecessors` API also permits changes to open calendar instances.
+The current `DiaryInstance.set_predecessors()` method also permits changes to open calendar instances.
 Restricting that existing behavior remains implementation work for V1.
 The preview's live entry dependency controls also need restriction.
 
