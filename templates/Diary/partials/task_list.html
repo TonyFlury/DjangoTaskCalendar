@@ -1,16 +1,16 @@
-<section class="diary" aria-label="Diary tasks">
-    <div class="diary-card">
-        <h2 class="diary-heading">{{ diary_heading|default:"Tasks" }}</h2>
+<section class="diary diary-task-panel" aria-label="Diary tasks">
+    <div class="diary-card diary-task-card">
+        <h2 class="diary-heading diary-task-heading">{{ diary_heading|default:"Tasks" }}</h2>
         <ul class="diary-task-list">
             {% for task in tasks %}
-                <li class="diary-task">
-                    <strong>{{ task.name }}</strong>
-                    {% if task.description %}<p>{{ task.description }}</p>{% endif %}
-                    <p>
+                <li class="diary-task {% if task.state == 'blocked' %}diary-task-blocked{% else %}diary-task-ready{% endif %}{% if task.late %} diary-task-late{% endif %}">
+                    <strong class="diary-task-title">{{ task.name }}</strong>
+                    {% if task.description %}<p class="diary-task-description">{{ task.description }}</p>{% endif %}
+                    <p class="diary-task-meta">
                         {% if task.date %}
-                            Due: <time datetime="{{ task.date|date:'Y-m-d' }}">{{ task.date|date:"j F Y" }}</time>
+                            Due: <time class="diary-task-date" datetime="{{ task.date|date:'Y-m-d' }}">{{ task.date|date:"j F Y" }}</time>
                         {% else %}
-                            <span class="diary-muted">Date not set</span>
+                            <span class="diary-muted diary-date-unset">Date not set</span>
                         {% endif %}
                         {% if task.state == 'blocked' %}
                             <span class="diary-status diary-status-blocked">Blocked</span>
@@ -19,7 +19,7 @@
                         {% endif %}
                         {% if task.late %}<span class="diary-status diary-status-late">Late</span>{% endif %}
                     </p>
-                    <p class="diary-muted">
+                    <p class="diary-muted diary-task-owner">
                         {% if task.owner_label %}
                             {{ task.owner_label }}
                         {% elif task.owner_kind == 'person' %}
@@ -32,7 +32,7 @@
                     </p>
                 </li>
             {% empty %}
-                <li class="diary-muted">No open tasks.</li>
+                <li class="diary-muted diary-empty-state">No open tasks.</li>
             {% endfor %}
         </ul>
     </div>

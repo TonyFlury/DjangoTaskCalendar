@@ -524,6 +524,16 @@ The host can change those values through the selectors below.
 
 ### CSS classes and selectors
 
+Class names are the public styling interface for Diary HTML.
+Every visible component, content role, form control, and task state must have a stable, descriptive class.
+New component classes use the `diary-` prefix within the `.diary` namespace.
+The standalone document also has named classes for its outer layout.
+
+Host overrides must not depend on IDs, text values, element positions, or a particular choice of HTML tag.
+Diary templates must not use inline style attributes for presentation.
+Semantic tags and accessibility attributes remain part of the markup.
+They do not replace the class-based styling interface.
+
 These selectors form the current styling interface.
 Some form and button classes are available for subsequent Diary pages.
 
@@ -553,6 +563,50 @@ Some form and button classes are available for subsequent Diary pages.
 `diary-shell` identifies the standalone page's main element.
 It has no packaged CSS rule.
 The host can style it when it changes the standalone page layout.
+
+The templates also provide these specific content and state hooks.
+They do not need a default CSS rule to be valid host override targets.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-document` | Standalone `html` element. |
+| `diary-page` | Standalone `body` element. |
+| `diary-shell` | Standalone main content wrapper. |
+| `diary-task-panel` | Reusable task section. Use with `diary`. |
+| `diary-task-card` | Card containing the task list. Use with `diary-card`. |
+| `diary-task-heading` | Task section heading. Use with `diary-heading`. |
+| `diary-task-title` | Task name. |
+| `diary-task-description` | Task description. |
+| `diary-task-meta` | Due date and status information. |
+| `diary-task-date` | Due date value. |
+| `diary-date-unset` | Missing due date message. |
+| `diary-task-owner` | Person, role, or whole-team owner information. |
+| `diary-empty-state` | Empty task list message. |
+| `diary-task-ready` | Ready task row. Use with `diary-task`. |
+| `diary-task-blocked` | Blocked task row. Use with `diary-task`. |
+| `diary-task-late` | Late task row. It can also have `diary-task-ready` or `diary-task-blocked`. |
+
+For example, these rules change specific task content and a blocked row without reference to its HTML tags:
+
+```css
+.diary .diary-task-title {
+    font-size: 1.1rem;
+}
+
+.diary .diary-task-owner {
+    font-style: italic;
+}
+
+.diary .diary-task-blocked {
+    border-inline-start: .25rem solid #704100;
+    padding-inline-start: .75rem;
+}
+```
+
+Future form templates must also give controls and labels their own named classes.
+The generic form selectors above provide fallback defaults.
+They are not a substitute for those specific classes.
+Class name changes must include a guide update and an explanation of the effect on host overrides.
 
 Class names are technical names and must keep their spelling.
 Use selectors with at least the same specificity as the default rule for a reliable host override.

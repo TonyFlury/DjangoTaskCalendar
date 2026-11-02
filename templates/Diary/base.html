@@ -1,6 +1,6 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" class="diary-document">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,7 +11,7 @@
     {% block diary_extra_styles %}{% endblock %}
     {% block diary_head %}{% endblock %}
 </head>
-<body>
+<body class="diary-page">
     <main class="diary-shell" aria-label="Diary">
         {% block diary_content %}{% endblock %}
     </main>
