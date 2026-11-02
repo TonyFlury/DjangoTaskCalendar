@@ -92,7 +92,7 @@ The previews use sample data and do not complete application requirements.
 - [ ] Restrict personal entry visibility to its owner and DiaryManagers in every view and API.
 - [ ] Exclude other users' personal entries from searches and predecessor choices.
 - [ ] Add the DiaryManager entry form with person and role choices.
-- [ ] Add the DiaryManager choice “Add to template for future events”, initially off.
+- [ ] Add the DiaryManager choice “Add to template for future diaries”, initially off.
 - [ ] Show the reusable date rule and owner choice before a combined save.
 - [ ] Save one event entry and one new template entry together without repeated additions.
 - [ ] Keep other event calendars unchanged after a template addition.
@@ -218,6 +218,7 @@ Both input methods use the same permission and personal-entry visibility checks.
 With a diary key, the personal task view shows the user's open tasks and their current role-owned tasks in that diary.
 Without a key, it shows those tasks across all permitted open diaries, grouped by diary name.
 Each group retains the diary key and uses the diary name as its heading.
+Diary pages display the diary name and do not require a host event name or event date.
 Calendar creation requires a nonempty name, which the current model and API already enforce.
 Completed tasks and closed diaries do not contribute tasks to this view.
 
