@@ -203,10 +203,10 @@ Missing roles raise `ImproperlyConfigured` with their names and the relevant set
 Invalid settings and database access failures also produce configuration errors.
 The check does not create roles or change existing task ownership.
 
-The `migrate` and `sync_access_policy` commands omit the database existence check so administrators can prepare the database.
-They still check the form of `DIARY_TASK_OWNER_ROLES`.
-After setup, restart the application to perform the full startup check.
-All other startup paths perform the check when the configured collection is not empty.
+Database setup and repair commands defer the database checks described below.
+They still validate access-setting values and the form of `DIARY_TASK_OWNER_ROLES`.
+After setup, restart the application to perform normal startup validation.
+Normal startup checks ownership-group existence when the configured collection is not empty.
 
 ### Startup and ownership validation requirements
 
@@ -227,10 +227,39 @@ The warning must identify the group and affected task.
 If a group becomes empty or is deleted, Diary gives no automatic runtime warning.
 The next server restart, diary creation, or template edit is the next validation or warning point.
 
-The current implementation validates the two access setting values and checks configured ownership-role existence.
-Database checks for access-group existence, membership, and diary creation remain implementation work.
+The current implementation validates both access-setting values and checks that each configured access group exists and has a member.
+`Diary.roles.validate_access_groups()` uses `get_user_model()` for the membership query.
+`DiaryConfig.ready()` calls it during normal management-command, WSGI, and ASGI startup.
+Errors distinguish a missing group, an empty group, and an unavailable database.
+They identify the relevant settings and group names.
+Validation does not create groups or assign users.
+The startup path also checks configured ownership-group existence.
+Ownership-group membership checks and diary-creation validation remain implementation work.
 The template editor now warns about selected ownership groups without members.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
+
+### Startup setup and repair commands
+
+DV1-014 requires populated access groups for ordinary application startup.
+Administrators must still be able to prepare or repair those groups.
+The following management commands validate setting values but defer access and ownership database checks:
+
+| Command | Reason |
+| --- | --- |
+| `migrate` | Create or update the database tables. |
+| `sync_access_policy` | Preserve the existing host command for group setup. |
+| `shell` | Create groups or repair membership through Django. |
+| `createsuperuser` | Create an administrative account before group setup. |
+| `loaddata` | Load approved user and group setup data. |
+| `test` | Create the separate test database before tests inspect its groups. |
+
+Creating a superuser does not assign Diary group membership automatically.
+Assign at least one user to each configured access group before ordinary startup.
+The exception applies to the named command, not later server startup.
+Commands such as `runserver`, `check`, and `collectstatic` perform normal database validation.
+The test suite explicitly calls the normal startup path against its separate PostgreSQL database.
+It verifies the command exceptions without querying application data.
+Projects can use Django's standard setup commands without providing `sync_access_policy`.
 
 ## Template creation and editing
 

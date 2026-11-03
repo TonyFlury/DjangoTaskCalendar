@@ -82,7 +82,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [x] **DV1-009: Configured ownership role names and existence checks.**
   `DIARY_TASK_OWNER_ROLES` controls assignment choices.
   Startup validates role existence directly through Django's standard group model.
-  Startup and creation membership validation still need DV1-014 through DV1-016.
+  Ownership-role membership checks at startup and creation still need DV1-015 and DV1-016.
   Template warnings are implemented under DV1-017.
   Implementation: [roles.py](roles.py): `task_owner_roles`, `validate_task_owner_roles`. [apps.py](apps.py): `DiaryConfig.ready`.
   Verification: [tests/test_roles.py](tests/test_roles.py): `RoleConfigurationTests`, `DjangoGroupDatabaseTests`.
@@ -125,7 +125,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Managers inherit user capabilities and have all template permissions.
   Startup rejects missing or invalid setting values.
   The old configurable action mapping grants no access in V1.
-  Database checks for group existence and membership still need DV1-014.
+  Access-group existence and membership checks are implemented under DV1-014.
   Implementation: [roles.py](roles.py): `access_groups`. [api.py](api.py): `_allowed`, `_require`. [apps.py](apps.py): `DiaryConfig.ready`.
   Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`. [tests/test_class_api.py](tests/test_class_api.py): `ClassAPITests`.
   Requirement: [D4] and [D9].
@@ -151,16 +151,16 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Remaining work for DV1-013](../docs/design/diary-v1-remaining-work.md#dv1-013-identity-and-role-adapters).
   Requirement: [D4] and [D8].
 
-- [ ] **DV1-014: Startup access-group validation.**
+- [x] **DV1-014: Startup access-group validation.**
   Require `DIARY_MANAGER` and `DIARY_USER`.
-  Setting-value validation exists, but database existence and membership checks remain outstanding.
+  Startup validates setting values, database existence, and current membership for both access groups.
   Check that every referenced group exists and has at least one user.
   Raise `ImproperlyConfigured` with setting names and distinct missing-group or empty-group explanations.
   Keep database and group setup commands available.
-  Partial implementation: [roles.py](roles.py): `access_groups`. [apps.py](apps.py): `DiaryConfig.ready`.
-  Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`.
-  Remaining: Validate configured access-group existence and membership at startup. Add distinct configuration errors and database/setup-command tests.
-  Design: [Remaining work for DV1-014](../docs/design/diary-v1-remaining-work.md#dv1-014-startup-access-group-validation).
+  Implementation: [roles.py](roles.py): `access_groups`, `validate_access_groups`. [apps.py](apps.py): `DiaryConfig.ready`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`, `AccessGroupDatabaseTests`.
+  Setup and repair commands retain database-check exceptions. The test command creates its database before explicit startup validation tests.
+  Design: [Completed startup validation](../docs/design/diary-v1-remaining-work.md#dv1-014-startup-access-group-validation).
   Requirement: [D9].
 
 - [ ] **DV1-015: Startup ownership membership validation.**
@@ -477,8 +477,8 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The template workflow and existing Diary code passed 85 tests against a separate PostgreSQL database.
-The isolated configuration passed 84 tests with Django's standard user model and no host business apps.
+The startup validation and existing Diary code passed 97 tests against a separate PostgreSQL database.
+The isolated configuration passed 96 tests with Django's standard user model and no host business apps.
 The optional Chrome test passed against a separate PostgreSQL database.
 The tests include the Garage Sale key integration test.
 Migration consistency checks found no model changes.
