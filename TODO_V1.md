@@ -518,6 +518,16 @@ These requirements have no assigned release and are not V1 completion conditions
   Design: [Independent diary creation UI](../docs/design/diary-instance-creation-ui.md).
   Existing API: [api.py](api.py): `DiaryAPI.create_diary`, `DiaryInstance.create`, `DiaryTemplateVersion.required_milestones`.
 
+- [ ] **DFUT-002: Multiple DiaryUser access groups.**
+  Let `DIARY_USER` specify a set of groups, with DiaryUser access through membership in any configured group.
+  Support ownership groups with no common members or shared access group.
+  Preserve manager permissions and the caller's permitted diary keys.
+  Update setting validation, startup checks, API access checks, and person ownership eligibility when implementing this requirement.
+  Implementation: Deferred. The current setting accepts one group name and rejects collections.
+  Remaining: Implement collection support and verify separate ownership groups without common members.
+  Design: [Multiple Diary user groups](../docs/design/diary-user-groups.md).
+  Documentation only. No executable implementation or verification is complete for this requirement.
+
 ## Review limits
 
 The change for creation without a year passed 124 tests with the host application against a separate PostgreSQL test database.

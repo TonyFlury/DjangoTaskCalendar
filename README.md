@@ -234,6 +234,11 @@ Normal startup checks ownership-group existence and membership when the configur
 
 ### Startup and ownership validation requirements
 
+**Deferred requirement DFUT-002:** `DIARY_USER` will support multiple groups, with access through membership in any configured group.
+This will support ownership groups with no common members or shared access group.
+The current implementation still requires one group name and rejects collections.
+See [Multiple Diary user groups](../docs/design/diary-user-groups.md) for validation impacts, proposals, and open decisions.
+
 At startup, `DIARY_MANAGER` and `DIARY_USER` must be specified in Django settings.
 Every referenced group must exist and contain at least one user.
 Every role in `DIARY_TASK_OWNER_ROLES` must also exist and have at least one member.
