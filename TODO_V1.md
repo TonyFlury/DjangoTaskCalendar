@@ -167,8 +167,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Retrieve the configured user model through `get_user_model()` when model access is necessary.
   Keep host business models and custom request attributes outside Diary.
   Completion requires access tests with different host group names.
-  Partial implementation: [views.py](views.py): `DjangoOwnerDirectory.person_in_groups`, `TemplateEditorView.dispatch`. [forms.py](forms.py): `TemplateTaskFormSet.__init__`.
+  Partial implementation: [views.py](views.py): `DjangoOwnerDirectory.person_in_groups`, `TemplateEditorView.dispatch`, `ManagerDiaryView.dispatch`, `ManagerDiaryView.get_diary_keys`. [forms.py](forms.py): `TemplateTaskFormSet.__init__`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_person_ownership_uses_configured_user_model_and_rejects_other_users`.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
   Remaining: Add shared identity and ownership handling for task HTTP operations. Apply trusted diary scope and verify alternate groups across all operations.
   Design: [Remaining work for DV1-013](../docs/design/diary-v1-remaining-work.md#dv1-013-identity-and-role-adapters).
   Requirement: [D4] and [D8].
@@ -218,11 +219,12 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [ ] **DV1-018: Authenticated routed views.**
   Add production URL routes and views for task lists, details, template editing, entry creation, and completion.
   Use the callable API for data actions.
-  Template chooser, creation, and editing routes now exist. Task and completion routes remain outstanding.
+  Template routes and the manager diary list now exist. Personal task routes and completion routes remain outstanding.
   Enforce permissions on direct requests and save actions.
-  Partial implementation: [views.py](views.py): `TemplateEditorView`, `TemplateCreateView`. [urls.py](urls.py): `urlpatterns`.
+  Partial implementation: [views.py](views.py): `TemplateEditorView`, `TemplateCreateView`, `ManagerDiaryView.dispatch`, `ManagerDiaryView.get`. [urls.py](urls.py): `urlpatterns`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_anonymous_and_ordinary_users_cannot_access_or_save_templates`, `TemplateEditorTests.test_http_post_requires_csrf_token`.
-  Remaining: Implement personal lists, diary lists, task details, task creation, and completion routes. Enforce task privacy, host scope, and action permissions.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
+  Remaining: Implement personal lists, ordinary-user diary lists, task details, task creation, and completion routes. Enforce task privacy, host scope, and action permissions.
   Design: [Remaining work for DV1-018](../docs/design/diary-v1-remaining-work.md#dv1-018-remaining-authenticated-task-views).
   Requirement: [D6] and [D8].
 
@@ -230,10 +232,11 @@ The final sections separate unresolved decisions, host integration, and deferred
   Accept `diary_key` or `template_name` through URL parameters or trusted server-supplied context.
   Apply the same host scope and visibility checks for either input method.
   Template selectors accept URL values and trusted view context. Conflicting names return HTTP 400.
-  Diary selectors remain outstanding.
-  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`.
+  Manager diary selectors accept GET input and trusted view context. Personal and cross-diary selectors remain outstanding.
+  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `ManagerDiaryView.selected_key`, `ManagerDiaryView.get_diary_keys`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
-  Remaining: Implement diary-key inputs and cross-diary selection. Resolve DEC-001 for diary conflicts and verify invalid or unauthorized keys.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
+  Remaining: Implement personal and cross-diary selection. Apply the manager selector conflict rule consistently to future task views.
   Design: [Remaining work for DV1-019](../docs/design/diary-v1-remaining-work.md#dv1-019-diary-selectors).
   Requirement: [D6].
 
@@ -271,6 +274,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Show the diary name without requiring host event metadata.
   Apply personal-entry privacy and display the date, source, owner, and state for each entry.
   Apply DV1-052 for the manager's default task selection and checkbox filters.
+  Partial implementation: [views.py](views.py): `ManagerDiaryView`. [templates/Diary/manager_diary.html](templates/Diary/manager_diary.html): `diary_content`. [templates/Diary/partials/manager_tasks.html](templates/Diary/partials/manager_tasks.html): `.diary-manager-task-list`.
+  Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`. [tests/browser_manager_diary.py](tests/browser_manager_diary.py): `ManagerDiaryBrowserTests.test_manager_filters_and_layout`.
+  Remaining: Implement the ordinary-user full diary view after shared personal-entry privacy. The manager-only list is complete.
+  Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D8].
 
 - [ ] **DV1-023: Task details view.**
@@ -279,15 +286,17 @@ The final sections separate unresolved decisions, host integration, and deferred
   Reuse the V1 completion controls.
   Requirement: [D6] and [D8].
 
-- [ ] **DV1-052: Manager filters for one diary.**
+- [x] **DV1-052: Manager filters for one diary.**
   Provide the checkboxes “include completed tasks”, “exclude blocked tasks”, and “exclude non-late tasks”.
   Keep all three checkboxes clear by default.
   Show all incomplete tasks by default, including blocked tasks and tasks that are not late.
   Let managers inspect completion history and select late tasks only.
   Preserve the selected diary, task privacy, and permitted diary scope.
   Keep the separate DiaryUser default under DV1-049.
-  Implementation: Not started. No production view, control, or executable verification implements these filters.
-  Remaining: Implement the controls, combined selection behavior, completion history, and documented styling classes.
+  Implementation: [views.py](views.py): `ManagerDiaryView`. [forms.py](forms.py): `ManagerDiaryFilterForm`. [api.py](api.py): `DiaryInstance.read`. [urls.py](urls.py): `urlpatterns`. [templates/Diary/partials/manager_diary.html](templates/Diary/partials/manager_diary.html): `.diary-manager-filters`. [templates/Diary/partials/manager_tasks.html](templates/Diary/partials/manager_tasks.html): `.diary-manager-completion`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-manager-task-late`, `.diary-manager-task-blocked-late`, `.diary-manager-task-blocked`.
+  Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_default_and_every_filter_combination`, `ManagerDiaryTests.test_completion_history_preserves_actor_time_and_due_date`, `ManagerDiaryTests.test_scope_is_required_and_never_taken_from_the_query`. [tests/browser_manager_diary.py](tests/browser_manager_diary.py): `ManagerDiaryBrowserTests.test_manager_filters_and_layout`.
+  Completed history is never late or blocked. Selected exclusions apply together and retain the selected permitted diary.
+  The usage guide documents all new styling classes and variables.
   Design: [Manager filters for one diary](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [confirmed manager filters](README.md#confirmed-v1-manager-diary-filters) and the user request.
 
@@ -415,7 +424,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Give red priority when the task itself is late.
   Give other Blocked tasks a dashed border.
   Keep text labels and update all task views after state changes.
-  The preview implementation does not complete production styling work.
+  Partial implementation: [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-manager-task-late`, `.diary-manager-task-blocked-late`, `.diary-manager-task-blocked`. [views.py](views.py): `ManagerDiaryView.get_tasks`.
+  Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_highlights_and_fragment_use_stable_styling_classes`. [tests/browser_manager_diary.py](tests/browser_manager_diary.py): `ManagerDiaryBrowserTests.test_manager_filters_and_layout`.
+  Remaining: Apply and verify the same highlighting rules in personal lists and task details after their implementation.
+  Design: [Remaining pages and styling](../docs/design/diary-v1-remaining-work.md#dv1-041-remaining-pages-and-styling).
   Requirement: [D6].
 
 - [ ] **DV1-040: Ownership display and membership handling.**
@@ -424,6 +436,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve ownership when membership changes.
   Apply empty-group warnings at the validation points in section 9.
   Resolve DEC-005 for a person who loses DiaryUser membership.
+  Partial implementation: [views.py](views.py): `ManagerDiaryView.get_owner_labels`, `ManagerDiaryView.get_tasks`. [templates/Diary/partials/manager_tasks.html](templates/Diary/partials/manager_tasks.html): `.diary-manager-task-owner`, `.diary-manager-owner-members`.
+  Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_current_owners_private_entries_and_escaping`.
+  Remaining: Apply owner display to personal lists and task details. Resolve membership-loss handling under DEC-005.
+  Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D9].
 
 - [ ] **DV1-041: Complete pages, fragments, and styling interface.**
@@ -432,9 +448,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Avoid inline presentation rules and styling dependencies on IDs, text, tags, or element positions.
   Document every class and CSS variable in `README.md`.
   Verify keyboard access, text state labels, narrow screens, and host overrides.
-  Partial implementation: [forms.py](forms.py): `StyledForm.__init__`. [templates/Diary/template_editor.html](templates/Diary/template_editor.html): `diary_content`. [templates/Diary/partials/template_editor.html](templates/Diary/partials/template_editor.html): `.diary-template-editor`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-template-field`.
+  Partial implementation: [forms.py](forms.py): `StyledForm.__init__`, `ManagerDiaryFilterForm.__init__`. [templates/Diary/partials/manager_diary.html](templates/Diary/partials/manager_diary.html): `.diary-manager`. [templates/Diary/template_editor.html](templates/Diary/template_editor.html): `diary_content`. [templates/Diary/partials/template_editor.html](templates/Diary/partials/template_editor.html): `.diary-template-editor`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-template-field`.
   Verification: [tests/test_styling.py](tests/test_styling.py): `DiaryStyleOverrideTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
-  Remaining: Build remaining task documents and fragments. Complete task-state styling, class documentation, keyboard checks, narrow-screen checks, and host-override verification.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
+  Remaining: Build personal-list, task-detail, task-creation, and completion documents and fragments. Complete task-state styling, class documentation, keyboard checks, narrow-screen checks, and host-override verification.
   Design: [Remaining work for DV1-041](../docs/design/diary-v1-remaining-work.md#dv1-041-remaining-pages-and-styling).
   Requirement: [D6].
 
@@ -443,9 +460,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve the selected diary context without silently choosing another instance.
   Keep all reads free from diary creation or template-copy actions.
   Do not require a host current-event attribute.
-  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `TemplateEditorView.get`.
+  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `TemplateEditorView.get`, `ManagerDiaryView.get`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_reads_do_not_create_records_and_missing_name_opens_chooser`, `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
-  Remaining: Implement empty and error states for task pages and diary instances. Verify privacy, preserved diary context, and reads without creation.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
+  Remaining: Implement empty and error states for personal lists, task details, task creation, and completion. Verify privacy, preserved diary context, and reads without creation.
   Design: [Remaining work for DV1-042](../docs/design/diary-v1-remaining-work.md#dv1-042-remaining-empty-and-error-states).
   Requirement: [D4], [D6], and [D8].
 
@@ -461,7 +479,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verify transaction failures, repeated requests, and races between completion, diary closure, and permitted edits.
   Run database tests only against a separate PostgreSQL test database.
   Verify installation without host business application models.
-  Partial implementation: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateRevisionConcurrencyTests`, `TemplateEditorTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
+  Partial implementation: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`. [tests/browser_manager_diary.py](tests/browser_manager_diary.py): `ManagerDiaryBrowserTests.test_manager_filters_and_layout`. [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateRevisionConcurrencyTests`, `TemplateEditorTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
+  Manager verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests`.
   Remaining: Verify unimplemented identity, group, selection, privacy, task-editing, and completion workflows. Cover transaction rollback and concurrent completion, closure, and permitted edits.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
@@ -475,12 +494,12 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 ## Decisions needed by specific items
 
-These entries identify unresolved details, not approved implementation rules.
+These entries record decisions for specific implementation items.
 They do not reopen the confirmed V1 decisions.
 
 | Identifier | Decision | Affected items | Documentation |
 | --- | --- | --- | --- |
-| DEC-001 | Template views reject conflicting selectors. Confirm the same rule when implementing diary views. | DV1-019 | [Usage guide](README.md#template-creation-and-editing). |
+| DEC-001 | Template and manager diary views reject conflicting selectors. Apply this rule to remaining diary views. | DV1-019 | [Usage guide](README.md#template-creation-and-editing). |
 | DEC-002 | Define additional editable instance fields, owner changes, and any extra progress states. | DV1-032 | [D12], especially item 16, retains owner-change decisions. |
 | DEC-003 | Define item-copy behavior when required milestones or predecessor tasks are absent. | DV1-034 | [D4] records this unresolved detail. |
 | DEC-004 | Define how the blocker list represents tasks whose details the current user cannot view. | DV1-035 | [D6] and [D8] require blocker inspection and personal-entry privacy. |
@@ -550,6 +569,12 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This requirement has no assigned release and is not a V1 completion condition.
 
 ## Review limits
+
+The manager view passed 134 Diary and host-integration tests against a separate PostgreSQL test database.
+The isolated configuration passed 133 tests without host business apps.
+The manager Chrome test passed with keyboard, filter combinations, mobile layout, and host override checks.
+Manager selectors use trusted scope and reject conflicting inputs.
+No application data or deployed services changed during verification.
 
 The change for creation without a year passed 124 tests with the host application against a separate PostgreSQL test database.
 The same change passed 123 tests without host business apps against a separate PostgreSQL test database.

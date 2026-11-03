@@ -1,0 +1,7 @@
+{% extends "Diary/base.html" %}
+
+{# DV1-022, DV1-041, DV1-052: Full document and reusable manager diary content. #}
+{% block diary_title %}{{ diary_data.name|default:"Manager diary" }}{% endblock %}
+{% block diary_content %}
+    {% include "Diary/partials/manager_diary.html" %}
+{% endblock %}

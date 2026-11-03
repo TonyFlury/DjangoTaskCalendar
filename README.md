@@ -121,7 +121,7 @@ The expanded view behavior above is a confirmed requirement and remains implemen
 
 ### Confirmed V1 manager diary filters
 
-Requirement identifier: **DV1-052**. Implementation remains outstanding.
+Requirement identifier: **DV1-052**. The manager diary page implements these filters.
 
 When a DiaryManager views one permitted diary, provide these checkbox filters:
 
@@ -136,6 +136,82 @@ The filters must preserve the selected diary, task privacy, and permitted diary 
 This requirement applies to the manager's specific diary view.
 The personal DiaryUser view retains its separate ready-task default under DV1-049.
 See [manager diary filters](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary) for implementation boundaries and open decisions.
+
+### Manager diary page integration
+
+The technical view class is `Diary.views.ManagerDiaryView`.
+The named route `Diary:manager-diary` uses `/diary/manager/` under the standard project URL configuration.
+The page accepts GET requests only, with standard HEAD and OPTIONS support.
+The page requires an authenticated, active member of the configured `DIARY_MANAGER` group.
+
+Supply the technical query parameter `diary_key` to select a diary:
+
+```text
+/diary/manager/?diary_key=<diary UUID>
+```
+
+A selector does not grant access.
+The default route grants no diary scope.
+The host must configure the view with permitted keys or supply its own subclass.
+The technical context name `permitted_diary_keys` contains the UUIDs that the host permits the caller to view.
+Only trusted server code can supply this context.
+The view ignores query parameters that attempt to supply permitted keys.
+
+This example configures GET selection for one permitted diary:
+
+```python
+from Diary.views import ManagerDiaryView
+
+manager_view = ManagerDiaryView.as_view(
+    extra_context={'permitted_diary_keys': (stored_diary_key,)},
+)
+```
+
+The host registers the configured callable in its own URL configuration.
+To select the diary through trusted context, include `diary_key`:
+
+```python
+manager_view = ManagerDiaryView.as_view(extra_context={
+    'diary_key': stored_diary_key,
+    'permitted_diary_keys': (stored_diary_key,),
+})
+```
+
+The view also accepts `diary_key` and `permitted_diary_keys` as `as_view()` keyword arguments.
+For request-specific context, override Django's `get_context_data()` method in a host subclass.
+Call its parent method before adding trusted keys.
+Alternatively, override `ManagerDiaryView.get_diary_keys()` to obtain the host's current permitted scope.
+The host must calculate that scope from authenticated identity and its access policy.
+
+GET and trusted context use the same UUID validation and permission checks.
+Repeated copies of the same UUID are permitted.
+Conflicting selectors return HTTP 400.
+Malformed or blank selectors also return HTTP 400.
+A permitted key without a matching diary returns HTTP 404.
+An out-of-scope key returns HTTP 403.
+An omitted selector shows an explicit selection message.
+No read creates a diary or changes a task.
+
+The technical GET checkbox names are `include_completed`, `exclude_blocked`, and `exclude_non_late`.
+Selected checkboxes submit `on`. An absent checkbox is clear.
+Select **Apply filters** to apply all selected filters together.
+Select **Reset filters** to clear the checkboxes while keeping the selected diary.
+Checkbox selections remain in the URL after submission.
+
+Completed tasks are never late or blocked in this view.
+Thus, the late-only filter excludes completed tasks even when completion history is selected.
+The blocked-task exclusion retains completed history entries.
+The page orders entries by due date, with unset dates last.
+It shows the completing actor, time, and preserved due date for completed entries.
+Closed diaries remain readable and display a closed-state message.
+Their displayed records do not contribute active tasks to other Diary views.
+Forced-completion comments and task actions remain separate implementation work.
+
+The technical page template is `Diary/manager_diary.html`.
+The reusable fragment `Diary/partials/manager_diary.html` includes `Diary/partials/manager_tasks.html`.
+Include the manager fragment with the view's `diary_data`, `tasks`, and `filters` context in a host document.
+Load the documented Diary stylesheet when embedding the fragment.
+The manager fragment supplies the `.diary` namespace and does not add another HTML document.
 
 ### Deferred future date-window filter
 
@@ -688,6 +764,11 @@ They do not take `scope_key` or a `template` flag.
 Entry keys remain stable across template versions and diary copies.
 Repeated entry additions need the same `EntrySpec.entry_key` and identical content.
 A conflicting addition raises `ValidationError`.
+
+`DiaryInstance.read()` also returns each entry's technical fields `source` and `completed_by_ref`.
+`source` is `template` for copied entries and `diary` for diary additions.
+`completed_by_ref` contains the completing actor reference, or an empty string for incomplete entries.
+The manager page uses these fields for task origin and completion history.
 
 ### Migration from module functions
 
@@ -1243,8 +1324,12 @@ The host can redefine them on the same selector in its extra stylesheet.
 | `--diary-border` | `#bbb` | Card, control, button, and task divider borders. |
 | `--diary-focus` | `#3333dd` | Keyboard focus outline. |
 | `--diary-radius` | `.5rem` | Card, heading, button, and control corner radius. |
+| `--diary-late` | `#a31515` | Manager late-task border, shadow, status text, and error text. |
+| `--diary-blocked` | `#946000` | Manager blocked-task warning border, shadow, and status text. |
+| `--diary-ready` | `#17532c` | Manager ready-state text. |
+| `--diary-completed` | `#505050` | Manager completion-state and history text. |
 
-Status colors and the default button background currently use direct CSS values.
+Generic task status colors and the default button background currently use direct CSS values.
 The host can change those values through the selectors below.
 
 ### CSS classes and selectors
@@ -1356,6 +1441,62 @@ For example, `.diary-status-late` alone is less specific than `.diary .diary-sta
 The defaults reduce root padding and stack action buttons when the viewport is at most `40rem` wide.
 Host overrides must keep a usable narrow-screen layout and a visible keyboard focus indicator.
 Task states also have text labels, so color is not their only indication.
+
+### Manager diary styling classes
+
+These new technical class names supplement the existing styling interface.
+Existing class names retain their meanings.
+Scope host overrides within `.diary`.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-manager` | Manager fragment and styling namespace root. Use with diary. |
+| `diary-manager-heading` | Selected diary name or selection heading. |
+| `diary-manager-error` | Invalid or missing diary error message. |
+| `diary-manager-closed` | Closed-diary status message. |
+| `diary-manager-filters` | GET filter form. |
+| `diary-manager-selector` | Hidden diary key that preserves the selection. |
+| `diary-manager-filter-group` | Checkbox fieldset. |
+| `diary-manager-filter-legend` | Checkbox group label. |
+| `diary-manager-filter-label` | Checkbox label and control container. |
+| `diary-manager-filter-text` | Visible checkbox label text. |
+| `diary-manager-checkbox` | Shared checkbox styling. |
+| `diary-manager-filter-include-completed` | Completion-history checkbox. |
+| `diary-manager-filter-exclude-blocked` | Blocked-task exclusion checkbox. |
+| `diary-manager-filter-exclude-non-late` | Late-only checkbox. |
+| `diary-manager-filter-actions` | Apply and reset action container. |
+| `diary-manager-apply` | Apply filters button. |
+| `diary-manager-reset` | Reset filters link. |
+| `diary-manager-filter-help` | Filter behavior explanation. |
+| `diary-manager-result-count` | Number of displayed tasks. |
+| `diary-manager-selection-empty` | Missing diary selection message. |
+| `diary-manager-task-list` | Date-ordered manager task list. |
+| `diary-manager-task` | Task row. |
+| `diary-manager-task-completed` | Completed task row. |
+| `diary-manager-task-late` | Late task row with red border and shadow. |
+| `diary-manager-task-blocked-late` | Blocked task with a late direct predecessor and amber border and shadow. |
+| `diary-manager-task-blocked` | Other blocked task row with a dashed border. |
+| `diary-manager-task-ready` | Ready task row. |
+| `diary-manager-task-title` | Task name. |
+| `diary-manager-task-description` | Task description. |
+| `diary-manager-task-date-row` | Due-date content container. |
+| `diary-manager-task-date` | Due-date time element. |
+| `diary-manager-date-unset` | Missing due-date label. |
+| `diary-manager-task-states` | Text state-label container. |
+| `diary-manager-status-completed` | Completed state label. |
+| `diary-manager-status-blocked` | Blocked state label. |
+| `diary-manager-status-ready` | Ready state label. |
+| `diary-manager-status-late` | Late state label. |
+| `diary-manager-task-owner` | Current owner label. |
+| `diary-manager-task-source` | Template or diary-entry origin label. |
+| `diary-manager-owner-members` | Current ownership-group members. |
+| `diary-manager-owner-member` | One current member name. |
+| `diary-manager-owner-empty` | Empty ownership-group message. |
+| `diary-manager-completion` | Completion record container. |
+| `diary-manager-completion-actor` | Completing actor name or opaque reference. |
+| `diary-manager-completion-time` | Completion timestamp. |
+| `diary-manager-completion-due` | Preserved due date at completion. |
+| `diary-manager-results-empty` | Empty filtered task-list message. |
 
 ### Replace the default stylesheet
 

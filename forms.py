@@ -41,6 +41,21 @@ class TemplateForm(StyledForm):
         self.fields['name'].disabled = editing
 
 
+# DV1-052: Read-only manager filters for one diary.
+class ManagerDiaryFilterForm(forms.Form):
+    """Select completion history, blocking, and lateness filters without changing tasks."""
+
+    include_completed = forms.BooleanField(required=False, label='include completed tasks')
+    exclude_blocked = forms.BooleanField(required=False, label='exclude blocked tasks')
+    exclude_non_late = forms.BooleanField(required=False, label='exclude non-late tasks')
+
+    def __init__(self, *args, **kwargs):
+        """Give each checkbox a stable class for host style overrides."""
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = f'diary-manager-checkbox diary-manager-filter-{name.replace("_", "-")}'
+
+
 class TemplateTaskForm(StyledForm):
     """Collect one reusable task, its ownership, and its proposed predecessor keys."""
 

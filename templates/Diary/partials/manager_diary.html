@@ -1,0 +1,32 @@
+{# DV1-022, DV1-042, DV1-052: Manager filters, empty selections, and diary records. #}
+<section class="diary diary-manager" aria-label="Manager diary">
+    <h1 class="diary-heading diary-manager-heading">{{ diary_data.name|default:"Manager diary" }}</h1>
+    {% if manager_error %}
+        <p class="diary-manager-error" role="alert">{{ manager_error }}</p>
+    {% elif diary_data %}
+        {% if diary_data.closed %}
+            <p class="diary-manager-closed" role="status">Closed diary. Entries are shown for reference.</p>
+        {% endif %}
+        <form class="diary-manager-filters" method="get">
+            <input class="diary-manager-selector" type="hidden" name="diary_key" value="{{ diary_data.key }}">
+            <fieldset class="diary-manager-filter-group">
+                <legend class="diary-manager-filter-legend">Task filters</legend>
+                {% for field in filters %}
+                    <label class="diary-manager-filter-label">
+                        {{ field }}
+                        <span class="diary-manager-filter-text">{{ field.label }}</span>
+                    </label>
+                {% endfor %}
+            </fieldset>
+            <div class="diary-actions diary-manager-filter-actions">
+                <button class="diary-button diary-button-primary diary-manager-apply" type="submit">Apply filters</button>
+                <a class="diary-button diary-manager-reset" href="?diary_key={{ diary_data.key }}">Reset filters</a>
+            </div>
+            <p class="diary-muted diary-manager-filter-help">Late tasks are incomplete and due today or earlier. Completed tasks are never late or blocked.</p>
+        </form>
+        <p class="diary-manager-result-count" role="status">{{ tasks|length }} tasks shown.</p>
+        {% include "Diary/partials/manager_tasks.html" %}
+    {% else %}
+        <p class="diary-muted diary-manager-selection-empty">Select a permitted diary to view its tasks.</p>
+    {% endif %}
+</section>

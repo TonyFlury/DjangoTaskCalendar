@@ -750,14 +750,18 @@ class DiaryInstance(_DependencyAPI):
 
             # Completed tasks retain their recorded due date when source milestones later change.
             # Completed predecessors remain in history but no longer block the task.
+            # DV1-022, DV1-052: Managers can display task origin and the completing actor.
+            # A source-entry reference distinguishes copied tasks from diary additions.
             entries.append({'entry_key': entry.entry_key, 'name': entry.name, 'description': entry.description,
                             'date': (entry.completed_due_date if entry.completed_at is not None else
                                      entry.resolve_date(source_dates=context)),
+                            'source': 'template' if entry.source_entry_id else 'diary',
                             'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref, 'role_ref': entry.role_ref,
                             'predecessors': tuple(item.entry_key for item in predecessors),
                             'blocking_predecessors': tuple(
                                 item.entry_key for item in predecessors if item.completed_at is None),
                             'completed_at': entry.completed_at,
+                            'completed_by_ref': entry.completed_by_ref,
                             'ready': entry.completed_at is None and all(
                                 item.completed_at is not None for item in predecessors)})
         return {'key': calendar.pk, 'name': calendar.name, 'event_ref': calendar.event_ref,

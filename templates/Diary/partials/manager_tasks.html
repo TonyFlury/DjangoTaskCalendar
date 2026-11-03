@@ -1,0 +1,40 @@
+{# DV1-022, DV1-039, DV1-052: Date-ordered tasks and preserved completion records. #}
+<ul class="diary-manager-task-list">
+    {% for task in tasks %}
+        <li class="diary-manager-task{% if task.completed %} diary-manager-task-completed{% elif task.late %} diary-manager-task-late{% elif task.blocked_late %} diary-manager-task-blocked-late{% elif task.blocked %} diary-manager-task-blocked{% else %} diary-manager-task-ready{% endif %}">
+            <h2 class="diary-manager-task-title">{{ task.name }}</h2>
+            {% if task.description %}<p class="diary-manager-task-description">{{ task.description }}</p>{% endif %}
+            <p class="diary-manager-task-date-row">
+                {% if task.date %}
+                    Due: <time class="diary-manager-task-date" datetime="{{ task.date|date:'Y-m-d' }}">{{ task.date|date:"j F Y" }}</time>
+                {% else %}
+                    <span class="diary-muted diary-manager-date-unset">Date not set</span>
+                {% endif %}
+            </p>
+            <div class="diary-manager-task-states">
+                {% if task.completed %}
+                    <span class="diary-status diary-manager-status-completed">Completed</span>
+                {% elif task.blocked %}
+                    <span class="diary-status diary-manager-status-blocked">Blocked</span>
+                {% else %}
+                    <span class="diary-status diary-manager-status-ready">Ready</span>
+                {% endif %}
+                {% if task.late %}<span class="diary-status diary-manager-status-late">Late</span>{% endif %}
+            </div>
+            <p class="diary-manager-task-owner">Owner: {{ task.owner_label }}</p>
+            <p class="diary-muted diary-manager-task-source">Source: {% if task.source == 'template' %}Template{% else %}Diary entry{% endif %}</p>
+            {% if task.owner_kind == 'role' %}
+                <p class="diary-muted diary-manager-owner-members">Current members: {% for member in task.owner_members %}<span class="diary-manager-owner-member">{{ member }}</span>{% if not forloop.last %}, {% endif %}{% empty %}<span class="diary-manager-owner-empty">No current members.</span>{% endfor %}</p>
+            {% endif %}
+            {% if task.completed %}
+                <p class="diary-manager-completion">
+                    Completed by <span class="diary-manager-completion-actor">{{ task.completed_by_label }}</span>
+                    on <time class="diary-manager-completion-time" datetime="{{ task.completed_at|date:'c' }}">{{ task.completed_at|date:"j F Y H:i T" }}</time>.
+                    <span class="diary-manager-completion-due">Due date at completion: {{ task.date|date:"j F Y"|default:"Date not set" }}.</span>
+                </p>
+            {% endif %}
+        </li>
+    {% empty %}
+        <li class="diary-muted diary-manager-results-empty">No tasks match these filters.</li>
+    {% endfor %}
+</ul>
