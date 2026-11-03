@@ -6,6 +6,9 @@
             {% for task in tasks %}
                 <li class="diary-task {% if task.state == 'blocked' %}diary-task-blocked{% else %}diary-task-ready{% endif %}{% if task.blocked_late and not task.late %} diary-task-blocked-late{% endif %}{% if task.late %} diary-task-late{% endif %}">
                     <strong class="diary-task-title">{{ task.name }}</strong>
+
+                    {# DV1-023: Routed task lists retain their diary scope in the detail link. Plain embedded lists can omit it. #}
+                    {% if task.detail_url %}<a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>{% endif %}
                     {% if task.description %}<p class="diary-task-description">{{ task.description }}</p>{% endif %}
                     <p class="diary-task-meta">
                         {% if task.date %}

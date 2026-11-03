@@ -3,6 +3,9 @@
     {% for task in tasks %}
         <li class="diary-manager-task{% if task.completed %} diary-manager-task-completed{% elif task.late %} diary-manager-task-late{% elif task.blocked_late %} diary-manager-task-blocked-late{% elif task.blocked %} diary-manager-task-blocked{% else %} diary-manager-task-ready{% endif %}">
             <h2 class="diary-manager-task-title">{{ task.name }}</h2>
+
+            {# DV1-023: Detail navigation uses the manager page's permitted diary and optional host route name. #}
+            <a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>
             {% if task.description %}<p class="diary-manager-task-description">{{ task.description }}</p>{% endif %}
             <p class="diary-manager-task-date-row">
                 {% if task.date %}

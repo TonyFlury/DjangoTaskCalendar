@@ -9,7 +9,8 @@ This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
 It provides authenticated template creation and editing pages.
 Personal and manager task lists and the task creation page are implemented.
-Task details, completion endpoints, reminders, and automatic event callbacks remain outside the current implementation.
+Task details, due-date edits, and task completion are implemented.
+Reminders and automatic event callbacks remain outside the current implementation.
 The host dashboard also needs a subsequent implementation step.
 Diary is for configured DiaryUsers and DiaryManagers who have actions to complete for a successful event.
 Diary has no public view.
@@ -822,6 +823,9 @@ The static configuration methods do not need an actor.
 | `DiaryTemplateVersion.set_predecessors` | `entry_key`, `predecessor_keys` | No result. |
 | `DiaryInstance.read` | None. | Diary data and entries. |
 | `DiaryInstance.close` | None. | The same diary object after closure. |
+| `DiaryInstance.task` | `entry_key` | Visible task details, edit permission, open blockers, and completion history. |
+| `DiaryInstance.update_due_date` | `entry_key`, `due_date`, `expected_revision` | Updated task details after a permitted diary-specific date edit. |
+| `DiaryInstance.complete` | `entry_key`, `expected_revision`, optional `close_all=False`, `expected_blockers` | Updated task details after normal or forced completion. |
 | `DiaryInstance.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
 | `DiaryInstance.active_tasks` | Optional `today` | Open tasks in date order, with late tasks first. |
 | `DiaryInstance.personal_tasks` | Optional `today`, optional `include_whole_team` | Open tasks for the actor or their roles. |
@@ -1359,7 +1363,7 @@ A temporarily activated user time zone does not change that project default.
 
 The model keeps completion time, the completing actor reference, and the due date at completion.
 Completed records cannot change through normal model saves.
-The completion API, pages, and DiaryManager “Close all” workflow are not implemented yet.
+`DiaryInstance.complete()` and `TaskDetailView` now implement normal completion and DiaryManager “Close all”.
 
 ### Confirmed V1 task completion workflow
 
@@ -1382,6 +1386,212 @@ These actions apply to tasks in an open diary.
 `DiaryInstance.close()` remains a separate instance operation and does not complete tasks.
 The existing preview has no “Close all” action and remains incomplete for this requirement.
 V2 must review whether this force completion behavior remains appropriate.
+
+## Task details, due-date editing, and completion
+
+The technical view class is `Diary.views.TaskDetailView`.
+The route `Diary:task-detail` uses `/diary/tasks/<entry_key>/` in the standard project URL configuration.
+The technical URL name `entry_key` identifies the task UUID.
+Select its diary with `?diary_key=<diary UUID>` or trusted view context.
+The task key does not grant diary access.
+
+The host must supply trusted permitted diary keys for the task detail view.
+The default route grants no diary scope.
+Use the same scope policy for task lists, creation, and details.
+The view uses current active-user status and configured group membership on every request.
+
+This example configures the technical view argument `extra_context`:
+
+```python
+from Diary.views import TaskDetailView
+
+task_detail_view = TaskDetailView.as_view(extra_context={
+    'permitted_diary_keys': permitted_diary_keys,
+})
+```
+
+The host registers this callable in a route with a UUID parameter named `entry_key`.
+A host subclass can override `get_diary_keys()` for dynamic scope.
+Supply `task_detail_url_name` in personal and manager view context when the host uses its own detail route.
+This technical context name contains a Django URL name, such as `host-task-detail`.
+Task-list links keep the selected diary key.
+The complete document uses `Diary/task_detail.html`, block `diary_content`.
+Reusable content uses `Diary/partials/task_detail.html`.
+
+### Due-date permissions
+
+| Caller | Task | Due-date edit |
+| --- | --- | --- |
+| DiaryUser | Self-owned diary addition | Permitted while the task and diary remain open. |
+| DiaryUser | Copied template task | Not permitted, including a task assigned to that user. |
+| DiaryUser | Group-owned or whole-team diary addition | Not permitted. |
+| DiaryUser | Another person's private diary addition | Unavailable. |
+| DiaryManager | Any visible task in a permitted diary | Permitted while the task and diary remain open. |
+
+A self-owned diary addition can have been assigned by a manager.
+Its creator does not replace the current ownership rule.
+Date edits do not grant permission to change task names, descriptions, ownership, milestones, or dependency links.
+Completed tasks and closed diaries reject date changes.
+
+Select **View and update task** from a task list.
+Enter an exact date in **Due date**.
+Select **Save due date**.
+
+The technical field `CalendarEntry.due_date_override` stores the date for that diary task.
+The original date rule stays unchanged.
+Other diary tasks, source templates, and other diaries stay unchanged.
+Task lists and status counts use the effective date on their next read.
+The technical field `revision` increases after each date edit or new completion.
+An old form cannot replace a newer task revision.
+Select **Reload task** after a stale-form error.
+
+**V1 limitation:** V1 does not warn managers when a due-date change causes a conflict.
+Diary does not compare the changed date with predecessor dates or successor dates to detect scheduling conflicts.
+Diary does not change related task dates automatically.
+Examine related task dates before changing a copied template task's due date.
+Normal Late and Blocked highlights remain available.
+Those highlights do not provide a scheduling-conflict warning.
+
+### Normal completion
+
+Date-edit permission and completion permission are separate.
+A permitted DiaryUser or DiaryManager can complete an accessible task in an open diary.
+Copied template tasks can be completed even when their dates are not editable by that user.
+Private diary additions remain available only to their owner and permitted managers.
+
+Open the task details before completion.
+Examine **Open predecessors**.
+The list includes direct and indirect open predecessors.
+Completed predecessors no longer block the task.
+Inaccessible blockers produce one generic explanation without private names, dates, owners, keys, or a count.
+Select **Complete** when no predecessors remain open.
+
+The server checks the chain again inside the save transaction.
+A blocked task cannot complete through a modified request.
+Completion records the caller, time, action, and effective due date.
+The task leaves active and personal open-task lists.
+Manager completion-history filters retain access to the record.
+The details page displays the completion history.
+A repeated completion request keeps the first completion record.
+V1 has no reopen action.
+
+### DiaryManager Close all
+
+Managers receive **Close all** when open predecessors remain.
+Examine the blocking chain before selecting this action.
+Select **Close all** to complete the open chain and selected task together.
+
+The operation completes open direct and indirect predecessors in the selected diary.
+It keeps earlier completion records and all dependency links unchanged.
+It records the manager, completion time, and effective due date for each new completion.
+Each forced predecessor receives an explanatory comment with the selected task's name and stable key.
+The technical fields are `completion_action`, `completion_comment`, and `completion_target_key`.
+All completion fields become immutable with the task.
+
+The technical form field `blocker_token` contains an opaque fingerprint of the inspected chain.
+It contains no private task identifiers.
+A changed predecessor state or due date requires another inspection.
+A stale task revision also rejects the save.
+Failure at any save step leaves the entire chain unchanged.
+Ordinary users cannot use **Close all**, including through a modified request.
+Comments about an inaccessible selected task use a generic explanation for ordinary readers.
+
+### Callable task operations
+
+Use `DiaryInstance.task(entry_key=...)` to inspect a visible task and its blocking chain.
+The result includes `revision`, `can_edit_date`, `blockers`, and `blocker_token`.
+It also includes the original date rule, effective date, ownership, and completion audit fields.
+A private blocker appears only as `{'private': True}`.
+
+Use `update_due_date(entry_key=..., due_date=..., expected_revision=...)` for a permitted exact-date override.
+Supply a plain `datetime.date` value.
+Use `complete(entry_key=..., expected_revision=...)` for normal completion.
+For forced completion, also supply `close_all=True` and `expected_blockers=task['blocker_token']`.
+Each mutation returns updated task details.
+
+The operations check current task state under the diary write lock.
+They raise `PermissionDenied` for unauthorized roles, date edits, or diary scope.
+They raise `ValidationError` for stale revisions, changed forced-completion chains, blocked normal completion, or closed diaries.
+Unknown and private task keys both raise `CalendarEntry.DoesNotExist` through the task lookup.
+HTTP task lookup returns HTTP 404 for either case.
+A missing or malformed diary selector returns HTTP 400.
+An out-of-scope selector returns HTTP 403.
+Browser writes require CSRF protection.
+
+### Task detail migration
+
+Apply `0005_task_dates_and_completion` before using these task operations.
+The migration adds a nullable date override, revision number, and completion audit fields.
+Existing annual dates, original rules, and completion records stay unchanged.
+Existing completed tasks show **Earlier completion** when no action label was recorded.
+The migration test runs against historical tables in an isolated PostgreSQL test schema.
+
+### Task detail styling classes
+
+All component rules remain within `.diary`.
+No existing class name was renamed or removed.
+Task lists now add `diary-task-detail-link` for detail navigation.
+No CSS variable was added.
+The detail rules use existing variables `--diary-muted`, `--diary-late`, `--diary-blocked`, `--diary-completed`, and `--diary-accent`.
+The shared headings and buttons keep their existing variables.
+
+| Class | Content role |
+| --- | --- |
+| `diary-detail` | Task detail component. |
+| `diary-detail-heading` | Page heading. |
+| `diary-detail-error` | Selection or action error. |
+| `diary-detail-diary` | Selected diary name. |
+| `diary-detail-reload` | Reload link for the selected task. |
+| `diary-detail-task` | Task content card. |
+| `diary-detail-name` | Task name. |
+| `diary-detail-description` | Optional task description. |
+| `diary-detail-date` | Effective or completed due date. |
+| `diary-detail-owner` | Current owner label. |
+| `diary-detail-members` | Current role-member list. |
+| `diary-detail-member` | One role-member name. |
+| `diary-detail-members-empty` | Empty role-member state. |
+| `diary-detail-source` | Task provenance label. |
+| `diary-detail-rule` | Original date-rule definition list. |
+| `diary-detail-rule-label` | Date-rule field label. |
+| `diary-detail-rule-value` | Date-rule field value. |
+| `diary-detail-closed` | Closed-diary explanation. |
+| `diary-detail-history` | Completion history section. |
+| `diary-detail-section-heading` | Blocker or history heading. |
+| `diary-detail-completion-actor` | Completing caller name or reference. |
+| `diary-detail-completion-time` | Completion timestamp. |
+| `diary-detail-completion-due` | Due date recorded at completion. |
+| `diary-detail-completion-action` | Human-readable completion action. |
+| `diary-detail-completion-comment` | Forced-completion explanatory comment. |
+| `diary-detail-completion-target` | Visible selected task key. |
+| `diary-detail-state` | Ready, Blocked, or Late text. |
+| `diary-detail-blockers` | Open predecessor section. |
+| `diary-detail-blocker-list` | Open predecessor list. |
+| `diary-detail-blocker` | One visible blocker or generic private marker. |
+| `diary-detail-private-blocker` | Generic inaccessible-blocker explanation. |
+| `diary-detail-blocker-name` | Visible blocker name. |
+| `diary-detail-blocker-date` | Visible blocker due date. |
+| `diary-detail-blockers-empty` | Empty blocking-chain state. |
+| `diary-detail-date-form` | Due-date edit form. |
+| `diary-detail-label` | Due-date field label. |
+| `diary-detail-control` | Shared visible-control class. |
+| `diary-detail-due-date` | Due-date input. |
+| `diary-detail-date-help` | Diary-only override explanation. |
+| `diary-detail-revision` | Hidden task revision. |
+| `diary-detail-blocker-token` | Hidden opaque chain fingerprint. |
+| `diary-detail-date-limit` | V1 manager conflict-warning limit. |
+| `diary-detail-save-date` | Date save button. |
+| `diary-detail-completion-form` | Completion action form. |
+| `diary-detail-actions` | Completion action group. |
+| `diary-detail-complete` | Normal completion button. |
+| `diary-detail-close-all` | Manager forced-completion button. |
+| `diary-detail-errors` | Form error container. |
+| `diary-detail-field-error` | Individual field or form error. |
+| `diary-detail-completed` | Completed task state. |
+| `diary-detail-late` | Red shadowed border for a late task. |
+| `diary-detail-blocked-late` | Amber shadowed border for a task with a late direct blocker. |
+| `diary-detail-blocked` | Dashed border for another blocked task. |
+| `diary-detail-ready` | Ready task state. |
+| `diary-task-detail-link` | Scoped task detail link in personal and manager task lists. |
 
 ## Dependency integrity
 

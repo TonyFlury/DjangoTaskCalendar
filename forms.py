@@ -1,4 +1,4 @@
-"""Forms for complete template revisions and reusable task rules."""
+"""Forms for template revisions, task creation, due-date editing, and completion."""
 from dataclasses import replace
 from datetime import date
 from uuid import uuid4
@@ -405,6 +405,23 @@ class ReusableTaskRuleForm(StyledForm):
             if data['date_kind'] == DateKind.RELATIVE:
                 values['day_offset'] = data.get('day_offset') or 0
         return replace(task, **values)
+
+
+# DV1-032: Due-date edits use a revision from the inspected task.
+class TaskDueDateForm(forms.Form):
+    """Read a required due date and the task revision used for stale-form detection."""
+
+    due_date = forms.DateField(label='Due date', widget=forms.DateInput(attrs={
+        'type': 'date', 'class': 'diary-detail-control diary-detail-due-date'}))
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput(attrs={'class': 'diary-detail-revision'}))
+
+
+# DV1-036, DV1-037: Completion controls carry an opaque fingerprint without private task identifiers.
+class TaskCompletionForm(forms.Form):
+    """Read the inspected task revision and opaque predecessor-state fingerprint."""
+
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput(attrs={'class': 'diary-detail-revision'}))
+    blocker_token = forms.CharField(max_length=64, widget=forms.HiddenInput(attrs={'class': 'diary-detail-blocker-token'}))
 
 
 TaskFormSet = formset_factory(TemplateTaskForm, formset=TemplateTaskFormSet, extra=0,

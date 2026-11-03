@@ -148,3 +148,17 @@
 .diary .diary-task-blocked { border: 1px dashed var(--diary-border); padding: 1rem; border-radius: var(--diary-radius); }
 .diary .diary-task-blocked-late { border: 2px solid var(--diary-blocked); box-shadow: 0 0 .4rem var(--diary-blocked); }
 .diary .diary-task-late { border: 2px solid var(--diary-late); box-shadow: 0 0 .4rem var(--diary-late); padding: 1rem; border-radius: var(--diary-radius); }
+
+/* DV1-023, DV1-032, DV1-039, DV1-041: Task details expose state classes and controls for host styling. */
+.diary .diary-detail-task, .diary .diary-detail-date-form { min-width: 0; overflow-wrap: anywhere; }
+.diary .diary-detail-description { white-space: pre-wrap; }
+.diary .diary-detail-label, .diary .diary-detail-rule-label { font-weight: bold; }
+.diary .diary-detail-control { max-width: 100%; }
+.diary .diary-detail-date-form, .diary .diary-detail-completion-form { margin-block: 1rem; }
+.diary .diary-detail-blocker-date, .diary .diary-detail-date-limit { color: var(--diary-muted); }
+.diary .diary-detail-error, .diary .diary-detail-field-error { color: var(--diary-late); }
+.diary .diary-detail-late { border-color: var(--diary-late); box-shadow: 0 0 .4rem var(--diary-late); }
+.diary .diary-detail-blocked-late { border-color: var(--diary-blocked); box-shadow: 0 0 .4rem var(--diary-blocked); }
+.diary .diary-detail-blocked { border-style: dashed; }
+.diary .diary-detail-completed { border-color: var(--diary-completed); }
+.diary .diary-task-detail-link { display: inline-block; margin: .25rem .5rem; color: var(--diary-accent); }

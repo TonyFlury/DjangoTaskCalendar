@@ -1,0 +1,97 @@
+{# DV1-023, DV1-032, DV1-035, DV1-036, DV1-037, DV1-038: Scoped task editing and completion. #}
+<section class="diary diary-detail" aria-label="Task details">
+    <h1 class="diary-heading diary-detail-heading">Task details</h1>
+
+    {# Selection errors have no task content. Save errors keep the inspected task and submitted forms visible. #}
+    {% if detail_error %}<p class="diary-detail-error" role="alert">{{ detail_error }}</p>{% endif %}
+    {% if task %}
+        <p class="diary-detail-diary">Diary: {{ task.diary_name }}</p>
+        <a class="diary-button diary-detail-reload" href="?diary_key={{ task.diary_key }}">Reload task</a>
+
+        {# Completed tasks have a history state. Open tasks use red, amber, dashed, or ready highlights in that order. #}
+        <article class="diary-card diary-detail-task{% if task.completed_at %} diary-detail-completed{% elif task.late %} diary-detail-late{% elif task.blocked_late %} diary-detail-blocked-late{% elif not task.ready %} diary-detail-blocked{% else %} diary-detail-ready{% endif %}">
+            <h2 class="diary-detail-name">{{ task.name }}</h2>
+
+            {# Optional task text remains escaped by the template engine. #}
+            {% if task.description %}<p class="diary-detail-description">{{ task.description }}</p>{% endif %}
+            <p class="diary-detail-date">Due date: {{ task.date|date:'j F Y'|default:'Date not set' }}</p>
+            <p class="diary-detail-owner">Owner: {{ task.owner_label }}</p>
+
+            {# Role ownership shows current members, including an explicit empty group state. #}
+            {% if task.owner_kind == 'role' %}
+                <p class="diary-detail-members">Current members: {% for member in task.owner_members %}<span class="diary-detail-member">{{ member }}</span>{% if not forloop.last %}, {% endif %}{% empty %}<span class="diary-detail-members-empty">No current members.</span>{% endfor %}</p>
+            {% endif %}
+            <p class="diary-detail-source">Source: {{ task.source_label }}</p>
+            <dl class="diary-detail-rule">
+                <dt class="diary-detail-rule-label">Original date rule</dt><dd class="diary-detail-rule-value">{{ task.date_rule_label }}</dd>
+
+                {# Each source rule exposes only the date fields relevant to that rule. #}
+                {% if task.milestone_name %}<dt class="diary-detail-rule-label">Milestone</dt><dd class="diary-detail-rule-value">{{ task.milestone_name }}. Day offset: {{ task.date_rule.day_offset }}.</dd>{% endif %}
+                {% if task.date_rule.date_kind == 'annual' %}<dt class="diary-detail-rule-label">Annual rule</dt><dd class="diary-detail-rule-value">Month {{ task.date_rule.month }}, day {{ task.date_rule.day }}, year offset {{ task.date_rule.year_offset }}.</dd>{% endif %}
+                {% if task.date_rule.fixed_date %}<dt class="diary-detail-rule-label">Original exact date</dt><dd class="diary-detail-rule-value">{{ task.date_rule.fixed_date|date:'j F Y' }}</dd>{% endif %}
+            </dl>
+
+            {# Closed diaries remain readable but cannot accept date edits or completion. #}
+            {% if task.closed %}<p class="diary-detail-closed" role="status">This diary is closed. Task changes are unavailable.</p>{% endif %}
+
+            {# A completed record shows the original actor, time, effective due date, action, and any forced comment. #}
+            {% if task.completed_at %}
+                <section class="diary-detail-history" aria-label="Completion history">
+                    <h3 class="diary-detail-section-heading">Completed</h3>
+                    <p class="diary-detail-completion-actor">Completed by {{ task.completed_by_label }}.</p>
+                    <p class="diary-detail-completion-time">Completion time: {{ task.completed_at|date:'j F Y H:i T' }}.</p>
+                    <p class="diary-detail-completion-due">Due date at completion: {{ task.completed_due_date|date:'j F Y'|default:'Date not set' }}.</p>
+                    <p class="diary-detail-completion-action">Action: {{ task.completion_action_label }}.</p>
+
+                    {# Only visible completion comments and references reach this template. A target needs no reference to itself. #}
+                    {% if task.completion_comment %}<p class="diary-detail-completion-comment">{{ task.completion_comment }}</p>{% endif %}
+                    {% if task.completion_target_key and task.completion_target_key != task.entry_key %}<p class="diary-detail-completion-target">Selected task key: {{ task.completion_target_key }}.</p>{% endif %}
+                </section>
+            {% else %}
+                <p class="diary-detail-state">{% if task.ready %}Ready{% else %}Blocked{% endif %}{% if task.late %} · Late{% endif %}</p>
+                <section class="diary-detail-blockers" aria-label="Open predecessors">
+                    <h3 class="diary-detail-section-heading">Open predecessors</h3>
+                    <ul class="diary-detail-blocker-list">
+                        {% for blocker in task.blockers %}
+                            <li class="diary-detail-blocker">
+
+                                {# Private blockers receive one generic explanation without names, dates, owners, or keys. #}
+                                {% if blocker.private %}<span class="diary-detail-private-blocker">One or more private predecessors remain open.</span>
+                                {% else %}<span class="diary-detail-blocker-name">{{ blocker.name }}</span><span class="diary-detail-blocker-date"> · Due {{ blocker.date|date:'j F Y'|default:'Date not set' }}</span>{% endif %}
+                            </li>
+
+                        {# An empty blocking chain permits normal completion after the server checks it again. #}
+                        {% empty %}<li class="diary-detail-blockers-empty">No open predecessors.</li>{% endfor %}
+                    </ul>
+                </section>
+
+                {# Ordinary users edit only their personal additions. Managers can also edit copied template-task dates. #}
+                {% if task.can_edit_date %}
+                    <form class="diary-detail-date-form" method="post">
+                        {% csrf_token %}{{ due_form.revision }}
+                        <label class="diary-detail-label" for="{{ due_form.due_date.id_for_label }}">{{ due_form.due_date.label }}</label>{{ due_form.due_date }}
+                        <p class="diary-detail-date-help">A date edit changes this diary only. The original date rule stays unchanged.</p>
+                        {% include 'Diary/partials/task_detail_errors.html' with form=due_form %}
+
+                        {# V1 records the manager limitation without claiming automatic date-conflict detection. #}
+                        {% if task.manager and task.source == 'template' %}<p class="diary-detail-date-limit">V1 does not warn managers when a due-date change causes a conflict.</p>{% endif %}
+                        <button class="diary-button diary-detail-save-date" type="submit" name="action" value="save_date">Save due date</button>
+                    </form>
+                {% endif %}
+
+                {# Only open diaries offer completion controls. The server still rejects forged or stale requests. #}
+                {% if not task.closed %}
+                    <form class="diary-detail-completion-form" method="post">
+                        {% csrf_token %}{{ completion_form.revision }}{{ completion_form.blocker_token }}
+                        {% include 'Diary/partials/task_detail_errors.html' with form=completion_form %}
+                        <div class="diary-actions diary-detail-actions"><button class="diary-button diary-button-primary diary-detail-complete" type="submit" name="action" value="complete">Complete</button>
+
+                            {# Close all is a manager action available only while open predecessors remain. #}
+                            {% if task.manager and task.blockers %}<button class="diary-button diary-detail-close-all" type="submit" name="action" value="close_all">Close all</button>{% endif %}
+                        </div>
+                    </form>
+                {% endif %}
+            {% endif %}
+        </article>
+    {% endif %}
+</section>

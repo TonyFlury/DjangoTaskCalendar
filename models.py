@@ -288,6 +288,15 @@ class CalendarEntry(EntryFields):
     completed_by_ref = models.CharField(max_length=200, blank=True)
     completed_due_date = models.DateField(null=True, blank=True)
     annual_due_date = models.DateField(null=True, blank=True, editable=False)
+
+    # DV1-032: A diary-specific date override keeps the source rule unchanged.
+    due_date_override = models.DateField(null=True, blank=True)
+
+    # DV1-032, DV1-036, DV1-037, DV1-038: Revisions protect edits, and completion audit fields remain immutable after completion.
+    revision = models.PositiveIntegerField(default=0)
+    completion_action = models.CharField(max_length=24, blank=True)
+    completion_comment = models.TextField(blank=True)
+    completion_target_key = models.UUIDField(null=True, blank=True)
     predecessors = models.ManyToManyField('self', symmetrical=False, through='EntryDependency',
                                          through_fields=('entry', 'predecessor'), related_name='successors')
 
@@ -344,8 +353,19 @@ class CalendarEntry(EntryFields):
 
         # A new completion records the current calculated due date.
         elif self.completed_at is not None:
-            self.completed_due_date = self.resolve_date(
-                source_dates=self.calendar.date_context())
+            self.completed_due_date = self.open_due_date()
+
+    # DV1-032, DV1-036: Use the effective diary date for display and the completion record.
+    def open_due_date(self, *, source_dates=None):
+        """Return the override or calculate the source rule using optional milestone dates."""
+
+        # An explicit override takes priority without changing the stored source date rule.
+        if self.due_date_override is not None:
+            return self.due_date_override
+
+        # List reads supply one date context, while individual operations obtain the current diary dates.
+        dates = self.calendar.date_context() if source_dates is None else source_dates
+        return self.resolve_date(source_dates=dates)
 
     # DV1-010: Basic completion record fields.
     @property
@@ -355,7 +375,7 @@ class CalendarEntry(EntryFields):
         # Completed tasks keep their due date when milestone values change.
         if self.completed_at is not None:
             return self.completed_due_date
-        return self.resolve_date(source_dates=self.calendar.date_context())
+        return self.open_due_date()
 
     @property
     def is_ready(self):

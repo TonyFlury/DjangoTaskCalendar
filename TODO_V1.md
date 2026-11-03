@@ -174,7 +174,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Apply shared identity, ownership handling, and trusted diary scope to task details and completion. Verify alternate groups across remaining operations.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Apply shared identity and trusted diary scope to the ordinary-user full diary view and remaining template-item copy operations.
   Design: [Remaining work for DV1-013](../docs/design/diary-v1-remaining-work.md#dv1-013-identity-and-role-adapters).
   Requirement: [D4] and [D8].
 
@@ -232,7 +234,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Implement ordinary-user full diary lists, task details, and completion routes. Enforce task privacy, host scope, and action permissions.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Implement the ordinary-user full diary list and existing-template-item copy routes. Keep task privacy, host scope, and action permissions.
   Design: [Remaining work for DV1-018](../docs/design/diary-v1-remaining-work.md#dv1-018-remaining-authenticated-task-views).
   Requirement: [D6] and [D8].
 
@@ -248,7 +252,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Apply shared selector validation to task details and completion views.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Apply shared selector validation to the ordinary-user full diary view and remaining template-item copy routes.
   Design: [Remaining work for DV1-019](../docs/design/diary-v1-remaining-work.md#dv1-019-diary-selectors).
   Requirement: [D6].
 
@@ -302,10 +308,13 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D8].
 
-- [ ] **DV1-023: Task details view.**
+- [x] **DV1-023: Task details view.**
   Show the task's date rule, due date, owner, dependency state, and completion record when applicable.
   Preserve diary context and apply privacy to related task information.
   Reuse the V1 completion controls.
+  Implementation: [api.py](api.py): `DiaryInstance.task`. [views.py](views.py): `TaskDetailView`, `DiaryScopeMixin.task_url`. [templates/Diary/task_detail.html](templates/Diary/task_detail.html): `diary_content`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-rule`, `.diary-detail-history`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_no_missing_migration_and_full_or_embedded_documents`, `TaskEditingTests.test_task_links_keep_host_scope_and_states_refresh_after_edits_and_completion`.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D6] and [D8].
 
 - [x] **DV1-052: Manager filters for one diary.**
@@ -391,15 +400,25 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests.test_private_entries_and_template_blockers_preserve_state`, `PersonalDiaryTests.test_role_membership_changes_and_manager_personal_selection`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Apply and verify privacy in task details, searches, the HTTP data API, and future task operations.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Apply and verify privacy in searches, the HTTP data API, and remaining template-item copy operations.
   Design: [Personal diary privacy boundary](../docs/design/diary-v1-remaining-work.md#dv1-020-dv1-021-and-dv1-049-personal-diary).
   Requirement: [D8].
 
-- [ ] **DV1-032: Manager-only edits to template-sourced tasks.**
+- [x] **DV1-032: Manager-only edits to template-sourced tasks.**
   Restrict permitted edits to DiaryManagers.
   Keep the source template and other diary instances unchanged.
   Preserve the V1 ban on live dependency editing and milestone changes.
-  Resolve DEC-002 before selecting additional editable fields or owner-change behavior.
+  The approved edit is a due-date override for the selected diary task.
+  DiaryUsers can edit only self-owned diary additions.
+  DiaryManagers can also edit dates on copied template tasks and other permitted diary tasks.
+  Keep names, descriptions, ownership, milestones, and dependency links unchanged.
+  V1 does not warn managers when a due-date change causes a conflict.
+  Implementation: [models.py](models.py): `CalendarEntry.due_date_override`, `CalendarEntry.open_due_date`, `CalendarEntry.revision`. [api.py](api.py): `DiaryInstance.update_due_date`, `DiaryInstance._can_edit_date`. [forms.py](forms.py): `TaskDueDateForm`. [views.py](views.py): `TaskDetailView.respond`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_user_edits_personal_due_date_without_changing_original_rule_or_other_records`, `TaskEditingTests.test_user_cannot_edit_copied_group_team_or_other_person_dates`, `TaskEditingTests.test_manager_changes_copied_due_date_without_template_revision_or_warning_service`, `TaskEditingTests.test_stale_invalid_and_completed_due_date_changes_are_rejected`, `TaskEditingConcurrencyTests`.
+  The guide records the conflict-warning limit. Existing callable dependency restrictions remain DV1-028.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D4], [D8], and [D12].
 
 - [x] **DV1-033: Combined diary entry and template addition.**
@@ -425,33 +444,45 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 ## Completion operations
 
-- [ ] **DV1-035: Blocking predecessor inspection.**
+- [x] **DV1-035: Blocking predecessor inspection.**
   List all open predecessors in the blocking chain before task completion.
   Include indirect blockers and preserve task visibility rules.
-  Resolve DEC-004 for presentation of inaccessible blockers.
+  Represent inaccessible blockers with one generic marker, without private names, dates, owners, keys, or counts.
+  Implementation: [api.py](api.py): `DiaryInstance._open_blockers`, `DiaryInstance.task`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail-blockers`, `.diary-detail-private-blocker`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_normal_completion_rechecks_indirect_and_direct_blockers`, `TaskEditingTests.test_private_blockers_and_completion_audit_do_not_disclose_private_target_keys`.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D6] and [D8].
 
-- [ ] **DV1-036: Normal task completion.**
+- [x] **DV1-036: Normal task completion.**
   Provide “Complete” to permitted users for accessible tasks.
   Save completion only when the blocking predecessor list is empty.
   Check the condition again during the save.
   Record one completion per task and preserve its due date at completion.
   Reject changes to a closed diary.
+  Implementation: [api.py](api.py): `DiaryInstance.complete`. [models.py](models.py): `CalendarEntry.clean`. [forms.py](forms.py): `TaskCompletionForm`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail-complete`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_normal_completion_saves_effective_due_date_and_is_idempotent`, `TaskEditingTests.test_normal_completion_rechecks_indirect_and_direct_blockers`, `TaskEditingConcurrencyTests`.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D6].
 
-- [ ] **DV1-037: DiaryManager “Close all” operation.**
+- [x] **DV1-037: DiaryManager “Close all” operation.**
   Complete the open blocking chain and selected task together.
   Record the manager, completion time, and due date for each newly completed task.
   Add an explanatory comment to each forced predecessor completion.
   Preserve existing completion records and all dependency links.
   Reject ordinary-user requests and concurrent changes that invalidate the operation.
+  Implementation: [api.py](api.py): `DiaryInstance.complete`, `DiaryInstance._open_blockers`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail-close-all`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_close_all_records_comments_and_keeps_existing_completions_and_links`, `TaskEditingTests.test_forced_completion_rejects_users_and_stale_predecessor_inspection`, `TaskEditingTests.test_failure_during_close_all_rolls_back_every_completion`, `TaskEditingConcurrencyTests.test_close_all_and_predecessor_date_edit_reject_one_stale_operation`.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D6].
 
-- [ ] **DV1-038: Persistent completion comments and history display.**
+- [x] **DV1-038: Persistent completion comments and history display.**
   Add storage for explanatory forced-completion comments and the selected task reference.
   Include any necessary PostgreSQL migration and API result changes.
   Display the recorded action, caller, time, and due date in task details.
-  The current completion fields do not store these comments.
+  Store the action, explanatory comment, selected task key, actor, time, and effective due date.
+  Implementation: [models.py](models.py): `CalendarEntry.completion_action`, `CalendarEntry.completion_comment`, `CalendarEntry.completion_target_key`. [migrations/0005_task_dates_and_completion.py](migrations/0005_task_dates_and_completion.py): `Migration`. [api.py](api.py): `_visible_entries`, `DiaryInstance.complete`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail-history`.
+  Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_close_all_records_comments_and_keeps_existing_completions_and_links`, `TaskEditingTests.test_private_blockers_and_completion_audit_do_not_disclose_private_target_keys`, `TaskCompletionMigrationTests.test_existing_dates_and_completion_records_remain_unchanged`.
+  Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D6].
 
 ## Presentation and release checks
@@ -466,7 +497,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_highlights_and_fragment_use_stable_styling_classes`. [tests/browser_manager_diary.py](tests/browser_manager_diary.py): `ManagerDiaryBrowserTests.test_manager_filters_and_layout`.
   Personal implementation: [views.py](views.py): `DiaryScopeMixin.dispatch`, `DiaryScopeMixin.get_diary_keys`, `DiaryScopeMixin.selected_key`, `PersonalDiaryView.get`, `PersonalDiaryView.filter_context`, `DiaryOwnerLabelsMixin.get_owner_labels`. [templates/Diary/partials/task_list.html](templates/Diary/partials/task_list.html): `.diary-task-late`, `.diary-task-blocked-late`, `.diary-task-blocked`, `.diary-task-owner`.
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
-  Remaining: Apply and verify the same highlighting rules in task details and after task changes.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Verify state highlights in the ordinary-user full diary view when implemented. Existing task lists and details calculate fresh states after changes.
   Design: [Remaining pages and styling](../docs/design/diary-v1-remaining-work.md#dv1-041-remaining-pages-and-styling).
   Requirement: [D6].
 
@@ -480,7 +513,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_current_owners_private_entries_and_escaping`.
   Personal implementation: [views.py](views.py): `DiaryScopeMixin.dispatch`, `DiaryScopeMixin.get_diary_keys`, `DiaryScopeMixin.selected_key`, `PersonalDiaryView.get`, `PersonalDiaryView.filter_context`, `DiaryOwnerLabelsMixin.get_owner_labels`. [templates/Diary/partials/task_list.html](templates/Diary/partials/task_list.html): `.diary-task-late`, `.diary-task-blocked-late`, `.diary-task-blocked`, `.diary-task-owner`.
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
-  Remaining: Apply owner display to task details. Resolve membership-loss handling under DEC-005.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Resolve membership-loss handling under DEC-005. Apply the existing owner display to the ordinary-user full diary view when implemented.
   Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D9].
 
@@ -497,7 +532,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Build task-detail and completion documents and fragments. Verify their styling classes, keyboard operation, narrow screens, and host overrides.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Build the ordinary-user full diary document and fragment. Verify its styling classes, keyboard operation, narrow screens, and host overrides.
   Design: [Remaining work for DV1-041](../docs/design/diary-v1-remaining-work.md#dv1-041-remaining-pages-and-styling).
   Requirement: [D6].
 
@@ -513,7 +550,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Implement empty and error states for task details and completion. Verify privacy, kept diary context, and reads without creation.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Implement empty and error states for the ordinary-user full diary view and existing-template-item copy operation.
   Design: [Remaining work for DV1-042](../docs/design/diary-v1-remaining-work.md#dv1-042-remaining-empty-and-error-states).
   Requirement: [D4], [D6], and [D8].
 
@@ -535,7 +574,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
-  Remaining: Verify unimplemented identity, group, selection, privacy, task-editing, and completion workflows. Cover transaction rollback and concurrent completion, closure, and permitted edits.
+  Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
+  Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
+  Remaining: Verify the ordinary-user full diary view, remaining template-item copy operations, and any later ownership-edit interface.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
@@ -554,9 +595,9 @@ They do not reopen the confirmed V1 decisions.
 | Identifier | Decision | Affected items | Documentation |
 | --- | --- | --- | --- |
 | DEC-001 | Template and manager diary views reject conflicting selectors. Apply this rule to remaining diary views. | DV1-019 | [Usage guide](README.md#template-creation-and-editing). |
-| DEC-002 | Define additional editable instance fields, owner changes, and any extra progress states. | DV1-032 | [D12], especially item 16, retains owner-change decisions. |
+| DEC-002 | Resolved for this change: due-date edits only. Other task fields, ownership changes, and extra progress states have no implemented editing interface. | DV1-032 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
 | DEC-003 | Define item-copy behavior when required milestones or predecessor tasks are absent. | DV1-034 | [D4] records this unresolved detail. |
-| DEC-004 | Define how the blocker list represents tasks whose details the current user cannot view. | DV1-035 | [D6] and [D8] require blocker inspection and personal-entry privacy. |
+| DEC-004 | Implemented with one generic marker for inaccessible open predecessors. No private content, identifiers, or count appear. | DV1-035 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
 | DEC-005 | Define review and ownership handling when a person loses DiaryUser membership. | DV1-040 | [D6] requires review and prohibits silent whole-team reassignment. |
 
 ## Host integration work
@@ -623,6 +664,16 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This requirement has no assigned release and is not a V1 completion condition.
 
 ## Review limits
+
+Task editing and completion use migration `0005_task_dates_and_completion`.
+The exact staged implementation passed 177 tests with the standard user model and 177 tests with the host user model.
+Both configurations used separate PostgreSQL test databases.
+Tests cover date permissions, effective completion dates, private blockers, forced comments, stale forms, rollback, and concurrent changes.
+The migration test keeps existing dates and completion records in an isolated PostgreSQL schema.
+The Chrome check covers personal edits, manager template-task edits, normal completion, Close all, mobile layout, and host style overrides.
+The same Chrome check verifies dashed, amber, and red borders with red priority.
+No application database migration or deployment occurred during this change.
+The full Issue 9 dictionary and technical-name review remains incomplete.
 
 Task creation tests cover DV1-029, DV1-030, and DV1-033 against separate PostgreSQL test databases.
 The staged implementation passed 156 Diary tests without host business apps and 156 tests with the host user model.

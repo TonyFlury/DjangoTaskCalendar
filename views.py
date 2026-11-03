@@ -1,4 +1,4 @@
-"""Authenticated template editing and read-only manager diary pages."""
+"""Authenticated Diary lists, template editing, task creation, date editing, and completion."""
 from datetime import date
 from uuid import UUID, uuid4
 from urllib.parse import urlencode
@@ -12,6 +12,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views import View
 from django.views.generic.base import ContextMixin
 from django.utils import timezone
@@ -19,7 +20,7 @@ from django.utils import timezone
 from .api import Actor, DiaryAPI
 from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
-                    TaskCreateForm, TaskFormSet, TemplateForm, editor_task_limit)
+                    TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TemplateForm, editor_task_limit)
 from .models import EventCalendar, Milestone
 from .roles import access_groups
 
@@ -233,6 +234,12 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
             raise ValueError('Supply one diary key.')
         return next(iter(keys), None)
 
+    # DV1-023: Host routes supply their own task detail scope through a named view.
+    def task_url(self, entry_key, diary_key):
+        """Return a task-detail URL that keeps the selected diary and optional host route name."""
+        name = self.view_context.get('task_detail_url_name', 'Diary:task-detail')
+        return reverse(name, kwargs={'entry_key': entry_key}) + '?' + urlencode({'diary_key': diary_key})
+
 
 # Partial DV1-040: Shared current owner labels for task pages.
 class DiaryOwnerLabelsMixin:
@@ -367,6 +374,108 @@ class TaskCreateView(DiaryScopeMixin, View):
         return render(self.request, self.template_name, context, status=400)
 
 
+# DV1-023, DV1-032, DV1-035, DV1-036, DV1-037, DV1-038: Task details, due-date edits, and completion.
+class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
+    """Show an accessible task and apply date edits or completion within trusted host scope."""
+
+    access_roles = ('manager', 'user')
+    http_method_names = ['get', 'post', 'head', 'options']
+    template_name = 'Diary/task_detail.html'
+
+    def get(self, request, entry_key, *args, **kwargs):
+        """Show task details and open predecessors without changing records."""
+        return self.respond(entry_key)
+
+    def post(self, request, entry_key, *args, **kwargs):
+        """Apply one explicit task action after validating its submitted state."""
+        return self.respond(entry_key, submitted=True)
+
+    def respond(self, entry_key, *, submitted=False):
+        """Resolve task scope, apply an action, and retain input when a save fails."""
+        context = {**self.view_context, 'task': None, 'detail_error': ''}
+        try:
+            key = self.selected_key()
+        except (ValueError, TypeError, AttributeError):
+            context['detail_error'] = 'Supply one valid diary key.'
+            return render(self.request, self.template_name, context, status=400)
+
+        # A task key cannot select a diary or expand the host's permitted scope.
+        if key is None:
+            context['detail_error'] = 'Select a permitted diary for this task.'
+            return render(self.request, self.template_name, context, status=400)
+        try:
+            diary = DiaryAPI(actor=self.actor).diary(key=key)
+            task = diary.task(entry_key=entry_key)
+        except ObjectDoesNotExist:
+            context['detail_error'] = 'The selected task is unavailable.'
+            return render(self.request, self.template_name, context, status=404)
+        labels, members = self.get_owner_labels((task,))
+        task.update(owner_label=self.owner_label(task, labels), owner_members=members.get(task['role_ref'], ()),
+                    completed_by_label=labels.get(task['completed_by_ref'], task['completed_by_ref']))
+        task['completion_action_label'] = {'complete': 'Complete', 'close_all': 'Close all',
+                                           'forced_predecessor': 'Close all: predecessor'}.get(
+                                               task['completion_action'], 'Earlier completion')
+
+        # Human-readable source labels explain provenance without exposing model field names.
+        task['source_label'] = 'Template task' if task['source'] == 'template' else 'Diary addition'
+        context['task'] = task
+        initial = {'revision': task['revision'], 'due_date': task['date'], 'blocker_token': task['blocker_token']}
+
+        # Only the requested action binds a form, so unrelated required fields cannot prevent completion.
+        action = self.request.POST.get('action') if submitted else None
+
+        # Distinct task-specific IDs keep date and completion forms accessible within the same document.
+        due_form = TaskDueDateForm(self.request.POST if action == 'save_date' else None, initial=initial,
+                                   auto_id=f'diary-date-{entry_key}-%s')
+        completion_form = TaskCompletionForm(self.request.POST if action in {'complete', 'close_all'} else None,
+                                             initial=initial, auto_id=f'diary-completion-{entry_key}-%s')
+        context.update(due_form=due_form, completion_form=completion_form)
+
+        # GET shows the current state, while POST must name one supported action.
+        if not submitted:
+            return render(self.request, self.template_name, context)
+
+        # Unknown actions must never fall through to a different mutation.
+        if action not in {'save_date', 'complete', 'close_all'} or len(self.request.POST.getlist('action')) != 1:
+            context['detail_error'] = 'Select one supported task action.'
+            return render(self.request, self.template_name, context, status=400)
+        try:
+
+            # Date changes have separate ownership permissions from task completion.
+            if action == 'save_date':
+
+                # Validate dates and revision numbers before invoking the callable API.
+                if due_form.is_valid():
+                    diary.update_due_date(entry_key=entry_key, due_date=due_form.cleaned_data['due_date'],
+                                          expected_revision=due_form.cleaned_data['revision'])
+                    return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+
+            # Completion always rechecks the live predecessor chain inside the database transaction.
+            elif completion_form.is_valid():
+                diary.complete(entry_key=entry_key, expected_revision=completion_form.cleaned_data['revision'],
+                               close_all=action == 'close_all',
+                               expected_blockers=completion_form.cleaned_data['blocker_token'])
+                return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+        except ValidationError as error:
+            context['detail_error'] = ' '.join(error.messages)
+        except ObjectDoesNotExist:
+            context['detail_error'] = 'The selected task is unavailable.'
+            return render(self.request, self.template_name, context, status=404)
+        return render(self.request, self.template_name, context, status=400)
+
+    def owner_label(self, task, labels):
+        """Return a current person name, configured role name, or whole-team label."""
+
+        # Person references can use an opaque namespace outside the configured Django user model.
+        if task['owner_kind'] == OwnerKind.PERSON:
+            return labels.get(task['person_ref'], task['person_ref'])
+
+        # Role tasks keep their group name and current membership separately.
+        if task['owner_kind'] == OwnerKind.ROLE:
+            return task['role_ref']
+        return 'Whole team'
+
+
 # DV1-022, DV1-052: Manager list and completion history for one permitted diary.
 class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
     """Display the manager's selected diary and read-only completion history."""
@@ -435,6 +544,7 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
             # Whole-team ownership has no person or group reference.
             else:
                 task['owner_label'] = 'Whole team'
+            task['detail_url'] = self.task_url(task['entry_key'], data['key'])
             tasks.append(task)
         return tuple(sorted(tasks, key=self.task_order))
 
@@ -518,6 +628,7 @@ class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
             else:
                 task['owner_label'] = 'Whole team'
             group = groups.setdefault(task['diary_key'], {'key': task['diary_key'], 'name': task['diary_name'], 'tasks': []})
+            task['detail_url'] = self.task_url(task['entry_key'], task['diary_key'])
             group['tasks'].append(task)
         links = []
         for category, count in counts.items():

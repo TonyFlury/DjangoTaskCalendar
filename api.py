@@ -10,6 +10,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 
 from .choices import DateKind, OwnerKind, VersionStatus
 from .entry_mapping import EntryMapper, validate_entry_owner
@@ -136,7 +137,7 @@ def _open_calendar(actor, key, action):
     return calendar
 
 
-# DV1-031: Personal entries belong only to their owner and permitted managers.
+# DV1-031, DV1-038: Personal entries and completion references remain private to permitted readers.
 def _visible_entries(actor, entries):
     """Remove private tasks and private predecessor references from serialized entries.
     Preserve readiness calculated from the complete dependency graph.
@@ -151,8 +152,13 @@ def _visible_entries(actor, entries):
                     or entry['owner_kind'] != OwnerKind.PERSON or entry['person_ref'] == actor.reference)
     keys = {entry['entry_key'] for entry in visible}
 
-    # Related keys must not disclose a private task, even when that task blocks visible work.
+    # Related keys and completion comments must not disclose private predecessors or private completion targets.
     return tuple({**entry,
+                  'completion_target_key': entry.get('completion_target_key')
+                  if entry.get('completion_target_key') in keys else None,
+                  'completion_comment': entry.get('completion_comment', '')
+                  if entry.get('completion_target_key') is None or entry.get('completion_target_key') in keys
+                  else 'Close all completed this predecessor for an inaccessible task.',
                   'predecessors': tuple(key for key in entry['predecessors'] if key in keys),
                   'blocking_predecessors': tuple(key for key in entry['blocking_predecessors'] if key in keys)}
                  for entry in visible)
@@ -857,6 +863,182 @@ class DiaryInstance(_DependencyAPI):
                               expected_version_key=expected_version_key, directory=directory)
         return spec.entry_key
 
+    # DV1-023, DV1-031: Task lookup applies privacy before returning any task content.
+    def _task_entry(self, calendar, entry_key):
+        """Return one visible task or raise CalendarEntry.DoesNotExist for a private or unknown key."""
+        entries = calendar.entries.select_related('milestone')
+
+        # Managers can inspect private additions within scope, while ordinary users can inspect only their own additions.
+        if not _allowed(self.actor, 'edit'):
+            entries = entries.filter(Q(source_entry__isnull=False) | ~Q(owner_kind=OwnerKind.PERSON)
+                                     | Q(person_ref=self.actor.reference))
+        return entries.get(entry_key=entry_key)
+
+    # DV1-032: Assignment alone cannot grant permission to edit a template task.
+    def _can_edit_date(self, entry):
+        """Return whether the actor can edit this task's diary-specific due date."""
+
+        # Manager access permits scoped edits, while ordinary access requires a self-owned diary addition.
+        return (_allowed(self.actor, 'edit') or
+                (entry.source_entry_id is None and entry.owner_kind == OwnerKind.PERSON
+                 and entry.person_ref == self.actor.reference))
+
+    # DV1-035, DV1-037: Inspect the complete open chain without disclosing private task keys.
+    def _open_blockers(self, calendar, entry):
+        """Return open direct and indirect predecessors plus an opaque fingerprint of their current state.
+        Stop traversal at completed tasks. Reject a corrupt cycle through the selected task.
+        """
+        entries = {item.entry_key: item for item in calendar.entries.select_related('milestone').prefetch_related('predecessors')}
+        target = entries[entry.entry_key]
+        pending = list(target.predecessors.all())
+        found = {}
+
+        # Each open predecessor contributes once, including shared and indirect blockers.
+        while pending:
+            item = entries[pending.pop().entry_key]
+
+            # Completed predecessors no longer block this chain, and visited tasks need no second traversal.
+            if item.completed_at is not None or item.entry_key in found:
+                continue
+
+            # Unsupported direct database changes must not force the selected task to complete itself as a predecessor.
+            if item.entry_key == entry.entry_key:
+                raise ValidationError('This task has a circular predecessor chain.')
+            found[item.entry_key] = item
+            pending.extend(item.predecessors.all())
+        chain = tuple(found[key] for key in sorted(found))
+        dates = calendar.date_context()
+        state = [(str(item.entry_key), item.revision, str(item.open_due_date(source_dates=dates)),
+                  sorted(str(predecessor.entry_key) for predecessor in item.predecessors.all()))
+                 for item in (target, *chain)]
+        token = salted_hmac('Diary.open-blockers', repr((str(calendar.pk), state)), algorithm='sha256').hexdigest()
+        return chain, token
+
+    # DV1-023, DV1-032, DV1-035, DV1-038: Task details and private-safe completion inspection.
+    def task(self, *, entry_key):
+        """Return task details, edit permission, completion history, and visible open predecessors.
+        Represent inaccessible predecessors with one generic marker and no private identifiers.
+        """
+        calendar = _calendar(self.actor, self.key)
+        entry = self._task_entry(calendar, entry_key)
+        data = self.read()
+        visible = {item['entry_key']: item for item in data['entries']}
+        result = dict(visible[entry.entry_key])
+        blockers, token = self._open_blockers(calendar, entry)
+        listed = []
+        private = False
+        for blocker in blockers:
+
+            # Private names, identifiers, dates, and owners must stay outside the result and HTML.
+            if blocker.entry_key not in visible:
+                private = True
+                continue
+            listed.append({**visible[blocker.entry_key], 'private': False})
+
+        # One generic marker explains inaccessible blocking work without revealing its count.
+        if private:
+            listed.append({'private': True})
+
+        # Metadata keeps the original rule, omits absent milestones, and permits edits only on an open task and diary.
+        result.update(diary_key=calendar.pk, diary_name=calendar.name, closed=calendar.closed_at is not None,
+                      can_edit_date=self._can_edit_date(entry) and entry.completed_at is None and calendar.closed_at is None,
+                      manager=_allowed(self.actor, 'edit'), blockers=tuple(listed), blocker_token=token,
+                      date_rule=EntryMapper.snapshot_fields(entry), date_rule_label=entry.get_date_kind_display(),
+                      milestone_name=entry.milestone.name if entry.milestone_id else '')
+        today = _comparison_date(None)
+        result['late'] = entry.completed_at is None and result['date'] is not None and result['date'] <= today
+
+        # Direct late blockers determine the amber highlight even when their details are private.
+        result['blocked_late'] = any(item.completed_at is None and item.open_due_date(source_dates=data['milestones']) is not None
+                                    and item.open_due_date(source_dates=data['milestones']) <= today
+                                    for item in entry.predecessors.select_related('milestone'))
+        return result
+
+    # DV1-032: Users edit their personal additions, while managers can also edit template-task dates.
+    @transaction.atomic
+    def update_due_date(self, *, entry_key, due_date, expected_revision):
+        """Set a diary-specific due date after permission, closure, completion, and revision checks.
+        Raise PermissionDenied for unauthorized edits and ValidationError for invalid or stale input.
+        Keep template rules, ownership, dependencies, and other diaries unchanged.
+        """
+        calendar = _open_calendar(self.actor, self.key, 'use')
+        entry = self._task_entry(calendar, entry_key)
+
+        # A role assignment or copied template task does not grant ordinary users date-edit permission.
+        if not self._can_edit_date(entry):
+            raise PermissionDenied('Only managers can edit this task date.')
+
+        # Completion freezes the due date and every task field.
+        if entry.completed_at is not None:
+            raise ValidationError('A completed task cannot change.')
+
+        # Plain calendar dates prevent timestamps or empty values from changing the date interpretation.
+        if type(due_date) is not date:
+            raise ValidationError('Supply a due date.')
+
+        # A stale form must not replace a date saved by another caller.
+        if type(expected_revision) is not int or expected_revision != entry.revision:
+            raise ValidationError('This task changed. Reload it before saving.')
+        entry.due_date_override = due_date
+        entry.revision += 1
+        entry.save()
+        return self.task(entry_key=entry.entry_key)
+
+    # DV1-036, DV1-037, DV1-038: Normal and forced completion share the diary write lock.
+    @transaction.atomic
+    def complete(self, *, entry_key, expected_revision, close_all=False, expected_blockers=None):
+        """Complete an accessible task, or its open blocking chain when a manager selects Close all.
+        Recheck blocking and revisions under the diary lock. Keep repeated completion requests unchanged.
+        Record the actor, time, effective due date, action, and forced-predecessor comments atomically.
+        """
+        calendar = _open_calendar(self.actor, self.key, 'use')
+
+        # Reject nonboolean action flags before interpreting privileged completion behavior.
+        if type(close_all) is not bool:
+            raise ValidationError('Supply a boolean Close all option.')
+
+        # Forced completion requires manager permission even when the selected task is already complete.
+        if close_all:
+            _require(self.actor, 'edit')
+        entry = self._task_entry(calendar, entry_key)
+
+        # A repeated request keeps the first completion actor, time, date, and comments.
+        if entry.completed_at is not None:
+            return self.task(entry_key=entry.entry_key)
+
+        # A completion form must describe the task date and state that the caller inspected.
+        if type(expected_revision) is not int or expected_revision != entry.revision:
+            raise ValidationError('This task changed. Reload it before completion.')
+        blockers, token = self._open_blockers(calendar, entry)
+
+        # Normal completion cannot bypass any open direct or indirect predecessor.
+        if blockers and not close_all:
+            raise ValidationError('Open predecessors must finish before this task can complete.')
+
+        # A changed chain requires another inspection before a manager can force its completion.
+        if close_all and expected_blockers != token:
+            raise ValidationError('The predecessor chain changed. Reload it before Close all.')
+        now = timezone.now()
+
+        # Normal completion changes only the selected task, while Close all first completes the inspected open chain.
+        affected = (*blockers, entry) if close_all else (entry,)
+        for item in affected:
+            item.completed_at = now
+            item.completed_by_ref = self.actor.reference
+            item.completion_target_key = entry.entry_key
+            item.revision += 1
+
+            # Forced predecessor comments identify the selected task without replacing an earlier completion record.
+            if item.entry_key != entry.entry_key:
+                item.completion_action = 'forced_predecessor'
+                item.completion_comment = f'Close all completed this predecessor for "{entry.name}" ({entry.entry_key}).'
+
+            # The selected task records the exact action used by the caller.
+            else:
+                item.completion_action = 'close_all' if close_all else 'complete'
+            item.save()
+        return self.task(entry_key=entry.entry_key)
+
     # DV1-007: Task reads for one diary.
     def read(self):
         """Return diary metadata and visible entries without private predecessor references.
@@ -879,9 +1061,10 @@ class DiaryInstance(_DependencyAPI):
             # Completed predecessors remain in history but no longer block the task.
             # DV1-022, DV1-052: Managers can display task origin and the completing actor.
             # A source-entry reference distinguishes copied tasks from diary additions.
+            # DV1-032, DV1-036: Open tasks use effective date overrides, while completed tasks keep their recorded dates.
             entries.append({'entry_key': entry.entry_key, 'name': entry.name, 'description': entry.description,
                             'date': (entry.completed_due_date if entry.completed_at is not None else
-                                     entry.resolve_date(source_dates=context)),
+                                     entry.open_due_date(source_dates=context)),
                             'source': 'template' if entry.source_entry_id else 'diary',
                             'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref, 'role_ref': entry.role_ref,
                             'predecessors': tuple(item.entry_key for item in predecessors),
@@ -889,6 +1072,9 @@ class DiaryInstance(_DependencyAPI):
                                 item.entry_key for item in predecessors if item.completed_at is None),
                             'completed_at': entry.completed_at,
                             'completed_by_ref': entry.completed_by_ref,
+                            'completed_due_date': entry.completed_due_date, 'revision': entry.revision,
+                            'completion_action': entry.completion_action, 'completion_comment': entry.completion_comment,
+                            'completion_target_key': entry.completion_target_key,
                             'ready': entry.completed_at is None and all(
                                 item.completed_at is not None for item in predecessors)})
         # Public reads protect private entries after calculating readiness from all predecessors.
