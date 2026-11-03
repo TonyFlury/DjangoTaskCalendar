@@ -126,6 +126,8 @@ The host supplies this configuration in settings:
 ```python
 DIARY_MANAGER = 'Officer'
 DIARY_USER = 'ExecMember'
+
+# Optional override. Omit it to use the project's TIME_ZONE setting.
 DIARY_TIME_ZONE = 'Europe/London'
 # Optional default when a call does not select a template explicitly.
 DIARY_TEMPLATE_NAME = 'Garage Sale calendar'
@@ -134,6 +136,8 @@ DIARY_TASK_OWNER_ROLES = ('ExecMember', 'Officer', 'SponsorshipManager')
 
 `DIARY_MANAGER` identifies the DiaryManager group.
 `DIARY_USER` identifies the DiaryUser group.
+`DIARY_TIME_ZONE` is optional and overrides Django's project-default `TIME_ZONE` setting.
+Omit `DIARY_TIME_ZONE` to use the project default.
 Both settings must contain a nonempty group name without surrounding spaces.
 Missing or invalid values raise `ImproperlyConfigured`, including during application startup.
 
@@ -926,7 +930,9 @@ A blocked task can also be late.
 A missing date is not late.
 There are no stored readiness or lateness flags.
 The caller can supply `today` for a reproducible date comparison.
-Otherwise, the API uses the date in `DIARY_TIME_ZONE`.
+Otherwise, the API uses `DIARY_TIME_ZONE` when that optional setting is present.
+When it is absent, the API uses Django's project-default `TIME_ZONE` setting.
+A temporarily activated user time zone does not change that project default.
 
 The model keeps completion time, the completing actor reference, and the due date at completion.
 Completed records cannot change through normal model saves.

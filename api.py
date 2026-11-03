@@ -757,15 +757,17 @@ class DiaryInstance(_DependencyAPI):
 
     # DV1-003: Date calculation.
     # DV1-007: Task reads for one diary.
+    # DV1-050: Optional Diary time zone with the project default.
     def active_tasks(self, *, today=None):
         """Return open tasks with independently calculated readiness and lateness.
         Use the configured local date when today is omitted.
+        Use Django's project-default time zone when DIARY_TIME_ZONE is absent.
         Return an empty tuple for a closed diary.
         """
 
-        # An omitted comparison date uses the configured Diary time zone.
+        # An omitted comparison date uses the Diary override or the project's default Django time zone.
         if today is None:
-            today = timezone.localdate(timezone=ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', 'Europe/London')))
+            today = timezone.localdate(timezone=ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', settings.TIME_ZONE)))
 
         # Date comparisons must not accept timestamps or other incompatible values.
         if type(today) is not date:

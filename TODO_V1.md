@@ -36,7 +36,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 - [x] **DV1-003: Date calculation.**
   Source, relative, annual, and one-time rules calculate dates and identify missing or invalid dates.
-  Lateness uses `DIARY_TIME_ZONE` and includes tasks due today.
+  Lateness uses optional `DIARY_TIME_ZONE`, otherwise Django's `TIME_ZONE`, and includes tasks due today.
   Implementation: [date_rules.py](date_rules.py): `resolve_date`. [models.py](models.py): `EntryFields.resolve_date`. [api.py](api.py): `DiaryInstance.active_tasks`.
   Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_leap_day_and_previous_year`, `DiaryTests.test_active_tasks_can_be_blocked_and_late_and_exclude_completed_tasks`.
   Requirement: [D5] and [D6].
@@ -137,6 +137,14 @@ The final sections separate unresolved decisions, host integration, and deferred
   Implementation: [roles.py](roles.py): `validate_task_owner_roles`. [entry_mapping.py](entry_mapping.py): `validate_entry_owner`. [api.py](api.py): `_template_version`, `DiaryTemplate.from_name`, `DiaryTemplate.create`, `DiaryAPI.template_version`, `DiaryInstance.create`.
   Verification: [tests/test_roles.py](tests/test_roles.py): `DjangoGroupDatabaseTests`. [tests/test_class_api.py](tests/test_class_api.py): `ClassAPITests`.
   Requirement: [D4].
+
+- [x] **DV1-050: Optional Diary time zone.**
+  Use `DIARY_TIME_ZONE` when the host defines it.
+  Otherwise use Django's project-default `TIME_ZONE`, independently of a temporarily activated user time zone.
+  Preserve the caller's explicit `today` argument.
+  Implementation: [api.py](api.py): `DiaryInstance.active_tasks`.
+  Verification: [tests/test_time_zone.py](tests/test_time_zone.py): `DiaryTimeZoneTests`.
+  Requirement: [usage guide](README.md#current-api-configuration) and [D6].
 
 ## Access and validation work
 
@@ -479,6 +487,7 @@ The following work is not a generic Diary V1 requirement:
 The status review inspected the implementation, migrations, tests, and preview boundaries.
 The startup validation and existing Diary code passed 97 tests against a separate PostgreSQL database.
 The isolated configuration passed 96 tests with Django's standard user model and no host business apps.
+The optional time-zone change passed 37 targeted tests against a separate PostgreSQL database.
 The optional Chrome test passed against a separate PostgreSQL database.
 The tests include the Garage Sale key integration test.
 Migration consistency checks found no model changes.
