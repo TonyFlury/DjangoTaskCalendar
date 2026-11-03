@@ -492,6 +492,20 @@ The following work is not a generic Diary V1 requirement:
 - Diary has no public view.
 - Finer-grained permissions may become an optional feature in a later version, outside V1.
 
+## Future requirements
+
+These requirements have no assigned release and are not V1 completion conditions.
+
+- [ ] **DFUT-001: Independent diary creation UI.**
+  Let an authorized user create a diary from an approved template through Diary's own UI.
+  Prompt for the diary name, diary year, and the selected template's relevant milestone dates.
+  Use the existing instance creation API and preserve safe retries without duplicate diaries.
+  Require no Garage Sale event or other host business record.
+  Define the permitted role and access to the newly created diary before implementation.
+  Implementation: Not started. No UI classes, functions, or routes implement this requirement.
+  Design: [Independent diary creation UI](../docs/design/diary-instance-creation-ui.md).
+  Existing API: [api.py](api.py): `DiaryAPI.create_diary`, `DiaryInstance.create`, `DiaryTemplateVersion.required_milestones`.
+
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.

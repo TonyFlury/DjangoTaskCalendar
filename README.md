@@ -285,6 +285,14 @@ The test suite explicitly calls the normal startup path against its separate Pos
 It verifies the command exceptions without querying application data.
 Projects can use Django's standard setup commands without providing `sync_access_policy`.
 
+### Future independent diary creation UI
+
+DFUT-001 records a future UI for an authorized user to create a diary from an approved template.
+It will prompt for the relevant milestone dates without requiring a host business record.
+No release is assigned, and the UI is not implemented.
+The [future design](../docs/design/diary-instance-creation-ui.md) separates the confirmed requirement from proposed behavior and open decisions.
+The existing callable creation API is implemented.
+
 ### Ownership checks during diary creation
 
 `DiaryAPI.create_diary()` and `DiaryInstance.create()` both validate current ownership configuration.
