@@ -1,6 +1,6 @@
 # Diary V1 implementation checklist
 
-Status reviewed: 2 November 2026.
+Status reviewed: 3 November 2026.
 
 This checklist tracks the generic Diary V1 requirements in the [design document](../docs/design/event-calendar.md).
 Each identifier stays unchanged when its status changes.
@@ -179,6 +179,19 @@ The final sections separate unresolved decisions, host integration, and deferred
   Support the Late, Ready, and Blocked filters used by host links.
   Give Late priority so those filter categories do not overlap.
   Requirement: [D6].
+
+- [ ] **DV1-049: Ready tasks by default in My Diary.**
+  Show only ready tasks in the default DiaryUser view.
+  Provide a “show blocked also” checkbox, clear by default.
+  When selected, also show blocked tasks assigned to the user or their groups.
+  Determine blocking from incomplete predecessors regardless of their owners.
+  Preserve task access rules and predecessor privacy.
+  Apply this behavior to one-diary and multiple-diary views from DV1-021.
+  Keep the callable API task results unchanged.
+  Verify the default, both checkbox states, and predecessors owned by other users or groups.
+  Verify that completed predecessors stop blocking and inaccessible tasks remain excluded.
+  Document the checkbox styling classes when implementing the control.
+  Requirement: [D6] and [usage guidance](README.md#confirmed-v1-my-diary-display-requirement).
 
 - [ ] **DV1-022: Full diary list view.**
   Provide explicit navigation to a permitted diary's date-ordered entries.

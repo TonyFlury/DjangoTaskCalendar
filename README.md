@@ -618,6 +618,18 @@ Diary does not implement that directory through another app's models.
 
 The personal list uses the Actor's current group membership for role-owned tasks.
 The default logged-in Diary page must use `personal_tasks` for its task list.
+
+### Confirmed V1 My Diary display requirement
+
+The “My Diary” view shows only ready tasks by default.
+The “show blocked also” checkbox is clear by default.
+Selecting it also shows blocked tasks assigned to the user or their groups.
+A task remains blocked while any required predecessor is incomplete, regardless of that predecessor’s owner.
+The checkbox does not grant access to other users’ tasks or private predecessor details.
+This display filter does not change the callable API task results.
+The production view and checkbox remain implementation work.
+See DV1-049 in [the V1 checklist](TODO_V1.md).
+
 The full event list from `active_tasks` is an explicit view choice, not the default landing page.
 It excludes whole-team tasks unless `include_whole_team=True`.
 The list returns each task once.
