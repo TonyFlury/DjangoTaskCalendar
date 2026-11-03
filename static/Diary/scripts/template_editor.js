@@ -22,7 +22,11 @@
         return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
 
-    /** Initialize each editor fragment independently of host document structure. */
+    /**
+     * Initialize each editor fragment independently of host document structure.
+     * DV1-025: Template authoring controls.
+     * DV1-017: Immediate ownership group warnings.
+     */
     function initialize(editor) {
         const form = editor.querySelector('.diary-template-form');
         const list = editor.querySelector('.diary-template-task-list');
@@ -37,7 +41,11 @@
             return Array.from(list.querySelectorAll('.diary-template-task'));
         }
 
-        /** Refresh rule panels and safe predecessor choices from all proposed task edits. */
+        /**
+         * Refresh rule panels and safe predecessor choices from all proposed task edits.
+         * DV1-027: Exclude this task and its successors using the proposed graph.
+         * DV1-017: Show the selected ownership group warning.
+         */
         function refresh() {
             const rows = tasks();
             const active = rows.filter(task => !field(task, 'delete').checked);

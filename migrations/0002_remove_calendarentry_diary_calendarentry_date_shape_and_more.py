@@ -3,6 +3,7 @@
 from django.db import migrations, models
 
 
+# DV1-001: Independent PostgreSQL data layer.
 class Migration(migrations.Migration):
 
     dependencies = [

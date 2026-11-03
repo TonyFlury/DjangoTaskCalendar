@@ -10,6 +10,7 @@ from Diary.choices import DateKind
 from Diary.models import EntryDependency
 
 
+# Verifies DV1-006: Saved dependency validation.
 @override_settings(DIARY_MANAGER='Officer', DIARY_USER='ExecMember')
 class DependencyConcurrencyTests(TransactionTestCase):
     available_apps = ['Diary']

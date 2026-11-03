@@ -219,6 +219,8 @@ An absent or empty configured role must prevent creation without leaving partial
 Template editing must show an on-screen warning for a selected ownership group with no members.
 The warning must identify the group and affected task.
 
+<!-- DV1-012: Document the limit on automatic runtime warnings. -->
+
 **Warning:** Diary does not continuously monitor task-owning groups after startup.
 If a group becomes empty or is deleted, Diary gives no automatic runtime warning.
 The next server restart, diary creation, or template edit is the next validation or warning point.

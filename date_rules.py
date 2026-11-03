@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from .choices import DateKind
 
 
+# DV1-003: Date calculation.
 def resolve_date(*, kind, event_year, source_dates, source='', month=None, day=None,
                  year_offset=0, day_offset=0, fixed_date=None):
     """Calculate a date from data supplied by the caller, without app imports."""

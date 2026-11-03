@@ -11,6 +11,9 @@ from Diary.choices import DateKind
 from Diary.models import EventCalendar
 
 
+# Verifies DV1-046: Class-based callable API and factories.
+# Verifies DV1-047: Simple V1 access settings.
+# Verifies DV1-048: Standard Django groups and optional template default.
 @override_settings(
     DIARY_MANAGER='DiaryManager', DIARY_USER='DiaryUser',
     DIARY_TEMPLATE_NAME='Class API template',
@@ -122,6 +125,7 @@ class ClassAPITests(TestCase):
         outsider = replace(self.actor, calendar_keys=frozenset())
         with self.assertRaises(PermissionDenied):
             api.DiaryInstance.from_key(actor=outsider, key=self.diary.key)
+
         # Direct construction of a reference cannot bypass operation checks.
         with self.assertRaises(PermissionDenied):
             api.DiaryInstance(actor=outsider, key=self.diary.key).read()

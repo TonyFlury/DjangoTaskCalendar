@@ -8,6 +8,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from Diary.roles import access_groups, task_owner_roles, validate_task_owner_roles
 
 
+# Verifies DV1-047: Simple V1 access settings.
+# Verifies DV1-014: Startup access-group validation.
 @override_settings(DIARY_MANAGER='CustomManager', DIARY_USER='CustomUser')
 class AccessGroupConfigurationTests(SimpleTestCase):
     def test_two_group_names_are_sufficient_and_not_shared_mutable_state(self):
@@ -31,6 +33,7 @@ class AccessGroupConfigurationTests(SimpleTestCase):
                     config.ready()
 
 
+# Verifies DV1-009: Configured ownership role names and existence checks.
 @override_settings(DIARY_TASK_OWNER_ROLES=('ConfiguredRole',))
 class RoleConfigurationTests(SimpleTestCase):
     def setUp(self):
@@ -81,6 +84,8 @@ class RoleConfigurationTests(SimpleTestCase):
                     validate.assert_not_called()
 
 
+# Verifies DV1-009: Configured ownership role names and existence checks.
+# Verifies DV1-048: Standard Django groups and optional template default.
 @override_settings(DIARY_TASK_OWNER_ROLES=('CustomOwner',))
 class DjangoGroupDatabaseTests(TestCase):
     def test_database_role_existence_is_required_without_creating_missing_roles(self):

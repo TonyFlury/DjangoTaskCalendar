@@ -17,6 +17,7 @@ from Diary.models import CalendarEntry, CalendarMilestone, CalendarTemplate, Eve
     TemplateVersion
 
 
+# Verifies DV1-005: Ownership data and assignment checks.
 @override_settings(DIARY_MANAGER='Managers', DIARY_USER='Users', DIARY_TASK_OWNER_ROLES=('Owners',))
 class EntryMappingTests(TestCase):
     """Verify entry conversion, snapshot isolation, query costs, and ownership checks."""
@@ -68,6 +69,7 @@ class EntryMappingTests(TestCase):
         self.assertIsNone(fields['milestone'])
         self.assertEqual((fields['month'], fields['day']), (3, 1))
 
+    # Verifies DV1-004: Named diary creation and template snapshots.
     def test_snapshots_exclude_history_and_do_not_load_milestones(self):
         """Copy reusable fields without querying relations or copying completion and container records."""
         self.assertNotIn('milestone', self.template_entry._state.fields_cache)

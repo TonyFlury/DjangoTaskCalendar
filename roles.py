@@ -5,6 +5,8 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import DatabaseError
 
 
+# DV1-047: Simple V1 access settings.
+# Partial DV1-014: Startup access-group validation.
 def access_groups():
     result = {}
     for role, name in (('manager', 'DIARY_MANAGER'), ('user', 'DIARY_USER')):
@@ -15,6 +17,7 @@ def access_groups():
     return result
 
 
+# DV1-009: Configured ownership role names and existence checks.
 def task_owner_roles():
     roles = getattr(settings, 'DIARY_TASK_OWNER_ROLES', ())
     if (not isinstance(roles, (list, tuple, set, frozenset))
@@ -24,6 +27,8 @@ def task_owner_roles():
     return frozenset(roles)
 
 
+# DV1-009: Configured ownership role names and existence checks.
+# DV1-048: Standard Django groups and optional template default.
 def validate_task_owner_roles():
     roles = task_owner_roles()
     if not roles:

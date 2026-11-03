@@ -16,6 +16,8 @@ from Diary.models import CalendarTemplate, Milestone, TemplateEntry, TemplateVer
 from Diary.views import TemplateEditorView
 
 
+# Verifies DV1-025: Template authoring interface.
+# Partial DV1-044: Regression and concurrency verification.
 @override_settings(DIARY_MANAGER='Planners', DIARY_USER='Participants', DIARY_TASK_OWNER_ROLES=('Helpers',))
 class TemplateEditorTests(TestCase):
     """Exercise complete template revisions with current Django user and group data."""
@@ -64,6 +66,8 @@ class TemplateEditorTests(TestCase):
             data[f'tasks-{index}-predecessors'] = []
         return data
 
+    # Verifies DV1-024: Template chooser and named template view.
+    # Verifies DV1-042: Empty states and invalid selections.
     def test_reads_do_not_create_records_and_missing_name_opens_chooser(self):
         """Keep chooser and editor GET requests free from template creation."""
         response = self.client.get(reverse('Diary:template-list'))
@@ -93,6 +97,7 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Milestone.objects.get(name='target').label, 'Target date')
 
+    # Verifies DV1-026: Versioned template save and approval.
     def test_create_and_edit_approve_versions_and_preserve_existing_diaries(self):
         """Save two revisions while retaining task keys and an existing diary snapshot."""
         data = self.payload()
@@ -119,6 +124,9 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(reader.read(), snapshot)
         self.assertEqual(first.read()['entries'][0]['name'], 'Prepare')
 
+    # Verifies DV1-024: Template chooser and named template view.
+    # Verifies DV1-019: View object selectors.
+    # Verifies DV1-042: Empty states and invalid selections.
     def test_named_view_selects_latest_draft_and_supports_url_or_trusted_context(self):
         """Use highest numbered versions and reject conflicting template selectors."""
         template, _ = self.create_template()
@@ -140,6 +148,7 @@ class TemplateEditorTests(TestCase):
         response = self.client.get(reverse('Diary:template-edit', args=['Unknown']))
         self.assertEqual(response.status_code, 404)
 
+    # Verifies DV1-018: Authenticated routed views.
     def test_anonymous_and_ordinary_users_cannot_access_or_save_templates(self):
         """Enforce the same manager gate on direct reads, writes, and callable operations."""
         self.client.logout()
@@ -157,6 +166,7 @@ class TemplateEditorTests(TestCase):
         with self.assertRaises(PermissionDenied):
             forged.save_version(entries=[], predecessors={}, expected_version_key=version.key)
 
+    # Verifies DV1-018: Authenticated routed views.
     def test_http_post_requires_csrf_token(self):
         """Reject authenticated browser saves that lack CSRF protection."""
         client = Client(enforce_csrf_checks=True)
@@ -165,6 +175,7 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(CalendarTemplate.objects.exists())
 
+    # Verifies DV1-017: Empty-group warnings during template editing.
     def test_empty_role_warning_names_task_and_preserves_role_assignment(self):
         """Warn about empty groups on failed posts and saved template reads."""
         role_spec = replace(self.spec, owner_kind=OwnerKind.ROLE, role_ref='Helpers')
@@ -184,6 +195,7 @@ class TemplateEditorTests(TestCase):
         self.user.groups.add(self.helpers)
         self.assertNotContains(self.client.get(reverse('Diary:template-edit', args=['Reusable plan'])), 'No role members')
 
+    # Verifies DV1-013: Generic identity and role adapters.
     def test_person_ownership_uses_configured_user_model_and_rejects_other_users(self):
         """Accept eligible Django references and reject a person without an access group."""
         person = replace(self.spec, owner_kind=OwnerKind.PERSON, person_ref=f'user:{self.user.pk}')
@@ -209,6 +221,7 @@ class TemplateEditorTests(TestCase):
         self.assertContains(response, 'different name', status_code=400)
         self.assertFalse(TemplateVersion.objects.exists())
 
+    # Verifies DV1-026: Versioned template save and approval.
     def test_stale_save_preserves_submitted_data_and_does_not_add_version(self):
         """Reject a browser edit after another manager saves a newer revision."""
         template, version = self.create_template()
@@ -231,6 +244,7 @@ class TemplateEditorTests(TestCase):
         self.assertFalse(Milestone.objects.filter(name='unused').exists())
         self.assertEqual(template.editor_data()['description'], '')
 
+    # Verifies DV1-027: Safe template predecessor editor.
     def test_complete_graph_rejects_cycles_self_links_duplicates_and_foreign_predecessors(self):
         """Validate all dependency endpoints before writing a new revision."""
         template, version = self.create_template()
@@ -248,6 +262,7 @@ class TemplateEditorTests(TestCase):
             template.save_version(entries=[self.spec, self.spec], predecessors={}, expected_version_key=version.key)
         self.assertEqual(TemplateVersion.objects.count(), 1)
 
+    # Verifies DV1-027: Safe template predecessor editor.
     def test_predecessor_choices_exclude_self_and_unsaved_indirect_successors(self):
         """Use the complete proposed graph before the new version exists in the database."""
         third = replace(self.other, entry_key=uuid4(), name='Finish')
@@ -293,6 +308,8 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(response.content.lower().count(b'<!doctype html>'), 1)
 
 
+# Verifies DV1-026: Versioned template save and approval.
+# Partial DV1-044: Regression and concurrency verification.
 @override_settings(DIARY_MANAGER='Planners', DIARY_USER='Participants', DIARY_TASK_OWNER_ROLES=())
 class TemplateRevisionConcurrencyTests(TransactionTestCase):
     """Verify that concurrent complete saves cannot overwrite the same base revision."""

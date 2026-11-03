@@ -4,6 +4,7 @@ from uuid import UUID
 from django.core.exceptions import ValidationError
 
 
+# DV1-027: Safe template predecessor editor.
 def validate_template_graph(entry_keys, predecessors):
     """Return normalized predecessor sets for all entries.
     Reject duplicate keys, unknown tasks, self links, and circular dependencies.

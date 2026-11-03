@@ -9,6 +9,11 @@ Unchecked items remain implementation or verification work.
 Previews demonstrate behavior but do not complete production view requirements.
 
 Each item gives its completion condition and requirement reference.
+Implementation and verification annotations name files and exact technical symbols.
+Source comments use the same DV1 identifiers.
+Partial implementation annotations do not mark an item complete.
+Template blocks, CSS selectors, and JavaScript functions identify implementations without Python symbols.
+Documentation-only items identify their section instead of an executable symbol.
 The source links also identify the applicable design rules.
 The final sections separate unresolved decisions, host integration, and deferred features.
 
@@ -16,79 +21,92 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 - [x] **DV1-001: Independent PostgreSQL data layer.**
   Diary owns its models and migrations without foreign keys to host application models.
-  Evidence: [models](models.py), [migrations](migrations/), and [database tests](tests/test_api.py).
+  Implementation: [models.py](models.py): `ValidatedModel`, `EventCalendar`, `TemplateVersion`, `CalendarEntry`. [migrations/0001_initial.py](migrations/0001_initial.py): `Migration`. [migrations/0002_remove_calendarentry_diary_calendarentry_date_shape_and_more.py](migrations/0002_remove_calendarentry_diary_calendarentry_date_shape_and_more.py): `Migration`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_postgresql`, `DiaryTests.test_models_have_no_foreign_keys_to_other_apps`.
   Requirement: [D4].
 
 - [x] **DV1-002: Named milestone API.**
   Milestone names remain stable, and discovery returns the names used by the selected template version.
   Discovery is optional for callers that already know the required names.
-  Evidence: [callable API](api.py) and [API tests](tests/test_api.py).
+  Implementation: [api.py](api.py): `DiaryAPI.define_milestones`, `DiaryTemplateVersion.required_milestones`. [models.py](models.py): `Milestone.clean`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_required_milestones_are_distinct_and_template_specific`.
   Requirement: [D4].
 
 - [x] **DV1-003: Date calculation.**
   Source, relative, annual, and one-time rules calculate dates and identify missing or invalid dates.
   Lateness uses `DIARY_TIME_ZONE` and includes tasks due today.
-  Evidence: [date rules](date_rules.py), [callable API](api.py), and [API tests](tests/test_api.py).
+  Implementation: [date_rules.py](date_rules.py): `resolve_date`. [models.py](models.py): `EntryFields.resolve_date`. [api.py](api.py): `DiaryInstance.active_tasks`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_leap_day_and_previous_year`, `DiaryTests.test_active_tasks_can_be_blocked_and_late_and_exclude_completed_tasks`.
   Requirement: [D5] and [D6].
 
 - [x] **DV1-004: Named diary creation and template snapshots.**
   Creation requires a nonempty name and copies an approved template's entries, rules, owners, and dependencies.
   Repeated creation with identical inputs returns the same Diary key.
   Existing diaries retain their copies after template changes.
-  Evidence: [callable API](api.py) and [API tests](tests/test_api.py).
+  Implementation: [api.py](api.py): `DiaryInstance.create`. [entry_mapping.py](entry_mapping.py): `EntryMapper.snapshot_fields`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_calendar_creation_returns_a_stable_key_and_copies_rules_and_dependencies`. [tests/test_entry_mapping.py](tests/test_entry_mapping.py): `EntryMappingTests.test_snapshots_exclude_history_and_do_not_load_milestones`.
   Requirement: [D4].
 
 - [x] **DV1-005: Ownership data and assignment checks.**
   The model supports person, role, and whole-team ownership.
   Ordinary users can add only self-owned personal entries.
   The configured edit permission controls assignments to another person or role.
-  Evidence: [models](models.py), [callable API](api.py), and [API tests](tests/test_api.py).
+  Implementation: [models.py](models.py): `EntryFields`, `owner_shape`. [entry_mapping.py](entry_mapping.py): `validate_entry_owner`. [api.py](api.py): `DiaryInstance.add_entry`, `DiaryTemplateVersion.add_entry`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_personal_entries_are_self_owned_and_repeat_calls_are_safe`, `DiaryTests.test_officer_can_assign_person_role_and_whole_team`. [tests/test_entry_mapping.py](tests/test_entry_mapping.py): `EntryMappingTests`.
   Requirement: [D6] and [D8].
 
 - [x] **DV1-006: Saved dependency validation.**
   The API excludes circular choices and rejects invalid links within the saved graph.
   Database locks prevent concurrent saves from creating a cycle.
-  Evidence: [API tests](tests/test_api.py) and [concurrency tests](tests/test_concurrency.py).
+  Implementation: [api.py](api.py): `_DependencyAPI.available_predecessors`, `_DependencyAPI.set_predecessors`. [models.py](models.py): `DependencyFields.clean`, `DependencyFields.save`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_selector_excludes_self_and_transitive_successors`. [tests/test_concurrency.py](tests/test_concurrency.py): `DependencyConcurrencyTests`.
   Requirement: [D6].
 
 - [x] **DV1-007: Task reads for one diary.**
   `DiaryInstance.active_tasks()` and `DiaryInstance.personal_tasks()` calculate readiness and lateness without stored status flags.
   Personal selection uses current user and role references.
   Personal-entry privacy still needs DV1-031.
-  Evidence: [callable API](api.py) and [API tests](tests/test_api.py).
+  Implementation: [api.py](api.py): `DiaryInstance.read`, `DiaryInstance.active_tasks`, `DiaryInstance.personal_tasks`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_personal_tasks_include_matching_roles_without_duplicate_entries`, `DiaryTests.test_no_persistent_readiness_or_lateness_flags`.
   Requirement: [D6] and [D8].
 
 - [x] **DV1-008: Close a diary instance.**
   `DiaryInstance.close()` accepts open tasks, preserves records, and safely handles repeated calls.
   Closed diaries remain readable but reject API changes and contribute no active tasks.
-  Evidence: [migration 0003](migrations/0003_calendar_closure.py) and [API tests](tests/test_api.py).
+  Implementation: [api.py](api.py): `DiaryInstance.close`, `_open_calendar`. [models.py](models.py): `EventCalendar`. [migrations/0003_calendar_closure.py](migrations/0003_calendar_closure.py): `Migration`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_close_calendar_preserves_open_tasks_and_completion_records`, `DiaryTests.test_closed_calendar_rejects_api_changes`.
   Requirement: [D4].
 
 - [x] **DV1-009: Configured ownership role names and existence checks.**
   `DIARY_TASK_OWNER_ROLES` controls assignment choices.
   Startup validates role existence directly through Django's standard group model.
-  Membership validation still needs DV1-014 through DV1-017.
-  Evidence: [role validation](roles.py), [startup](apps.py), and [role tests](tests/test_roles.py).
+  Startup and creation membership validation still need DV1-014 through DV1-016.
+  Template warnings are implemented under DV1-017.
+  Implementation: [roles.py](roles.py): `task_owner_roles`, `validate_task_owner_roles`. [apps.py](apps.py): `DiaryConfig.ready`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `RoleConfigurationTests`, `DjangoGroupDatabaseTests`.
   Requirement: [D4] and [D9].
 
 - [x] **DV1-010: Basic completion record fields.**
   Models store the completing actor, completion time, and due date at completion.
   Normal saves protect completed records.
   Completion operations and explanatory comments still need DV1-035 through DV1-038.
-  Evidence: [models](models.py) and [API tests](tests/test_api.py).
+  Implementation: [models.py](models.py): `CalendarEntry`, `CalendarEntry.clean`, `CalendarEntry.due_date`.
+  Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_completed_due_date_stays_fixed_when_milestone_changes`.
   Requirement: [D6].
 
 - [x] **DV1-011: Base template and reusable task fragment.**
   The task list can render as a complete document or as reusable content.
   Default styles and override guidance exist.
   Production pages still need DV1-041.
-  Evidence: [templates](templates/Diary/), [styling tests](tests/test_styling.py), and [usage guide](README.md).
+  Implementation: [templates/Diary/base.html](templates/Diary/base.html): `diary_styles`, `diary_content`. [templates/Diary/task_list.html](templates/Diary/task_list.html): `diary_content`. [templates/Diary/partials/task_list.html](templates/Diary/partials/task_list.html): `.diary-task-list`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary`.
+  Verification: [tests/test_styling.py](tests/test_styling.py): `DiaryStyleOverrideTests`.
   Requirement: [D6].
 
 - [x] **DV1-012: Runtime warning limit documented.**
   The API guide explains the absence of automatic warnings after ownership groups become empty or disappear.
   Restart, creation, and template editing remain the documented validation points.
-  Evidence: [startup and ownership requirements](README.md#startup-and-ownership-validation-requirements).
+  Implementation: [README.md](README.md): `Startup and ownership validation requirements`.
+  Documentation only. No class or function provides continuous runtime monitoring.
   Requirement: [D9].
 
 - [x] **DV1-046: Class-based callable API and factories.**
@@ -96,7 +114,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   `DiaryInstance`, `DiaryTemplate`, and `DiaryTemplateVersion` provide factories and object operations.
   Factories return references with stable keys without granting extra scope.
   Operations check permissions and current database state each time.
-  Evidence: [API implementation](api.py), [class API tests](tests/test_class_api.py), and [migration guidance](README.md#migration-from-module-functions).
+  Implementation: [api.py](api.py): `Actor`, `DiaryAPI`, `DiaryInstance`, `DiaryTemplate`, `DiaryTemplateVersion`, `_BoundObject`.
+  Verification: [tests/test_class_api.py](tests/test_class_api.py): `ClassAPITests`.
   Requirement: [D4].
 
 - [x] **DV1-047: Simple V1 access settings.**
@@ -105,14 +124,16 @@ The final sections separate unresolved decisions, host integration, and deferred
   Startup rejects missing or invalid setting values.
   The old configurable action mapping grants no access in V1.
   Database checks for group existence and membership still need DV1-014.
-  Evidence: [access configuration](roles.py), [API checks](api.py), and [permission tests](tests/test_class_api.py).
+  Implementation: [roles.py](roles.py): `access_groups`. [api.py](api.py): `_allowed`, `_require`. [apps.py](apps.py): `DiaryConfig.ready`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`. [tests/test_class_api.py](tests/test_class_api.py): `ClassAPITests`.
   Requirement: [D4] and [D9].
 
 - [x] **DV1-048: Standard Django groups and optional template default.**
   Role checks use Django groups without a host lookup setting or callback.
   Explicit template names and version keys work without `DIARY_TEMPLATE_NAME`.
   The setting remains an optional default, and conflicting selectors are rejected.
-  Evidence: [role checks](roles.py), [group tests](tests/test_roles.py), and [factory tests](tests/test_class_api.py).
+  Implementation: [roles.py](roles.py): `validate_task_owner_roles`. [entry_mapping.py](entry_mapping.py): `validate_entry_owner`. [api.py](api.py): `_template_version`, `DiaryTemplate.from_name`, `DiaryTemplate.create`, `DiaryAPI.template_version`, `DiaryInstance.create`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `DjangoGroupDatabaseTests`. [tests/test_class_api.py](tests/test_class_api.py): `ClassAPITests`.
   Requirement: [D4].
 
 ## Access and validation work
@@ -122,6 +143,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Retrieve the configured user model through `get_user_model()` when model access is necessary.
   Keep host business models and custom request attributes outside Diary.
   Completion requires access tests with different host group names.
+  Partial implementation: [views.py](views.py): `DjangoOwnerDirectory.person_in_groups`, `TemplateEditorView.dispatch`. [forms.py](forms.py): `TemplateTaskFormSet.__init__`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_person_ownership_uses_configured_user_model_and_rejects_other_users`.
   Requirement: [D4] and [D8].
 
 - [ ] **DV1-014: Startup access-group validation.**
@@ -130,6 +153,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Check that every referenced group exists and has at least one user.
   Raise `ImproperlyConfigured` with setting names and distinct missing-group or empty-group explanations.
   Keep database and group setup commands available.
+  Partial implementation: [roles.py](roles.py): `access_groups`. [apps.py](apps.py): `DiaryConfig.ready`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`.
   Requirement: [D9].
 
 - [ ] **DV1-015: Startup ownership membership validation.**
@@ -148,7 +173,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Check current membership for the selected ownership group.
   Show an on-screen warning with the group name and affected task when it has no members.
   Keep this warning separate from creation validation.
-  Evidence: [editor forms](forms.py), [browser controls](static/Diary/scripts/template_editor.js), and [editor tests](tests/test_template_editor.py).
+  Implementation: [forms.py](forms.py): `TemplateTaskFormSet.empty_roles`, `TemplateTaskFormSet.ownership_warnings`. [views.py](views.py): `TemplateEditorView.render_editor`. [static/Diary/scripts/template_editor.js](static/Diary/scripts/template_editor.js): `initialize`, `refresh`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_empty_role_warning_names_task_and_preserves_role_assignment`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D9].
 
 ## HTTP views and task selection
@@ -158,6 +184,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Use the callable API for data actions.
   Template chooser, creation, and editing routes now exist. Task and completion routes remain outstanding.
   Enforce permissions on direct requests and save actions.
+  Partial implementation: [views.py](views.py): `TemplateEditorView`, `TemplateCreateView`. [urls.py](urls.py): `urlpatterns`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_anonymous_and_ordinary_users_cannot_access_or_save_templates`, `TemplateEditorTests.test_http_post_requires_csrf_token`.
   Requirement: [D6] and [D8].
 
 - [ ] **DV1-019: View object selectors.**
@@ -165,6 +193,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Apply the same host scope and visibility checks for either input method.
   Template selectors accept URL values and trusted view context. Conflicting names return HTTP 400.
   Diary selectors remain outstanding.
+  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
   Requirement: [D6].
 
 - [ ] **DV1-020: Personal task API across diaries.**
@@ -213,7 +243,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   With a name, show its highest version number, including a draft when applicable.
   Do not substitute `DIARY_TEMPLATE_NAME` for the missing view selector.
   Restrict editing to DiaryManagers.
-  Evidence: [routed views](views.py), [routes](urls.py), and [editor tests](tests/test_template_editor.py).
+  Implementation: [api.py](api.py): `DiaryAPI.templates`, `DiaryTemplate.editor_data`. [views.py](views.py): `TemplateEditorView.dispatch`, `TemplateEditorView.get`. [urls.py](urls.py): `urlpatterns`. [templates/Diary/template_list.html](templates/Diary/template_list.html): `diary_content`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_reads_do_not_create_records_and_missing_name_opens_chooser`, `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
   Requirement: [D6] and [D8].
 
 ## Template and entry operations
@@ -222,7 +253,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Support named milestones, reusable date rules, and optional person, role, or whole-team ownership.
   Offer only configured ownership roles.
   Keep template task content under the author's control.
-  Evidence: [editor forms](forms.py), [editor page](templates/Diary/template_editor.html), and [editor tests](tests/test_template_editor.py).
+  Implementation: [forms.py](forms.py): `TemplateForm`, `TemplateTaskForm.clean`, `TemplateTaskForm.entry_spec`. [views.py](views.py): `TemplateCreateView`, `TemplateEditorView.post`. [templates/Diary/template_editor.html](templates/Diary/template_editor.html): `diary_content`. [static/Diary/scripts/template_editor.js](static/Diary/scripts/template_editor.js): `initialize`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D4], [D5], [D6], and [D9].
 
 - [x] **DV1-026: Versioned template save and approval.**
@@ -231,14 +263,16 @@ The final sections separate unresolved decisions, host integration, and deferred
   Require no separate approval action in V1.
   Keep existing diary copies unchanged.
   Reject stale saves and preserve stable entry keys in each new approved version.
-  Evidence: [revision API](api.py), [editor tests](tests/test_template_editor.py), and its PostgreSQL concurrency test.
+  Implementation: [api.py](api.py): `DiaryTemplate.save_version`, `DiaryTemplateVersion.approve`. [models.py](models.py): `TemplateVersion.clean`, `TemplateEntry.save`, `TemplateEntry.delete`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_create_and_edit_approve_versions_and_preserve_existing_diaries`, `TemplateEditorTests.test_stale_save_preserves_submitted_data_and_does_not_add_version`, `TemplateRevisionConcurrencyTests`.
   Requirement: [D4] and [D8].
 
 - [x] **DV1-027: Safe template predecessor editor.**
   Exclude the task, its direct successors, its indirect successors, and tasks outside the selected template version.
   Recalculate choices using proposed unsaved links.
   Retain server validation and concurrency protection.
-  Evidence: [graph validation](template_graph.py), [browser controls](static/Diary/scripts/template_editor.js), and [editor tests](tests/test_template_editor.py).
+  Implementation: [template_graph.py](template_graph.py): `validate_template_graph`. [forms.py](forms.py): `TemplateTaskFormSet.__init__`, `TemplateTaskFormSet.clean`. [static/Diary/scripts/template_editor.js](static/Diary/scripts/template_editor.js): `refresh`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_predecessor_choices_exclude_self_and_unsaved_indirect_successors`, `TemplateEditorTests.test_complete_graph_rejects_cycles_self_links_duplicates_and_foreign_predecessors`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D6].
 
 - [ ] **DV1-028: Template-only dependency editing.**
@@ -345,6 +379,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Avoid inline presentation rules and styling dependencies on IDs, text, tags, or element positions.
   Document every class and CSS variable in `README.md`.
   Verify keyboard access, text state labels, narrow screens, and host overrides.
+  Partial implementation: [forms.py](forms.py): `StyledForm.__init__`. [templates/Diary/template_editor.html](templates/Diary/template_editor.html): `diary_content`. [templates/Diary/partials/template_editor.html](templates/Diary/partials/template_editor.html): `.diary-template-editor`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-template-field`.
+  Verification: [tests/test_styling.py](tests/test_styling.py): `DiaryStyleOverrideTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D6].
 
 - [ ] **DV1-042: Empty states and invalid selections.**
@@ -352,6 +388,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve the selected diary context without silently choosing another instance.
   Keep all reads free from diary creation or template-copy actions.
   Do not require a host current-event attribute.
+  Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `TemplateEditorView.get`.
+  Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_reads_do_not_create_records_and_missing_name_opens_chooser`, `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
   Requirement: [D4], [D6], and [D8].
 
 - [ ] **DV1-043: Enforce the V1 milestone-change boundary.**
@@ -366,6 +404,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verify transaction failures, repeated requests, and races between completion, diary closure, and permitted edits.
   Run database tests only against a separate PostgreSQL test database.
   Verify installation without host business application models.
+  Partial implementation: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateRevisionConcurrencyTests`, `TemplateEditorTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D4], [D6], [D8], and [D9].
 
 - [ ] **DV1-045: Release documentation and deployment checks.**

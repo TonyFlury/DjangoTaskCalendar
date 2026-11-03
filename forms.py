@@ -19,6 +19,7 @@ from .template_graph import validate_template_graph
 class StyledForm(forms.Form):
     """Give every form control a stable Diary styling class."""
 
+    # Partial DV1-041: Complete pages, fragments, and styling interface.
     def __init__(self, *args, **kwargs):
         """Initialize fields and expose a class for each technical field name."""
         super().__init__(*args, **kwargs)
@@ -26,6 +27,7 @@ class StyledForm(forms.Form):
             field.widget.attrs['class'] = f'diary-input diary-template-field-{name.replace("_", "-")}'
 
 
+# DV1-025: Template authoring interface.
 class TemplateForm(StyledForm):
     """Collect template metadata and the version the manager opened."""
 
@@ -72,6 +74,7 @@ class TemplateTaskForm(StyledForm):
         self.fields['person_ref'].choices = [('', 'Select a person'), *people]
         self.fields['role_ref'].choices = [('', 'Select a group'), *((role, role) for role in roles)]
 
+    # DV1-025: Template authoring interface.
     def clean(self):
         """Require the fields selected by each date and ownership rule.
         Ignore values from inactive rule fields when constructing the EntrySpec.
@@ -99,6 +102,7 @@ class TemplateTaskForm(StyledForm):
             self.add_error('role_ref', 'Select an ownership group.')
         return data
 
+    # DV1-025: Template authoring interface.
     def entry_spec(self):
         """Return an EntrySpec from this valid form with irrelevant rule fields cleared."""
         data = self.cleaned_data
@@ -130,6 +134,8 @@ class TemplateTaskForm(StyledForm):
 class TemplateTaskFormSet(BaseFormSet):
     """Validate a complete proposed task graph, including unsaved dependency edits."""
 
+    # DV1-027: Safe template predecessor editor.
+    # Partial DV1-013: Generic identity and role adapters.
     def __init__(self, *args, **kwargs):
         """Build current person, group, and predecessor choices for all submitted task rows."""
         groups = access_groups()
@@ -170,6 +176,7 @@ class TemplateTaskFormSet(BaseFormSet):
         super().add_fields(form, index)
         form.fields['DELETE'].widget.attrs['class'] = 'diary-input diary-template-field-delete'
 
+    # DV1-027: Safe template predecessor editor.
     def clean(self):
         """Reject duplicate task names and invalid proposed dependency graphs before saving."""
         super().clean()
@@ -206,12 +213,14 @@ class TemplateTaskFormSet(BaseFormSet):
                     label or self.milestone_definitions.get(spec.milestone_name))
         self.milestone_definitions = {name: label or name for name, label in self.milestone_definitions.items()}
 
+    # DV1-017: Empty-group warnings during template editing.
     @cached_property
     def empty_roles(self):
         """Return configured ownership groups without current members for this request."""
         populated = set(Group.objects.filter(user__isnull=False).values_list('name', flat=True))
         return sorted(task_owner_roles() - populated)
 
+    # DV1-017: Empty-group warnings during template editing.
     def ownership_warnings(self):
         """Return task-specific warnings for selected groups with no current members."""
         warnings = []

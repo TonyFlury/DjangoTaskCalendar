@@ -25,6 +25,7 @@ __all__ = [
 ]
 
 
+# DV1-046: Class-based callable API and factories.
 @dataclass(frozen=True)
 class Actor:
     """Store the trusted caller reference, current group names, and permitted diary keys.
@@ -66,6 +67,7 @@ class EntrySpec:
     entry_key: UUID = field(default_factory=uuid4)
 
 
+# DV1-047: Simple V1 access settings.
 def _allowed(actor, action):
     """Return whether the configured V1 roles permit an internal action.
     Managers inherit user actions, and unknown actions receive no grant.
@@ -86,6 +88,7 @@ def _allowed(actor, action):
     return False
 
 
+# DV1-047: Simple V1 access settings.
 def _require(actor, action):
     """Raise PermissionDenied when the actor lacks the role required by the action."""
 
@@ -116,6 +119,7 @@ def _calendar(actor, key, action='view'):
     return EventCalendar.objects.get(pk=key)
 
 
+# DV1-008: Close a diary instance.
 def _open_calendar(actor, key, action):
     """Return an authorized calendar with a database lock for a write operation.
     Raise ValidationError when the instance is closed.
@@ -130,6 +134,7 @@ def _open_calendar(actor, key, action):
     return calendar
 
 
+# DV1-048: Standard Django groups and optional template default.
 def _template_version(key=None, name=None):
     """Resolve a version key or the latest approved version of a template name.
     Use DIARY_TEMPLATE_NAME only when no explicit selector is supplied.
@@ -191,6 +196,7 @@ def _scope(actor, scope_key, template, action):
     return calendar, CalendarEntry, EntryDependency, 'calendar'
 
 
+# DV1-046: Class-based callable API and factories.
 @dataclass(frozen=True, kw_only=True)
 class _BoundObject:
     """Store an immutable actor context and normalized UUID without caching a Django model instance."""
@@ -208,6 +214,7 @@ class _DependencyAPI(_BoundObject):
     """Share dependency traversal and replacement within diary or template-version scopes."""
     _template_scope = False
 
+    # DV1-006: Saved dependency validation.
     def available_predecessors(self, *, entry_key):
         """Return same-scope predecessor choices excluding this task and all its successors.
         Each result contains the entry key and display name.
@@ -232,6 +239,7 @@ class _DependencyAPI(_BoundObject):
         return tuple(model.objects.filter(**{field_name: scope}).exclude(pk__in=excluded)
                      .order_by('name').values('entry_key', 'name'))
 
+    # DV1-006: Saved dependency validation.
     @transaction.atomic
     def set_predecessors(self, *, entry_key, predecessor_keys):
         """Replace the task predecessor links within a locked scope.
@@ -257,6 +265,7 @@ class _DependencyAPI(_BoundObject):
             links.objects.create(entry=entry, predecessor=predecessor)
 
 
+# DV1-046: Class-based callable API and factories.
 @dataclass(frozen=True, kw_only=True)
 class DiaryAPI:
     """Caller context and factories for Diary objects."""
@@ -273,6 +282,7 @@ class DiaryAPI:
         """Return configured task ownership role names as a frozenset."""
         return _task_owner_roles()
 
+    # DV1-002: Named milestone API.
     @transaction.atomic
     def define_milestones(self, *, definitions):
         """Define stable milestone names and return their UUIDs by name.
@@ -297,6 +307,7 @@ class DiaryAPI:
         """
         return DiaryTemplate.create(actor=self.actor, name=name, description=description)
 
+    # DV1-024: Template chooser and named template view.
     def templates(self):
         """Return template names and keys for the manager's chooser without creating records."""
         _require_template_access(self.actor)
@@ -316,6 +327,7 @@ class DiaryAPI:
             return DiaryTemplate.from_key(actor=self.actor, key=key)
         return DiaryTemplate.from_name(actor=self.actor, name=name)
 
+    # DV1-048: Standard Django groups and optional template default.
     def template_version(self, *, key=None, name=None):
         """Return a selected version reference for this actor.
         A name selects its latest approved version, while an omitted selector uses the optional default.
@@ -351,9 +363,11 @@ class DiaryAPI:
         return DiaryInstance.from_key(actor=self.actor, key=key)
 
 
+# DV1-046: Class-based callable API and factories.
 class DiaryTemplate(_BoundObject):
     """A template reference. Each operation reads current database state."""
 
+    # DV1-024: Template chooser and named template view.
     def editor_data(self):
         """Return template metadata and the highest numbered version, including a draft.
         Return an empty entry sequence when the template has no version.
@@ -371,6 +385,7 @@ class DiaryTemplate(_BoundObject):
                           entries=data['entries'])
         return result
 
+    # DV1-026: Versioned template save and approval.
     @transaction.atomic
     def save_version(self, *, entries, predecessors, expected_version_key, description=None,
                      milestone_definitions=None, directory=None):
@@ -420,6 +435,7 @@ class DiaryTemplate(_BoundObject):
         template = CalendarTemplate.objects.get(pk=key)
         return cls(actor=actor, key=template.pk)
 
+    # DV1-048: Standard Django groups and optional template default.
     @classmethod
     def from_name(cls, *, actor, name=None):
         """Return a template reference by name after checking manager access.
@@ -438,6 +454,7 @@ class DiaryTemplate(_BoundObject):
         template = CalendarTemplate.objects.get(name__iexact=name.strip())
         return cls(actor=actor, key=template.pk)
 
+    # DV1-048: Standard Django groups and optional template default.
     @classmethod
     def create(cls, *, actor, name=None, description=''):
         """Create a template and return its reference for the supplied actor.
@@ -484,6 +501,7 @@ class DiaryTemplate(_BoundObject):
         return DiaryTemplateVersion(actor=self.actor, key=version.pk)
 
 
+# DV1-046: Class-based callable API and factories.
 class DiaryTemplateVersion(_DependencyAPI):
     """A version reference with template entry and dependency operations."""
 
@@ -520,6 +538,7 @@ class DiaryTemplateVersion(_DependencyAPI):
                                                  created_by_ref=actor.reference)
         return cls(actor=actor, key=version.pk)
 
+    # DV1-002: Named milestone API.
     def required_milestones(self):
         """Enumerate distinct milestone definitions used by this version only."""
         actor, template_version_key = self.actor, self.key
@@ -528,6 +547,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         return tuple(Milestone.objects.filter(pk__in=version.entries.values('milestone_id'))
                      .order_by('name').values('id', 'name', 'label').distinct())
 
+    # DV1-005: Ownership data and assignment checks.
     @transaction.atomic
     def add_entry(self, *, spec, directory=None):
         """Add an entry to this version and return its stable entry UUID.
@@ -550,6 +570,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         return TemplateEntry.objects.create(version_id=template_version_key,
                                             **EntryMapper.to_model_fields(spec)).entry_key
 
+    # DV1-026: Versioned template save and approval.
     @transaction.atomic
     def approve(self):
         """Approve this version and return the same API reference.
@@ -582,6 +603,7 @@ class DiaryTemplateVersion(_DependencyAPI):
                                  for entry in version.entries.select_related('milestone'))}
 
 
+# DV1-046: Class-based callable API and factories.
 class DiaryInstance(_DependencyAPI):
     """An instance reference without cached database or authorization results."""
 
@@ -601,6 +623,8 @@ class DiaryInstance(_DependencyAPI):
         calendar = _calendar(actor, key, action)
         return cls(actor=actor, key=calendar.pk)
 
+    # DV1-004: Named diary creation and template snapshots.
+    # DV1-048: Standard Django groups and optional template default.
     @classmethod
     @transaction.atomic
     def create(cls, *, actor, event_ref, name, event_year, milestone_dates, template_version_key=None,
@@ -638,6 +662,7 @@ class DiaryInstance(_DependencyAPI):
             EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
         return cls(actor=actor, key=calendar.pk)
 
+    # DV1-008: Close a diary instance.
     @transaction.atomic
     def close(self):
         """Close this diary and return the same reference without completing or deleting tasks.
@@ -669,6 +694,7 @@ class DiaryInstance(_DependencyAPI):
             calendar.save()
         _set_dates(calendar, milestone_dates)
 
+    # DV1-005: Ownership data and assignment checks.
     @transaction.atomic
     def add_entry(self, *, spec, directory=None):
         """Add an entry to this open diary and return its stable UUID.
@@ -700,6 +726,7 @@ class DiaryInstance(_DependencyAPI):
         return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
                                             **EntryMapper.to_model_fields(spec)).entry_key
 
+    # DV1-007: Task reads for one diary.
     def read(self):
         """Return current diary metadata, milestone values, entries, and dependency state.
         Use preserved due dates for completed tasks.
@@ -728,6 +755,8 @@ class DiaryInstance(_DependencyAPI):
                 'closed_by_ref': calendar.closed_by_ref,
                 'event_year': calendar.event_year, 'milestones': context, 'entries': tuple(entries)}
 
+    # DV1-003: Date calculation.
+    # DV1-007: Task reads for one diary.
     def active_tasks(self, *, today=None):
         """Return open tasks with independently calculated readiness and lateness.
         Use the configured local date when today is omitted.
@@ -761,6 +790,7 @@ class DiaryInstance(_DependencyAPI):
         return tuple(sorted(result, key=lambda item: (not item['late'], item['date'] or date.max,
                                                       item['name'].casefold(), str(item['entry_key']))))
 
+    # DV1-007: Task reads for one diary.
     def personal_tasks(self, *, today=None, include_whole_team=False):
         """Return open tasks owned by this actor or their current roles.
         Include whole-team tasks only when include_whole_team is true.

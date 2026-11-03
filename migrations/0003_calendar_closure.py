@@ -3,6 +3,7 @@
 from django.db import migrations, models
 
 
+# DV1-008: Close a diary instance.
 class Migration(migrations.Migration):
 
     dependencies = [

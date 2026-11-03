@@ -18,6 +18,7 @@ from .roles import access_groups
 class DjangoOwnerDirectory:
     """Resolve user:primary-key references through the configured Django user model."""
 
+    # Partial DV1-013: Generic identity and role adapters.
     def person_in_groups(self, reference, group_names):
         """Return whether a referenced user exists in a configured access group."""
 
@@ -31,6 +32,7 @@ class DjangoOwnerDirectory:
             return False
 
 
+# Partial DV1-018: Authenticated routed views.
 class TemplateEditorView(LoginRequiredMixin, View):
     """Show the chooser or edit a template selected by URL or trusted view configuration."""
 
@@ -39,6 +41,10 @@ class TemplateEditorView(LoginRequiredMixin, View):
     creating = False
     page_template = 'Diary/template_editor.html'
 
+    # DV1-024: Template chooser and named template view.
+    # Partial DV1-013: Generic identity and role adapters.
+    # Partial DV1-019: View object selectors.
+    # Partial DV1-042: Empty states and invalid selections.
     def dispatch(self, request, *args, **kwargs):
         """Require current Django manager membership before reading or changing templates."""
 
@@ -73,6 +79,8 @@ class TemplateEditorView(LoginRequiredMixin, View):
                 raise Http404('The selected template does not exist.') from error
         return super().dispatch(request, *args, **kwargs)
 
+    # DV1-024: Template chooser and named template view.
+    # Partial DV1-042: Empty states and invalid selections.
     def get(self, request, *args, **kwargs):
         """Show the template chooser or initialize a read-only request for the editor."""
 
@@ -88,6 +96,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
         return {'name': self.data['name'], 'description': self.data['description'],
                 'expected_version_key': self.data['version_key']}
 
+    # DV1-025: Template authoring interface.
     def post(self, request, *args, **kwargs):
         """Validate all forms and atomically save an approved template revision.
         Keep submitted values visible when validation or a concurrent save fails.
@@ -142,6 +151,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
                 header.add_error(None, 'The template changed during this save. Reopen it before trying again.')
         return self.render_editor(header, tasks, status=400)
 
+    # DV1-017: Empty-group warnings during template editing.
     def render_editor(self, header, tasks, status=200):
         """Render the complete editor document with task-specific ownership warnings."""
         return render(self.request, self.page_template, {
@@ -152,6 +162,8 @@ class TemplateEditorView(LoginRequiredMixin, View):
         }, status=status)
 
 
+# DV1-025: Template authoring interface.
+# Partial DV1-018: Authenticated routed views.
 class TemplateCreateView(TemplateEditorView):
     """Open an empty editor and create a template only after a valid save request."""
 

@@ -10,6 +10,7 @@ from .choices import DateKind, OwnerKind, VersionStatus
 from .date_rules import resolve_date
 
 
+# DV1-005: Ownership data and assignment checks.
 def owner_shape():
     return (Q(owner_kind='team', person_ref='', role_ref='')
             | (Q(owner_kind='person', role_ref='') & ~Q(person_ref=''))
@@ -29,6 +30,7 @@ def date_shape():
     )
 
 
+# DV1-001: Independent PostgreSQL data layer.
 class ValidatedModel(models.Model):
     class Meta:
         abstract = True
@@ -51,6 +53,7 @@ class Milestone(ValidatedModel):
     def __str__(self):
         return self.label
 
+    # DV1-002: Named milestone API.
     def clean(self):
         super().clean()
         if not self._state.adding and type(self).objects.get(pk=self.pk).name != self.name:
@@ -80,6 +83,7 @@ class CalendarTemplate(ValidatedModel):
             raise ValidationError({'name': 'Enter a template name.'})
 
 
+# DV1-001: Independent PostgreSQL data layer.
 class TemplateVersion(ValidatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     template = models.ForeignKey(CalendarTemplate, on_delete=models.PROTECT, related_name='versions')
@@ -105,6 +109,7 @@ class TemplateVersion(ValidatedModel):
     def __str__(self):
         return f'{self.template} / {self.number}'
 
+    # DV1-026: Versioned template save and approval.
     def clean(self):
         super().clean()
         if not self._state.adding:
@@ -115,6 +120,8 @@ class TemplateVersion(ValidatedModel):
                     raise ValidationError('An approved version cannot change. Create a new version.')
 
 
+# DV1-001: Independent PostgreSQL data layer.
+# DV1-008: Close a diary instance.
 class EventCalendar(ValidatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_ref = models.CharField(max_length=200, unique=True)
@@ -163,6 +170,7 @@ class CalendarMilestone(ValidatedModel):
         constraints = [models.UniqueConstraint(fields=('calendar', 'milestone'), name='diary_calendar_milestone_unique')]
 
 
+# DV1-005: Ownership data and assignment checks.
 class EntryFields(ValidatedModel):
     entry_key = models.UUIDField(default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=160)
@@ -206,6 +214,7 @@ class EntryFields(ValidatedModel):
             if old_key != self.entry_key:
                 raise ValidationError({'entry_key': 'An entry key cannot change.'})
 
+    # DV1-003: Date calculation.
     def resolve_date(self, *, event_year, source_dates):
         return resolve_date(kind=self.date_kind, event_year=event_year, source_dates=source_dates,
                             source=self.milestone.name if self.milestone_id else '', month=self.month, day=self.day,
@@ -227,6 +236,7 @@ class TemplateEntry(EntryFields):
             models.CheckConstraint(check=~Q(date_kind='once'), name='diary_template_entry_reusable'),
         ]
 
+    # DV1-026: Versioned template save and approval.
     def save(self, *args, **kwargs):
         with transaction.atomic():
             version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)
@@ -236,6 +246,7 @@ class TemplateEntry(EntryFields):
                 raise ValidationError('An entry cannot move to another version.')
             return super().save(*args, **kwargs)
 
+    # DV1-026: Versioned template save and approval.
     def delete(self, *args, **kwargs):
         with transaction.atomic():
             version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)
@@ -244,6 +255,8 @@ class TemplateEntry(EntryFields):
             return super().delete(*args, **kwargs)
 
 
+# DV1-001: Independent PostgreSQL data layer.
+# DV1-010: Basic completion record fields.
 class CalendarEntry(EntryFields):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     calendar = models.ForeignKey(EventCalendar, on_delete=models.PROTECT, related_name='entries')
@@ -270,6 +283,7 @@ class CalendarEntry(EntryFields):
             ),
         ]
 
+    # DV1-010: Basic completion record fields.
     def clean(self):
         super().clean()
         if self.source_entry_id and self.calendar_id:
@@ -287,6 +301,7 @@ class CalendarEntry(EntryFields):
             self.completed_due_date = self.resolve_date(
                 event_year=self.calendar.event_year, source_dates=self.calendar.date_context())
 
+    # DV1-010: Basic completion record fields.
     @property
     def due_date(self):
         if self.completed_at is not None:
@@ -306,6 +321,7 @@ class DependencyFields(ValidatedModel):
             models.UniqueConstraint(fields=('entry', 'predecessor'), name='%(app_label)s_%(class)s_unique'),
         ]
 
+    # DV1-006: Saved dependency validation.
     def clean(self):
         super().clean()
         if not self.entry_id or not self.predecessor_id:
@@ -329,6 +345,7 @@ class DependencyFields(ValidatedModel):
                 seen.add(task)
                 pending.extend(successors.get(task, ()))
 
+    # DV1-006: Saved dependency validation.
     def save(self, *args, **kwargs):
         with transaction.atomic():
             scope = self.scope_model.objects.select_for_update().get(pk=getattr(self.entry, self.scope_field))

@@ -6,6 +6,8 @@ from django.template.loader import get_template
 from django.test import SimpleTestCase, override_settings
 
 
+# Verifies DV1-011: Base template and reusable task fragment.
+# Verifies DV1-041: Complete pages, fragments, and styling interface.
 class DiaryStyleOverrideTests(SimpleTestCase):
     @override_settings(
         STATIC_URL='/static/',

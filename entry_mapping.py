@@ -32,6 +32,7 @@ class EntryMapper:
         values['milestone'] = Milestone.objects.get(name=name) if name else None
         return values
 
+    # DV1-004: Named diary creation and template snapshots.
     @classmethod
     def snapshot_fields(cls, entry):
         """Return reusable identity, text, date rule, and ownership fields from a stored entry.
@@ -55,6 +56,8 @@ class EntryMapper:
         return cls.snapshot_fields(entry) == fields
 
 
+# DV1-005: Ownership data and assignment checks.
+# DV1-048: Standard Django groups and optional template default.
 def validate_entry_owner(spec, directory=None):
     """Validate ownership before saving an entry.
     Person references require directory eligibility checks.

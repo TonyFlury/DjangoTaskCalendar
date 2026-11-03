@@ -1,4 +1,7 @@
 {% extends 'Diary/base.html' %}
+
+{# DV1-025: Template authoring document. #}
+{# Partial DV1-041: The template workflow provides a complete document and content fragment. #}
 {% load static %}
 {% block diary_title %}{% if creating %}Create template{% else %}Edit {{ template_data.name }}{% endif %} | Diary{% endblock %}
 {% block diary_content %}{% include 'Diary/partials/template_editor.html' %}{% endblock %}

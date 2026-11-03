@@ -1,3 +1,5 @@
+/* DV1-011: Default styling for complete documents and reusable task fragments. */
+
 /* All default rules stay inside the Diary component. Host styles can override the variables. */
 .diary {
     --diary-background: #fff;
@@ -67,6 +69,8 @@
     .diary { padding: .5rem; }
     .diary .diary-actions { flex-direction: column; align-items: stretch; }
 }
+
+/* Partial DV1-041: The template editor exposes named styling classes. */
 
 /* Template controls expose classes for host styling without element-position selectors. */
 .diary .diary-template-list { list-style: none; padding: 0; }

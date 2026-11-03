@@ -54,9 +54,11 @@ class DiaryTests(TestCase):
         self.exec_member = replace(self.exec_member, calendar_keys=frozenset({key}))
         return key
 
+    # Verifies DV1-001: Independent PostgreSQL data layer.
     def test_postgresql(self):
         self.assertEqual(connection.vendor, 'postgresql')
 
+    # Verifies DV1-008: Close a diary instance.
     def test_close_calendar_preserves_open_tasks_and_completion_records(self):
         key = self.calendar()
         personal = api.EntrySpec('My open task', DateKind.ONCE, fixed_date=date(2027, 6, 1),
@@ -111,6 +113,7 @@ class DiaryTests(TestCase):
             with self.assertRaises(ImproperlyConfigured):
                 api.DiaryInstance.from_key(actor=self.officer, key=key).close()
 
+    # Verifies DV1-008: Close a diary instance.
     def test_closed_calendar_rejects_api_changes(self):
         key = self.calendar()
         api.DiaryInstance.from_key(actor=self.officer, key=key).close()
@@ -128,6 +131,7 @@ class DiaryTests(TestCase):
                 operation()
         self.assertEqual(api.DiaryInstance.from_key(actor=self.officer, key=key).read(), before)
 
+    # Verifies DV1-001: Independent PostgreSQL data layer.
     def test_models_have_no_foreign_keys_to_other_apps(self):
         from django.apps import apps
         for model in apps.get_app_config('Diary').get_models():
@@ -135,6 +139,7 @@ class DiaryTests(TestCase):
                 if field.is_relation:
                     self.assertEqual(field.related_model._meta.app_label, 'Diary')
 
+    # Verifies DV1-002: Named milestone API.
     def test_required_milestones_are_distinct_and_template_specific(self):
         duplicate = api.EntrySpec('Another board task', DateKind.RELATIVE, milestone_name='add_board_bookings_open',
                                   day_offset=-7)
@@ -144,6 +149,7 @@ class DiaryTests(TestCase):
         other = api.DiaryTemplate.from_key(actor=self.officer, key=self.template).create_version(number=2).key
         self.assertEqual(api.DiaryAPI(actor=self.officer).template_version(key=other).required_milestones(), ())
 
+    # Verifies DV1-004: Named diary creation and template snapshots.
     def test_calendar_creation_returns_a_stable_key_and_copies_rules_and_dependencies(self):
         key = self.calendar()
         self.assertEqual(self.calendar(), key)
@@ -166,6 +172,7 @@ class DiaryTests(TestCase):
         annual = CalendarEntry.objects.get(calendar_id=key, entry_key=self.annual.entry_key)
         self.assertEqual(annual.due_date, date(2027, 3, 1))
 
+    # Verifies DV1-003: Date calculation.
     def test_leap_day_and_previous_year(self):
         leap = replace(self.annual, name='Leap day', entry_key=uuid4(), month=2, day=29)
         previous = replace(self.annual, name='Previous year', entry_key=uuid4(), month=12, day=1, year_offset=-1)
@@ -209,6 +216,7 @@ class DiaryTests(TestCase):
             api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).set_predecessors(
                 entry_key=self.second.entry_key, predecessor_keys=[])
 
+    # Verifies DV1-005: Ownership data and assignment checks.
     def test_personal_entries_are_self_owned_and_repeat_calls_are_safe(self):
         key = self.calendar()
         spec = api.EntrySpec('My preparation', DateKind.ONCE, fixed_date=date(2027, 6, 1), owner_kind=OwnerKind.PERSON,
@@ -221,6 +229,7 @@ class DiaryTests(TestCase):
                 api.DiaryInstance.from_key(actor=self.exec_member, key=key).add_entry(
                     spec=replace(bad, entry_key=uuid4()))
 
+    # Verifies DV1-005: Ownership data and assignment checks.
     def test_officer_can_assign_person_role_and_whole_team(self):
         key = self.calendar()
         for index, spec in enumerate([
@@ -294,6 +303,7 @@ class DiaryTests(TestCase):
         self.assertEqual(result['key'], key)
         self.assertEqual(len(result['entries']), 3)
 
+    # Verifies DV1-006: Saved dependency validation.
     def test_selector_excludes_self_and_transitive_successors(self):
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).set_predecessors(
             entry_key=self.annual.entry_key, predecessor_keys=[self.second.entry_key])
@@ -330,6 +340,7 @@ class DiaryTests(TestCase):
                                      milestone_dates={'unknown': date(2027, 1, 1)}).key
         self.assertFalse(EventCalendar.objects.exists())
 
+    # Verifies DV1-003: Date calculation.
     def test_active_tasks_can_be_blocked_and_late_and_exclude_completed_tasks(self):
         key = self.calendar()
         entries = {item['entry_key']: item for item in
@@ -361,6 +372,7 @@ class DiaryTests(TestCase):
         with self.assertNumQueries(4):
             diary.active_tasks(today=date(2027, 1, 1))
 
+    # Verifies DV1-007: Task reads for one diary.
     def test_personal_tasks_include_matching_roles_without_duplicate_entries(self):
         key = self.calendar()
         mine = api.EntrySpec('My task', DateKind.ANNUAL, month=5, day=1, owner_kind=OwnerKind.PERSON,
@@ -376,6 +388,7 @@ class DiaryTests(TestCase):
         tasks = api.DiaryInstance.from_key(actor=self.exec_member, key=key).personal_tasks(today=date(2027, 1, 1))
         self.assertEqual([item['entry_key'] for item in tasks], [mine.entry_key])
 
+    # Verifies DV1-010: Basic completion record fields.
     def test_completed_due_date_stays_fixed_when_milestone_changes(self):
         key = self.calendar()
         entry = CalendarEntry.objects.get(calendar_id=key, entry_key=self.first.entry_key)
@@ -390,6 +403,7 @@ class DiaryTests(TestCase):
         with self.assertRaises(ValidationError):
             entry.save()
 
+    # Verifies DV1-007: Task reads for one diary.
     def test_no_persistent_readiness_or_lateness_flags(self):
         names = {field.name for field in CalendarEntry._meta.fields}
         self.assertFalse(names & {'late', 'is_late', 'ready', 'is_ready', 'blocked'})

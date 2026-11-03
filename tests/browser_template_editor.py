@@ -20,6 +20,11 @@ from Diary.models import CalendarTemplate, TemplateEntry, TemplateVersion
 class EditorBrowserTests(StaticLiveServerTestCase):
     """Verify browser task addition, dependency exclusions, warnings, and revision saves."""
 
+    # Verifies DV1-017: Empty-group warnings during template editing.
+    # Verifies DV1-025: Template authoring interface.
+    # Verifies DV1-027: Safe template predecessor editor.
+    # Verifies DV1-041: Complete pages, fragments, and styling interface.
+    # Partial DV1-044: Regression and concurrency verification.
     def test_editor(self):
         """Save a complete template through the real browser and inspect narrow layout."""
         model = get_user_model()
