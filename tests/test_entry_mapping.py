@@ -39,8 +39,7 @@ class EntryMappingTests(TestCase):
         version.approved_by_ref = 'manager'
         version.save()
         calendar = EventCalendar.objects.create(
-            event_ref='mapping:1', name='Mapping diary', event_year=2027,
-            template_version=version, created_by_ref='manager',
+            event_ref='mapping:1', name='Mapping diary', template_version=version, created_by_ref='manager',
         )
         CalendarMilestone.objects.create(calendar=calendar, milestone=self.milestone, date=date(2027, 6, 27))
         entry = CalendarEntry.objects.create(

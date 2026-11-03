@@ -349,14 +349,15 @@ class DiaryAPI:
         return DiaryTemplateVersion.from_key(actor=self.actor, key=key)
 
     # DV1-016: Revalidate ownership groups through the instance factory.
-    def create_diary(self, *, event_ref, name, event_year, milestone_dates, template_version_key=None,
-                     template_name=None):
+    # DV1-051: Creation requires no diary year.
+    def create_diary(self, *, name, milestone_dates, template_version_key=None,
+                     template_name=None, event_ref=None):
         """Create a diary using this actor and return its API reference.
         Select a template by name, version key, or the optional default.
         Do not expand the actor calendar scope.
         """
         return DiaryInstance.create(
-            actor=self.actor, event_ref=event_ref, name=name, event_year=event_year,
+            actor=self.actor, event_ref=event_ref, name=name,
             milestone_dates=milestone_dates, template_version_key=template_version_key, template_name=template_name,
         )
 
@@ -628,18 +629,25 @@ class DiaryInstance(_DependencyAPI):
     # DV1-004: Named diary creation and template snapshots.
     # DV1-048: Standard Django groups and optional template default.
     # DV1-016: Current ownership-group validation within the creation transaction.
+    # DV1-051: A diary has a name and milestone dates without a diary year.
     @classmethod
     @transaction.atomic
-    def create(cls, *, actor, event_ref, name, event_year, milestone_dates, template_version_key=None,
-               template_name=None):
+    def create(cls, *, actor, name, milestone_dates, template_version_key=None,
+               template_name=None, event_ref=None):
         """Create a diary reference with a stable key from an approved template.
         Copy its rules, owners, and dependencies in one transaction.
-        Repeated identical inputs reuse the existing diary, while conflicting inputs raise ValidationError.
+        Repeated identical inputs with the same event_ref reuse the diary.
+        Conflicting inputs raise ValidationError.
         Revalidate configured ownership groups on every call, including repeated requests.
         Raise ImproperlyConfigured when a configured group is missing or empty.
+        Generate an internal reference when the optional caller reference is omitted.
         """
         _require(actor, 'use')
         _validate_task_owner_roles()
+
+        # Independent callers can omit a host reference when they do not need safe retries.
+        if event_ref is None:
+            event_ref = f'diary:{uuid4()}'
         selected = _template_version(key=template_version_key, name=template_name)
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
 
@@ -652,12 +660,12 @@ class DiaryInstance(_DependencyAPI):
             dates = existing.date_context()
 
             # Different inputs for the same reference require an explicit change rather than another creation.
-            if (existing.template_version_id != version.pk or existing.event_year != event_year
+            if (existing.template_version_id != version.pk
                     or existing.name != name.strip() or dates != milestone_dates):
                 raise ValidationError('This event reference already has a calendar with different inputs.')
             return cls(actor=actor, key=existing.pk)
         calendar = EventCalendar.objects.create(template_version=version, event_ref=event_ref, name=name,
-                                                event_year=event_year, created_by_ref=actor.reference)
+                                                created_by_ref=actor.reference)
         _set_dates(calendar, milestone_dates)
         copied = {}
         for source in version.entries.all():
@@ -686,18 +694,14 @@ class DiaryInstance(_DependencyAPI):
         return self
 
     @transaction.atomic
-    def set_milestone_dates(self, *, milestone_dates, event_year=None):
-        """Save supplied milestone values and the optional year for an open diary.
+    def set_milestone_dates(self, *, milestone_dates):
+        """Save supplied milestone values for an open diary.
         Preserve unspecified milestone values.
         This existing mutation remains outside the approved V1 change workflow.
         """
         actor, calendar_key = self.actor, self.key
         calendar = _open_calendar(actor, calendar_key, 'edit')
 
-        # An omitted year must not change the stored year used by annual date rules.
-        if event_year is not None:
-            calendar.event_year = event_year
-            calendar.save()
         _set_dates(calendar, milestone_dates)
 
     # DV1-005: Ownership data and assignment checks.
@@ -748,7 +752,7 @@ class DiaryInstance(_DependencyAPI):
             # Completed predecessors remain in history but no longer block the task.
             entries.append({'entry_key': entry.entry_key, 'name': entry.name, 'description': entry.description,
                             'date': (entry.completed_due_date if entry.completed_at is not None else
-                                     entry.resolve_date(event_year=calendar.event_year, source_dates=context)),
+                                     entry.resolve_date(source_dates=context)),
                             'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref, 'role_ref': entry.role_ref,
                             'predecessors': tuple(item.entry_key for item in predecessors),
                             'blocking_predecessors': tuple(
@@ -759,7 +763,7 @@ class DiaryInstance(_DependencyAPI):
         return {'key': calendar.pk, 'name': calendar.name, 'event_ref': calendar.event_ref,
                 'closed': calendar.closed_at is not None, 'closed_at': calendar.closed_at,
                 'closed_by_ref': calendar.closed_by_ref,
-                'event_year': calendar.event_year, 'milestones': context, 'entries': tuple(entries)}
+                'milestones': context, 'entries': tuple(entries)}
 
     # DV1-003: Date calculation.
     # DV1-007: Task reads for one diary.

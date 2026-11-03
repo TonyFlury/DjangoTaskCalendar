@@ -1,13 +1,16 @@
 import uuid
 from datetime import date
+from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F, Q
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 from .choices import DateKind, OwnerKind, VersionStatus
-from .date_rules import resolve_date
+from .date_rules import next_annual_date, resolve_date
 
 
 # DV1-005: Ownership data and assignment checks.
@@ -18,6 +21,7 @@ def owner_shape():
 
 
 def date_shape():
+    """Return database conditions for the supported task date rules."""
     common = Q(month__isnull=True, day__isnull=True, year_offset=0)
     return (
         (Q(date_kind='source', fixed_date__isnull=True, day_offset=0) & common & Q(milestone__isnull=False))
@@ -122,11 +126,12 @@ class TemplateVersion(ValidatedModel):
 
 # DV1-001: Independent PostgreSQL data layer.
 # DV1-008: Close a diary instance.
+# DV1-051: Diary creation requires no year.
 class EventCalendar(ValidatedModel):
+    """Store a named diary, its creation time, and its template reference."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_ref = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=160)
-    event_year = models.PositiveSmallIntegerField()
     template_version = models.ForeignKey(TemplateVersion, on_delete=models.PROTECT, related_name='calendars')
     created_by_ref = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -134,9 +139,10 @@ class EventCalendar(ValidatedModel):
     closed_by_ref = models.CharField(max_length=200, blank=True)
 
     class Meta:
-        ordering = ('event_year', 'name')
+        """Order diaries by name and enforce reference and closure conditions."""
+
+        ordering = ('name',)
         constraints = [
-            models.CheckConstraint(check=Q(event_year__gte=1, event_year__lte=9999), name='diary_calendar_year_valid'),
             models.CheckConstraint(check=~Q(event_ref=''), name='diary_calendar_event_ref_present'),
             models.CheckConstraint(
                 check=(Q(closed_at__isnull=True, closed_by_ref='')
@@ -146,18 +152,25 @@ class EventCalendar(ValidatedModel):
         ]
 
     def __str__(self):
+        """Return the diary name for display."""
         return self.name
 
     def clean(self):
+        """Require a name, a caller reference, and an approved source template."""
         super().clean()
         self.event_ref = self.event_ref.strip()
         self.name = self.name.strip()
+
+        # Empty names and caller references cannot identify a usable diary.
         if not self.event_ref or not self.name:
             raise ValidationError('Enter an event reference and calendar name.')
+
+        # Only approved template versions can supply diary entries.
         if self.template_version_id and self.template_version.status != VersionStatus.APPROVED:
             raise ValidationError({'template_version': 'Select an approved template version.'})
 
     def date_context(self):
+        """Return this diary's named milestone dates, including unset values."""
         return dict(self.milestone_dates.values_list('milestone__name', 'date'))
 
 
@@ -215,10 +228,15 @@ class EntryFields(ValidatedModel):
                 raise ValidationError({'entry_key': 'An entry key cannot change.'})
 
     # DV1-003: Date calculation.
-    def resolve_date(self, *, event_year, source_dates):
-        return resolve_date(kind=self.date_kind, event_year=event_year, source_dates=source_dates,
+    # DV1-051: Read stored annual dates without a diary year.
+    def resolve_date(self, *, source_dates):
+        """Return the stored annual date or resolve this entry's other date rule."""
+
+        # Template entries have no calculated annual occurrence until diary creation.
+        return resolve_date(kind=self.date_kind, source_dates=source_dates,
                             source=self.milestone.name if self.milestone_id else '', month=self.month, day=self.day,
-                            year_offset=self.year_offset, day_offset=self.day_offset, fixed_date=self.fixed_date)
+                            year_offset=self.year_offset, day_offset=self.day_offset, fixed_date=self.fixed_date,
+                            annual_due_date=getattr(self, 'annual_due_date', None))
 
 
 class TemplateEntry(EntryFields):
@@ -257,7 +275,9 @@ class TemplateEntry(EntryFields):
 
 # DV1-001: Independent PostgreSQL data layer.
 # DV1-010: Basic completion record fields.
+# DV1-051: Store annual dates calculated during diary creation.
 class CalendarEntry(EntryFields):
+    """Store a diary task, its calculated annual date, and its completion record."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     calendar = models.ForeignKey(EventCalendar, on_delete=models.PROTECT, related_name='entries')
     source_entry = models.ForeignKey(TemplateEntry, null=True, blank=True, on_delete=models.PROTECT,
@@ -267,6 +287,7 @@ class CalendarEntry(EntryFields):
     completed_at = models.DateTimeField(null=True, blank=True)
     completed_by_ref = models.CharField(max_length=200, blank=True)
     completed_due_date = models.DateField(null=True, blank=True)
+    annual_due_date = models.DateField(null=True, blank=True, editable=False)
     predecessors = models.ManyToManyField('self', symmetrical=False, through='EntryDependency',
                                          through_fields=('entry', 'predecessor'), related_name='successors')
 
@@ -285,28 +306,56 @@ class CalendarEntry(EntryFields):
 
     # DV1-010: Basic completion record fields.
     def clean(self):
+        """Validate task scope and preserve completion data.
+        DV1-051: Calculate annual dates from the diary creation date on the first save.
+        """
         super().clean()
+
+        # Use the Diary time zone so creation near midnight selects the correct local date.
+        if self._state.adding and self.date_kind == DateKind.ANNUAL and self.calendar_id:
+            zone = ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', settings.TIME_ZONE))
+            self.annual_due_date = next_annual_date(
+                creation_date=timezone.localdate(self.calendar.created_at, timezone=zone),
+                month=self.month, day=self.day, year_offset=self.year_offset,
+            )
+
+        # Copied tasks must retain the source version and stable entry key.
         if self.source_entry_id and self.calendar_id:
+
+            # Reject a source from another version or another task.
             if (self.source_entry.version_id != self.calendar.template_version_id
                     or self.source_entry.entry_key != self.entry_key):
                 raise ValidationError({'source_entry': 'The source must match this calendar version and entry key.'})
+
+        # New tasks have no earlier record to compare.
         old = type(self).objects.get(pk=self.pk) if not self._state.adding else None
+
+        # Moving a task would change its diary scope and creation-date context.
         if old and old.calendar_id != self.calendar_id:
             raise ValidationError('An entry cannot move to another event calendar.')
+
+        # Completed tasks must preserve all task and completion fields.
         if old and old.completed_at is not None:
+
+            # Reject every changed stored value after completion.
             if any(getattr(old, field.attname) != getattr(self, field.attname)
                    for field in self._meta.concrete_fields):
                 raise ValidationError('A completed entry cannot change.')
+
+        # A new completion records the current calculated due date.
         elif self.completed_at is not None:
             self.completed_due_date = self.resolve_date(
-                event_year=self.calendar.event_year, source_dates=self.calendar.date_context())
+                source_dates=self.calendar.date_context())
 
     # DV1-010: Basic completion record fields.
     @property
     def due_date(self):
+        """Return the preserved completion date or the current task due date."""
+
+        # Completed tasks keep their due date when milestone values change.
         if self.completed_at is not None:
             return self.completed_due_date
-        return self.resolve_date(event_year=self.calendar.event_year, source_dates=self.calendar.date_context())
+        return self.resolve_date(source_dates=self.calendar.date_context())
 
     @property
     def is_ready(self):

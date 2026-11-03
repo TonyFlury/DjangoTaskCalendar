@@ -25,7 +25,7 @@ class DependencyConcurrencyTests(TransactionTestCase):
             api.DiaryTemplateVersion.from_key(actor=actor, key=version).add_entry(spec=spec)
         api.DiaryTemplateVersion.from_key(actor=actor, key=version).approve()
         key = api.DiaryInstance.create(actor=actor, template_version_key=version, event_ref='concurrency',
-                                       name='Concurrent event', event_year=2027, milestone_dates={}).key
+                                       name='Concurrent event', milestone_dates={}).key
         actor = api.Actor(actor.reference, actor.groups, frozenset({key}))
         start = Barrier(2)
 

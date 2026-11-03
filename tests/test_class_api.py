@@ -29,8 +29,7 @@ class ClassAPITests(TestCase):
         self.version.add_entry(spec=self.entry)
         self.version.approve()
         self.created = self.client.create_diary(
-            event_ref='class-api:1', name='Class API diary', event_year=2027,
-            milestone_dates={'target': date(2027, 6, 27)},
+            event_ref='class-api:1', name='Class API diary', milestone_dates={'target': date(2027, 6, 27)},
         )
         self.actor = replace(self.actor, calendar_keys=frozenset({self.created.key}))
         self.client = api.DiaryAPI(actor=self.actor)
@@ -42,8 +41,7 @@ class ClassAPITests(TestCase):
             self.created.read()
         self.assertEqual(self.diary.read()['key'], self.created.key)
         same = api.DiaryInstance.create(
-            actor=self.actor, event_ref='class-api:1', name='Class API diary', event_year=2027,
-            milestone_dates={'target': date(2027, 6, 27)},
+            actor=self.actor, event_ref='class-api:1', name='Class API diary', milestone_dates={'target': date(2027, 6, 27)},
         )
         self.assertEqual(same.key, self.diary.key)
         self.assertEqual(EventCalendar.objects.count(), 1)
@@ -150,12 +148,10 @@ class ClassAPITests(TestCase):
             )
             ordinary = api.Actor('user', frozenset({'DiaryUser'}))
             created = api.DiaryInstance.create(
-                actor=ordinary, event_ref='explicit:name', name='Explicit name diary', event_year=2027,
-                milestone_dates={'target': date(2027, 6, 27)}, template_name='Caller chosen template',
+                actor=ordinary, event_ref='explicit:name', name='Explicit name diary', milestone_dates={'target': date(2027, 6, 27)}, template_name='Caller chosen template',
             )
             by_key = self.client.create_diary(
-                event_ref='explicit:key', name='Explicit key diary', event_year=2027,
-                milestone_dates={'target': date(2027, 6, 27)}, template_version_key=version.key,
+                event_ref='explicit:key', name='Explicit key diary', milestone_dates={'target': date(2027, 6, 27)}, template_version_key=version.key,
             )
             for diary in (created, by_key):
                 self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, version.key)
@@ -164,7 +160,7 @@ class ClassAPITests(TestCase):
         with self.settings(DIARY_TEMPLATE_NAME=None):
             with self.assertRaisesMessage(ValidationError, 'template name or version key'):
                 self.client.create_diary(
-                    event_ref='missing-template', name='No template', event_year=2027, milestone_dates={},
+                    event_ref='missing-template', name='No template', milestone_dates={},
                 )
             with self.assertRaises(ValidationError):
                 self.client.template_version()
@@ -176,15 +172,14 @@ class ClassAPITests(TestCase):
         with self.settings(DIARY_TEMPLATE_NAME='Unused default'):
             self.assertEqual(self.client.template_version(name='Class API template').key, self.version.key)
             diary = self.client.create_diary(
-                event_ref='named-selection', name='Named diary', event_year=2027,
-                milestone_dates={}, template_name='Class API template',
+                event_ref='named-selection', name='Named diary', milestone_dates={}, template_name='Class API template',
             )
             self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, self.version.key)
         with self.assertRaisesMessage(ValidationError, 'not both'):
             self.client.template_version(key=self.version.key, name='Class API template')
         with self.assertRaisesMessage(ValidationError, 'not both'):
             self.client.create_diary(
-                event_ref='ambiguous-selection', name='Ambiguous', event_year=2027, milestone_dates={},
+                event_ref='ambiguous-selection', name='Ambiguous', milestone_dates={},
                 template_version_key=self.version.key, template_name='Class API template',
             )
         self.assertFalse(EventCalendar.objects.filter(event_ref='ambiguous-selection').exists())

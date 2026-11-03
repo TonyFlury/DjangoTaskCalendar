@@ -43,7 +43,7 @@ class DiaryCreationValidationTests(TestCase):
 
     def create(self, reference='creation:1', direct=False):
         """Create through the API context or directly through the instance factory."""
-        values = {'event_ref': reference, 'name': 'Creation diary', 'event_year': 2027,
+        values = {'event_ref': reference, 'name': 'Creation diary',
                   'milestone_dates': {'target': date(2027, 6, 1)}, 'template_version_key': self.version.key}
 
         # Both public entry points must enforce identical ownership checks.
@@ -121,8 +121,7 @@ class DiaryCreationValidationTests(TestCase):
         outsider = Actor('outsider', frozenset())
         with patch('Diary.api._validate_task_owner_roles') as validate:
             with self.assertRaises(PermissionDenied):
-                DiaryInstance.create(actor=outsider, event_ref='denied', name='Denied', event_year=2027,
-                                     milestone_dates={}, template_version_key=self.version.key)
+                DiaryInstance.create(actor=outsider, event_ref='denied', name='Denied', milestone_dates={}, template_version_key=self.version.key)
         validate.assert_not_called()
         self.assertFalse(EventCalendar.objects.exists())
 

@@ -595,7 +595,7 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryAPI.create_template` | Optional `name`, optional `description` | `DiaryTemplate`. |
 | `DiaryAPI.template` | Optional `key` or `name` | `DiaryTemplate`. |
 | `DiaryAPI.template_version` | Optional `key` or `name` | `DiaryTemplateVersion`. Names select the latest approved version. Without a selector, uses the optional default name. |
-| `DiaryAPI.create_diary` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` or `template_name` | `DiaryInstance`. |
+| `DiaryAPI.create_diary` | `name`, `milestone_dates`, optional `event_ref`, optional `template_version_key` or `template_name` | `DiaryInstance`. |
 | `DiaryAPI.diary` | `key` | `DiaryInstance`. |
 | `DiaryTemplate.create` | Optional `name`, optional `description` | New `DiaryTemplate`. |
 | `DiaryTemplate.from_key` | `key` | Existing `DiaryTemplate`. |
@@ -607,7 +607,7 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryTemplateVersion.from_key` | `key` | Existing `DiaryTemplateVersion`. |
 | `DiaryTemplateVersion.from_name` | `name` | The named template's latest approved version. |
 | `DiaryTemplateVersion.from_default` | None. | The configured template's latest approved version. |
-| `DiaryInstance.create` | `event_ref`, `name`, `event_year`, `milestone_dates`, optional `template_version_key` or `template_name` | New or existing `DiaryInstance`. Identical repeated inputs reuse its key. |
+| `DiaryInstance.create` | `name`, `milestone_dates`, optional `event_ref`, optional `template_version_key` or `template_name` | New or existing `DiaryInstance`. Identical repeated inputs with the same `event_ref` reuse its key. |
 | `DiaryInstance.from_key` | `key` | Existing permitted `DiaryInstance`. |
 
 `DiaryAPI.template` rejects simultaneous `key` and `name` arguments.
@@ -641,7 +641,7 @@ The static configuration methods do not need an actor.
 | `DiaryInstance.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
 | `DiaryInstance.active_tasks` | Optional `today` | Open tasks in date order, with late tasks first. |
 | `DiaryInstance.personal_tasks` | Optional `today`, optional `include_whole_team` | Open tasks for the actor or their roles. |
-| `DiaryInstance.set_milestone_dates` | `milestone_dates`, optional `event_year` | No result. Existing behavior outside the approved V1 change workflow. |
+| `DiaryInstance.set_milestone_dates` | `milestone_dates` | No result. Existing behavior outside the approved V1 change workflow. |
 | `DiaryInstance.available_predecessors` | `entry_key` | Safe predecessor choices. |
 | `DiaryInstance.set_predecessors` | `entry_key`, `predecessor_keys` | No result. Existing mutation that still needs the V1 template-only restriction. |
 
@@ -728,7 +728,6 @@ created = client.create_diary(
     template_name=template_name,
     event_ref='GarageSale:event:17',
     name='Garage Sale 2027',
-    event_year=2027,
     milestone_dates={
         'event_date': date(2027, 6, 27),
         'add_board_bookings_open': date(2027, 5, 1),
@@ -751,11 +750,43 @@ The calling project can use Diary's own UI without reading task lists itself.
 Supply `template_version_key=version.key` to select a particular version during diary creation.
 Supply `template_name` to select the latest approved version of a caller-chosen template.
 Omit both selectors only when the optional `DIARY_TEMPLATE_NAME` default is configured.
-Identical repeated inputs return another object with the same diary key.
+Identical repeated inputs with the same `event_ref` return another object with the same diary key.
 Different inputs for the same reference raise `ValidationError`.
 
 The date kinds remain `source`, `relative`, `annual`, and `once`.
-Annual dates use the supplied `event_year` and year offset.
+Diary creation requires no diary year.
+The technical argument `event_year` is no longer accepted or returned.
+The optional technical argument `event_ref` identifies a caller's creation request.
+Omitting `event_ref` generates a new internal reference on each call.
+Keep an explicit `event_ref` unchanged when retrying a creation request.
+
+### Fixed dates and the 12-month limitation
+
+The technical date kind `annual` specifies a fixed month and day in a template.
+Diary selects the nearest matching date strictly after its creation date.
+For example, 1 April becomes 1 April 2027 for a diary created on 3 November 2026.
+A matching date on the creation day selects the following year.
+February 29 selects the next valid leap day.
+Diary then applies the technical field `year_offset`, which defaults to zero.
+An offset that produces an invalid date leaves the due date unset.
+
+Diary uses `DIARY_TIME_ZONE`, or Django's `TIME_ZONE` when the Diary setting is absent.
+The technical field `CalendarEntry.annual_due_date` stores the result.
+Later reads, milestone changes, and creation retries keep that date unchanged.
+Annual tasks added later use the original diary creation date.
+An annual rule creates one task occurrence in each diary.
+It does not create a task each year.
+
+**Limitation:** Fixed-date calculations cannot determine the intended occurrence for diaries that span more than 12 months.
+The next matching date can be too early for a task intended for a later year.
+An explicit year offset can select another year, but Diary does not calculate that choice from the diary's duration.
+Future implementations will address this limitation.
+
+Apply migration `0004_milestone_dates_without_diary_year` before using this API.
+It preserves existing annual due dates before removing the stored diary year.
+It keeps existing invalid dates unset and preserves completion records.
+The migration does not support automatic reversal because the removed year cannot be recovered reliably.
+
 A one-time date belongs only to a diary instance.
 An invalid annual occurrence has no due date.
 

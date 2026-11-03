@@ -148,6 +148,18 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verification: [tests/test_time_zone.py](tests/test_time_zone.py): `DiaryTimeZoneTests`.
   Requirement: [usage guide](README.md#current-api-configuration) and [D6].
 
+- [x] **DV1-051: Diary creation without a required year.**
+  Creation accepts a name and milestone dates without a diary year or required host reference.
+  Annual template dates use the nearest matching date strictly after diary creation.
+  A matching date today selects the following year. February 29 selects the next valid leap day.
+  The stored annual date remains unchanged during later reads, milestone changes, and creation retries.
+  Migration preserves existing annual dates and completion records before removing the old diary year.
+  Implementation: [api.py](api.py): `DiaryAPI.create_diary`, `DiaryInstance.create`, `DiaryInstance.set_milestone_dates`, `DiaryInstance.read`. [date_rules.py](date_rules.py): `next_annual_date`, `resolve_date`. [models.py](models.py): `EventCalendar`, `EntryFields.resolve_date`, `CalendarEntry.clean`, `CalendarEntry.annual_due_date`. [forms.py](forms.py): `TemplateTaskForm.year_offset`. [migrations/0004_milestone_dates_without_diary_year.py](migrations/0004_milestone_dates_without_diary_year.py): `Migration`, `preserve_annual_dates`.
+  Verification: [tests/test_creation_dates.py](tests/test_creation_dates.py): `FixedDateCalculationTests`, `DiaryCreationDateTests`, `DiaryYearMigrationTests.test_migration_preserves_existing_dates_and_completion_records`. [tests/test_api.py](tests/test_api.py): `DiaryTests.test_documented_setup_and_callable_examples_execute`.
+  Documentation: [Fixed dates and the 12-month limitation](README.md#fixed-dates-and-the-12-month-limitation) identifies the remaining calculation limit.
+  Future implementations will address occurrence selection for diaries that span more than 12 months.
+  Requirement: the user request for creation without a year and fixed-date calculations.
+
 ## Access and validation work
 
 - [ ] **DV1-013: Generic identity and role adapters.**
@@ -498,7 +510,7 @@ These requirements have no assigned release and are not V1 completion conditions
 
 - [ ] **DFUT-001: Independent diary creation UI.**
   Let an authorized user create a diary from an approved template through Diary's own UI.
-  Prompt for the diary name, diary year, and the selected template's relevant milestone dates.
+  Prompt for the diary name and the selected template's relevant milestone dates.
   Use the existing instance creation API and preserve safe retries without duplicate diaries.
   Require no Garage Sale event or other host business record.
   Define the permitted role and access to the newly created diary before implementation.
@@ -507,6 +519,12 @@ These requirements have no assigned release and are not V1 completion conditions
   Existing API: [api.py](api.py): `DiaryAPI.create_diary`, `DiaryInstance.create`, `DiaryTemplateVersion.required_milestones`.
 
 ## Review limits
+
+The change for creation without a year passed 124 tests with the host application against a separate PostgreSQL test database.
+The same change passed 123 tests without host business apps against a separate PostgreSQL test database.
+The tests include fixed-date boundaries, leap days, time zones, safe retries, and migration data preservation.
+The migration consistency check found no missing model changes.
+No migration was applied to application data for this change.
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
 The Diary suite and host key integration passed 118 tests against a separate PostgreSQL database.

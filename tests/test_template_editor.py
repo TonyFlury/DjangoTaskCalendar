@@ -108,8 +108,7 @@ class TemplateEditorTests(TestCase):
         template = self.api.template(name='Reusable plan')
         first = template.latest_version()
         self.assertEqual(first.read()['status'], 'approved')
-        diary = self.api.create_diary(event_ref='editor:1', name='First diary', event_year=2028,
-                                     milestone_dates={'target': date(2028, 6, 1)}, template_version_key=first.key)
+        diary = self.api.create_diary(event_ref='editor:1', name='First diary', milestone_dates={'target': date(2028, 6, 1)}, template_version_key=first.key)
         reader = DiaryAPI(actor=replace(self.actor, calendar_keys=frozenset({diary.key}))).diary(key=diary.key)
         snapshot = reader.read()
         edited = replace(self.spec, name='Prepare equipment', day_offset=-7)

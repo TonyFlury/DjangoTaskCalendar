@@ -1,5 +1,6 @@
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime, timezone as datetime_timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth.models import Group
@@ -28,6 +29,9 @@ class Directory:
 class DiaryTests(TestCase):
     def setUp(self):
         """Create a populated ownership group and the reusable template used by API tests."""
+        clock = patch('django.utils.timezone.now', return_value=datetime(2026, 11, 3, 12, tzinfo=datetime_timezone.utc))
+        clock.start()
+        self.addCleanup(clock.stop)
         role, _ = Group.objects.get_or_create(name='SponsorshipManager')
         model = get_user_model()
         member = model._default_manager.create_user(**{model.USERNAME_FIELD: 'diary-owner@example.test'})
@@ -51,8 +55,7 @@ class DiaryTests(TestCase):
     def calendar(self, ref='event:2027', dates=None):
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).approve()
         key = api.DiaryInstance.create(actor=self.officer, template_version_key=self.version, event_ref=ref,
-                                       name='June event', event_year=2027,
-                                       milestone_dates=dates if dates is not None else {'event_date': date(2027, 6, 27),
+                                       name='June event', milestone_dates=dates if dates is not None else {'event_date': date(2027, 6, 27),
                                                                                         'add_board_bookings_open': date(
                                                                                             2027, 5, 1)}).key
         self.officer = replace(self.officer, calendar_keys=frozenset({key}))
@@ -184,9 +187,9 @@ class DiaryTests(TestCase):
         for spec in (leap, previous):
             api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).add_entry(spec=spec)
         key = self.calendar()
-        self.assertIsNone(CalendarEntry.objects.get(calendar_id=key, entry_key=leap.entry_key).due_date)
+        self.assertEqual(CalendarEntry.objects.get(calendar_id=key, entry_key=leap.entry_key).due_date, date(2028, 2, 29))
         self.assertEqual(CalendarEntry.objects.get(calendar_id=key, entry_key=previous.entry_key).due_date,
-                         date(2026, 12, 1))
+                         date(2025, 12, 1))
 
     def test_invalid_rules_and_one_time_template_dates_are_rejected(self):
         for spec in [replace(self.annual, day=31, month=4),
@@ -341,8 +344,7 @@ class DiaryTests(TestCase):
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).approve()
         with self.assertRaises(Milestone.DoesNotExist):
             api.DiaryInstance.create(actor=self.officer, template_version_key=self.version, event_ref='bad',
-                                     name='Bad calendar', event_year=2027,
-                                     milestone_dates={'unknown': date(2027, 1, 1)}).key
+                                     name='Bad calendar', milestone_dates={'unknown': date(2027, 1, 1)}).key
         self.assertFalse(EventCalendar.objects.exists())
 
     # Verifies DV1-003: Date calculation.
@@ -424,8 +426,7 @@ class DiaryTests(TestCase):
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=second).approve()
         self.assertEqual([m['name'] for m in api.DiaryAPI(actor=self.officer).template_version().required_milestones()],
                          ['unused_date'])
-        key = api.DiaryInstance.create(actor=self.officer, event_ref='new-default', name='New default', event_year=2028,
-                                       milestone_dates={'unused_date': date(2028, 1, 1)}).key
+        key = api.DiaryInstance.create(actor=self.officer, event_ref='new-default', name='New default', milestone_dates={'unused_date': date(2028, 1, 1)}).key
         self.assertEqual(EventCalendar.objects.get(pk=key).template_version_id, second)
         self.assertEqual(EventCalendar.objects.get(event_ref='event:2027').template_version_id, self.version)
 

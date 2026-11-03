@@ -60,7 +60,7 @@ class TemplateTaskForm(StyledForm):
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Month')
     day = forms.IntegerField(required=False, min_value=1, max_value=31, label='Day of month')
     year_offset = forms.IntegerField(required=False, min_value=-32768, max_value=32767, label='Year offset',
-                                    help_text='Use zero for the diary year. Use negative values for earlier years.')
+                                    help_text='Use zero for the next matching date after diary creation. Negative values select earlier years.')
     owner_kind = forms.ChoiceField(choices=OwnerKind.choices, initial=OwnerKind.TEAM, label='Owner type')
     person_ref = forms.ChoiceField(choices=(), required=False, label='Person')
     role_ref = forms.ChoiceField(choices=(), required=False, label='Ownership group')
@@ -117,7 +117,7 @@ class TemplateTaskForm(StyledForm):
         if kind == DateKind.RELATIVE:
             values['day_offset'] = data.get('day_offset') or 0
 
-        # Annual rules use the caller's diary year and have no milestone reference.
+        # DV1-051: Annual rules use the next matching date after diary creation.
         if kind == DateKind.ANNUAL:
             values.update(month=data['month'], day=data['day'], year_offset=data.get('year_offset') or 0)
 

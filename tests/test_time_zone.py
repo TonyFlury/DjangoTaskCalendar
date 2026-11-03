@@ -24,8 +24,9 @@ class DiaryTimeZoneTests(TestCase):
         version = template.create_version(number=1)
         version.add_entry(spec=EntrySpec('Annual task', DateKind.ANNUAL, month=1, day=1))
         version.approve()
-        diary = client.create_diary(event_ref='time-zone:1', name='Time zone diary', event_year=2027,
-                                    milestone_dates={}, template_version_key=version.key)
+        with patch('django.utils.timezone.now', return_value=datetime(2026, 11, 3, 12, tzinfo=datetime_timezone.utc)):
+            diary = client.create_diary(event_ref='time-zone:1', name='Time zone diary',
+                                        milestone_dates={}, template_version_key=version.key)
         scoped = Actor(actor.reference, actor.groups, frozenset({diary.key}))
         self.diary = DiaryAPI(actor=scoped).diary(key=diary.key)
         self.instant = datetime(2027, 1, 1, 0, 30, tzinfo=datetime_timezone.utc)
