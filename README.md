@@ -450,7 +450,7 @@ This difference applies throughout British Summer Time, not only on transition d
 
 Set `DIARY_TIME_ZONE = 'Europe/London'` when the Diary must follow UK local dates.
 Alternatively, omit the override when the project's `TIME_ZONE` already specifies the correct regional zone.
-[Garage Sale settings](../GarageSale/settings.py) currently use `TIME_ZONE = 'UTC'` and `DIARY_TIME_ZONE = 'Europe/London'`.
+A host can use `TIME_ZONE = 'UTC'` with `DIARY_TIME_ZONE = 'Europe/London'`.
 
 Managers inherit DiaryUser capabilities without membership in the `DIARY_USER` group.
 They also have all template permissions, including viewing, creation, editing, and approval.
@@ -1905,7 +1905,7 @@ python manage.py migrate
 ```
 
 Apply migrations on the target site before callers use the API.
-Follow `General Deployment Instructions` for deployment.
+Follow the host project's deployment instructions.
 No migration was applied to application data during development of this feature.
 
 ## Default styles and host overrides
