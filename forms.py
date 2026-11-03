@@ -426,3 +426,47 @@ class TaskCompletionForm(forms.Form):
 
 TaskFormSet = formset_factory(TemplateTaskForm, formset=TemplateTaskFormSet, extra=0,
                               can_delete=True, max_num=200, validate_max=True, absolute_max=250)
+
+
+# DV1-040: Explicit recovery keeps unresolved template tasks visible to managers.
+class TaskOwnerRecoveryForm(forms.Form):
+    """Collect a task revision and an eligible replacement owner without changing template versions."""
+
+    entry_key = forms.UUIDField(widget=forms.HiddenInput)
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+    owner_kind = forms.ChoiceField(choices=OwnerKind.choices, label='New owner type')
+    person_ref = forms.ChoiceField(required=False, label='New person')
+    role_ref = forms.ChoiceField(required=False, label='New ownership group')
+
+    def __init__(self, *args, **kwargs):
+        """Read active DiaryUser members and configured ownership groups for current form choices."""
+        super().__init__(*args, **kwargs)
+        users = get_user_model()._default_manager.filter(
+            is_active=True, groups__name=access_groups()['user']).distinct()
+        self.fields['person_ref'].choices = [('', 'Select a person'),
+            *((f'user:{user.pk}', user.get_full_name().strip() or user.get_username()) for user in users)]
+        self.fields['role_ref'].choices = [('', 'Select a group'),
+            *((role, role) for role in sorted(task_owner_roles()))]
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = f'diary-recovery-control diary-recovery-{name.replace("_", "-")}'
+
+    def clean(self):
+        """Require the selected owner reference and clear references for inactive owner types."""
+        data = super().clean()
+
+        # Person ownership requires an active member of the configured DiaryUser group.
+        if data.get('owner_kind') == OwnerKind.PERSON and not data.get('person_ref'):
+            self.add_error('person_ref', 'Select a person.')
+
+        # Role ownership requires an explicit configured group selection.
+        if data.get('owner_kind') == OwnerKind.ROLE and not data.get('role_ref'):
+            self.add_error('role_ref', 'Select an ownership group.')
+
+        # Other ownership types must not retain a previous person reference.
+        if data.get('owner_kind') != OwnerKind.PERSON:
+            data['person_ref'] = ''
+
+        # Whole-team and person ownership must not retain a previous role reference.
+        if data.get('owner_kind') != OwnerKind.ROLE:
+            data['role_ref'] = ''
+        return data

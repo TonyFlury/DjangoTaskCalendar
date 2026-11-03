@@ -162,3 +162,12 @@
 .diary .diary-detail-blocked { border-style: dashed; }
 .diary .diary-detail-completed { border-color: var(--diary-completed); }
 .diary .diary-task-detail-link { display: inline-block; margin: .25rem .5rem; color: var(--diary-accent); }
+
+/* DV1-040: Keep unresolved template ownership and explicit recovery controls visible. */
+.diary .diary-manager-orphaned, .diary .diary-detail-orphaned { font-weight: bold; color: var(--diary-late); }
+.diary .diary-manager-orphaned-help { margin-block: .5rem; }
+.diary .diary-recovery-form { margin-block: 1rem; }
+.diary .diary-recovery-fields { border: 1px solid currentColor; padding: .75rem; }
+.diary .diary-recovery-field { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.diary .diary-recovery-control { max-width: 100%; }
+.diary .diary-recovery-submit { margin-top: .5rem; }

@@ -860,7 +860,10 @@ class DiaryInstance(_DependencyAPI):
         # Completed and concurrently changed tasks cannot accept an ownership edit.
         if entry.completed_at is not None or type(expected_revision) is not int or entry.revision != expected_revision:
             raise ValidationError('This task changed or completed. Reload it before reassignment.')
-        saved = {'entry_key': entry.entry_key, 'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref,
+
+        # DV1-040: Diary additions cannot qualify for orphaned template ownership recovery.
+        saved = {'source': 'template' if entry.source_entry_id else 'diary',
+                 'entry_key': entry.entry_key, 'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref,
                  'role_ref': entry.role_ref, 'completed_at': entry.completed_at}
 
         # A restored membership can make a previously inspected recovery action unnecessary.
@@ -875,7 +878,7 @@ class DiaryInstance(_DependencyAPI):
         validate_entry_owner(spec, directory)
 
         # Recovery must not replace one unavailable owner with another unavailable owner.
-        if orphaned_entry_keys(({'entry_key': entry.entry_key, 'owner_kind': owner_kind,
+        if orphaned_entry_keys(({'source': 'template', 'entry_key': entry.entry_key, 'owner_kind': owner_kind,
                                 'person_ref': person_ref, 'role_ref': role_ref, 'completed_at': None},),
                                directory=directory):
             raise ValidationError('Select an active eligible person, a role with eligible members, or Whole team.')

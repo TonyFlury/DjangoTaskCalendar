@@ -11,22 +11,22 @@ from .roles import access_groups, task_owner_roles
 def orphaned_entry_keys(entries, *, directory):
     """Return open task keys whose person or configured role has no eligible active owner.
     Use the supplied directory for person references and Django groups for role membership.
-    Keep completed tasks and whole-team tasks outside ownership recovery.
+    Keep diary additions, completed tasks, and whole-team tasks outside ownership recovery.
     """
     entries = tuple(entries)
     people = {}
     eligible_users = get_user_model()._default_manager.filter(
-        is_active=True, groups__name__in=access_groups().values()).filter(groups=OuterRef('pk'))
+        is_active=True, groups__name=access_groups()['user']).filter(groups=OuterRef('pk'))
     active_roles = set(Group.objects.filter(name__in=task_owner_roles()).annotate(
         has_eligible_member=Exists(eligible_users)).filter(has_eligible_member=True).values_list('name', flat=True))
     orphaned = set()
     for entry in entries:
 
-        # Completion records preserve their original owner and do not require reassignment.
-        if entry['completed_at'] is not None:
+        # DV1-040: Only open template copies require manager ownership recovery.
+        if entry.get('source') != 'template' or entry['completed_at'] is not None:
             continue
 
-        # A person must still qualify through an active Diary access group.
+        # A person must remain an active member of the configured DiaryUser group.
         if entry['owner_kind'] == OwnerKind.PERSON:
             reference = entry['person_ref']
 
@@ -36,7 +36,7 @@ def orphaned_entry_keys(entries, *, directory):
                 # Opaque person references require the host's eligibility adapter.
                 if directory is None:
                     raise ValidationError('Supply an owner directory to review person ownership.')
-                people[reference] = directory.person_in_groups(reference, frozenset(access_groups().values()))
+                people[reference] = directory.person_in_groups(reference, frozenset({access_groups()['user']}))
 
             # An unavailable or ineligible person requires an explicit replacement.
             if not people[reference]:

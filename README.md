@@ -1170,7 +1170,7 @@ The technical method `DiaryInstance.reassign_task()` supports explicit manager r
 It requires `entry_key`, `owner_kind`, and the inspected `expected_revision`.
 Supply `person_ref` for person ownership or `role_ref` for role ownership.
 Supply `directory` when the current or replacement owner is a person.
-The directory must check active status and current Diary access.
+For recovery, the directory must check active status and current `DIARY_USER` membership.
 The method returns the updated task data and increments its revision.
 It preserves dates, dependency links, and completion records.
 It raises `ValidationError` for stale revisions, completed tasks, closed diaries, eligible current owners, or ineligible replacement owners.
@@ -1180,7 +1180,15 @@ The optional `update_template=True` requires `expected_version_key` for the late
 It changes only the matching task's ownership in a new approved version.
 Both changes use one transaction. Failure preserves the diary assignment and template versions.
 Other existing diaries retain their assignments.
-No recovery page exists. DV1-040 remains partial while the manager review workflow and concurrent membership verification remain outstanding.
+Only open tasks copied from templates qualify as orphaned tasks under DV1-040.
+Person owners must remain active members of `DIARY_USER`.
+Role owners need an active DiaryUser member in the configured ownership group.
+The manager list places orphaned tasks first, before its normal date ordering.
+Existing list filters still apply.
+Managers can leave these tasks unresolved without changing their owners or dependency links.
+The existing task editor provides the `Assign owner` action.
+Its person choices include active DiaryUser members. Other choices are authorized ownership groups and Whole team.
+The page changes this diary only. It does not offer the optional callable template update.
 
 V1 dependency editing targets a draft template version:
 
@@ -2375,3 +2383,28 @@ The compact dashboard preview removes `diary-dashboard-counter-arrow`, `diary-da
 It also removes `diary-dashboard-footer` and `diary-dashboard-heading`.
 Host overrides for these preview classes no longer affect the panel.
 The remaining documented classes retain their names.
+
+### Ownership recovery styling classes
+
+DV1-040 adds these classes within the `.diary` namespace.
+Existing class names remain unchanged. These rules use the existing `--diary-late` variable for orphan labels.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-manager-orphaned` | Orphaned template-task label in the manager list. |
+| `diary-manager-orphaned-help` | Explanation of unresolved ownership and blocking. |
+| `diary-detail-orphaned` | Orphaned template-task label in the existing editor. |
+| `diary-recovery-form` | Optional ownership form in the existing task editor. |
+| `diary-recovery-fields` | Ownership control group. |
+| `diary-recovery-legend` | Ownership control group title. |
+| `diary-recovery-field` | One ownership control and its label. |
+| `diary-recovery-label` | Ownership control label. |
+| `diary-recovery-control` | Shared ownership control styling. |
+| `diary-recovery-entry-key` | Hidden task identifier. |
+| `diary-recovery-revision` | Hidden inspected task revision. |
+| `diary-recovery-owner-kind` | Replacement owner type. |
+| `diary-recovery-person-ref` | Active DiaryUser person selection. |
+| `diary-recovery-role-ref` | Authorized ownership group selection. |
+| `diary-recovery-submit` | Explicit assignment button. |
+
+The ownership form uses the existing task-detail error classes for validation messages.

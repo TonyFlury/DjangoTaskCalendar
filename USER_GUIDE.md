@@ -408,6 +408,26 @@ If saving any task fails, none of these completion changes remain.
 **Complete** also does not close the diary.
 Your site controls when the diary itself closes.
 
+## Assign an orphaned template task
+
+An orphaned task is an open template task without an eligible person or ownership group member.
+Diary additions do not qualify as orphaned tasks.
+The full manager diary list places orphaned tasks first.
+The selected list filters still apply.
+You can leave an orphaned task unresolved. Tasks that depend on it remain blocked while it stays incomplete.
+
+1. Select **View and update task** for the orphaned task.
+2. Select **New owner type**.
+3. Select **New person** for person ownership.
+4. Select **New ownership group** for group ownership.
+5. Select **Assign owner**.
+
+Person choices contain active members of the configured DiaryUser group.
+Group choices contain authorized ownership groups. The selected group needs an eligible active member.
+Select **Whole team** to give the task to the team.
+The change affects this diary only. It preserves dates and predecessor links.
+The task stays incomplete until someone completes it.
+
 ## Get help
 
 | Situation | What it means | Action |

@@ -49,6 +49,25 @@
                 </section>
             {% else %}
                 <p class="diary-detail-state">{% if task.ready %}Ready{% else %}Blocked{% endif %}{% if task.late %} · Late{% endif %}</p>
+                {# DV1-040: Managers use the existing task editor for optional orphan ownership recovery. #}
+                {% if task.orphaned %}
+                    <p class="diary-detail-orphaned">Orphaned template task. You can leave this task unresolved.</p>
+                    {% if not task.closed %}
+                        <form class="diary-recovery-form" method="post">
+                            {% csrf_token %}
+                            <fieldset class="diary-recovery-fields">
+                                <legend class="diary-recovery-legend">Assign a new owner</legend>
+                                {% for field in recovery_form %}
+                                    {% if field.is_hidden %}{{ field }}{% else %}
+                                        <p class="diary-recovery-field"><label class="diary-recovery-label" for="{{ field.id_for_label }}">{{ field.label }}</label> {{ field }}</p>
+                                    {% endif %}
+                                {% endfor %}
+                            </fieldset>
+                            {% include 'Diary/partials/task_detail_errors.html' with form=recovery_form %}
+                            <button class="diary-button diary-recovery-submit" type="submit" name="action" value="save_owner">Assign owner</button>
+                        </form>
+                    {% endif %}
+                {% endif %}
                 <section class="diary-detail-blockers" aria-label="Open predecessors">
                     <h3 class="diary-detail-section-heading">Open predecessors</h3>
                     <ul class="diary-detail-blocker-list">

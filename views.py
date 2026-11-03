@@ -21,9 +21,11 @@ from django.utils.cache import patch_cache_control, patch_vary_headers
 from .api import Actor, DiaryAPI
 from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
-                    TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TemplateForm, editor_task_limit)
+                    TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm,
+                    TemplateForm, editor_task_limit)
 from .models import EventCalendar, Milestone
 from .roles import access_groups
+from .ownership import orphaned_entry_keys
 
 
 class DjangoOwnerDirectory:
@@ -38,7 +40,7 @@ class DjangoOwnerDirectory:
             return False
         try:
             return get_user_model()._default_manager.filter(
-                pk=reference[5:], groups__name__in=group_names).exists()
+                pk=reference[5:], is_active=True, groups__name__in=group_names).exists()
         except (ValueError, ValidationError):
             return False
 
@@ -497,20 +499,41 @@ class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
                                    auto_id=f'diary-date-{entry_key}-%s')
         completion_form = TaskCompletionForm(self.request.POST if action in {'complete', 'close_all'} else None,
                                              initial=initial, auto_id=f'diary-completion-{entry_key}-%s')
-        context.update(due_form=due_form, completion_form=completion_form)
+
+        # DV1-040: Only managers inspect template ownership recovery through the normal task editor.
+        task['orphaned'] = False
+
+        # Ordinary users must not receive manager ownership review controls.
+        if task['manager']:
+            task['orphaned'] = bool(orphaned_entry_keys((task,), directory=DjangoOwnerDirectory()))
+        recovery_form = TaskOwnerRecoveryForm(self.request.POST if action == 'save_owner' else None,
+            initial={'entry_key': entry_key, 'revision': task['revision']},
+            auto_id=f'diary-recovery-{entry_key}-%s')
+        context.update(due_form=due_form, completion_form=completion_form, recovery_form=recovery_form)
 
         # GET shows the current state, while POST must name one supported action.
         if not submitted:
             return render(self.request, self.template_name, context)
 
         # Unknown actions must never fall through to a different mutation.
-        if action not in {'save_date', 'complete', 'close_all'} or len(self.request.POST.getlist('action')) != 1:
+        if action not in {'save_date', 'save_owner', 'complete', 'close_all'} or len(self.request.POST.getlist('action')) != 1:
             context['detail_error'] = 'Select one supported task action.'
             return render(self.request, self.template_name, context, status=400)
         try:
 
+            # DV1-040: Ownership changes recheck manager scope, template provenance, and current eligibility in the API.
+            if action == 'save_owner':
+
+                # Invalid owner controls must not change the inspected task.
+                if recovery_form.is_valid():
+                    diary.reassign_task(entry_key=entry_key, expected_revision=recovery_form.cleaned_data['revision'],
+                        owner_kind=recovery_form.cleaned_data['owner_kind'],
+                        person_ref=recovery_form.cleaned_data['person_ref'], role_ref=recovery_form.cleaned_data['role_ref'],
+                        directory=DjangoOwnerDirectory())
+                    return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+
             # Date changes have separate ownership permissions from task completion.
-            if action == 'save_date':
+            elif action == 'save_date':
 
                 # Validate dates and revision numbers before invoking the callable API.
                 if due_form.is_valid():
@@ -579,6 +602,7 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         """
         today = timezone.localdate(timezone=ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', settings.TIME_ZONE)))
         labels, members = self.get_owner_labels(data['entries'])
+        orphaned = orphaned_entry_keys(data['entries'], directory=DjangoOwnerDirectory())
         late_keys = set()
         for entry in data['entries']:
 
@@ -596,7 +620,7 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
                     or (blocked and filters['exclude_blocked'])
                     or (not late and filters['exclude_non_late'])):
                 continue
-            task = {**entry, 'completed': completed, 'blocked': blocked, 'late': late,
+            task = {**entry, 'orphaned': entry['entry_key'] in orphaned, 'completed': completed, 'blocked': blocked, 'late': late,
                     'blocked_late': blocked and bool(set(entry['blocking_predecessors']) & late_keys),
                     'owner_members': (), 'completed_by_label': labels.get(entry['completed_by_ref'], entry['completed_by_ref'])}
 
@@ -618,8 +642,8 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
 
     @staticmethod
     def task_order(task):
-        """Order entries by due date, then name and stable key, with unset dates last."""
-        return task['date'] or date.max, task['name'].casefold(), str(task['entry_key'])
+        """DV1-040: Put orphaned template tasks first, then retain date, name, and stable-key ordering."""
+        return not task['orphaned'], task['date'] or date.max, task['name'].casefold(), str(task['entry_key'])
 
 
 

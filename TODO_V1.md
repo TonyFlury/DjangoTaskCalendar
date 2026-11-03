@@ -436,7 +436,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   The approved edit is a due-date override for the selected diary task.
   DiaryUsers can edit only self-owned diary additions.
   DiaryManagers can also edit dates on copied template tasks and other permitted diary tasks.
-  Keep names, descriptions, ownership, milestones, and dependency links unchanged.
+  Keep names, descriptions, milestones, and dependency links unchanged.
+  Ownership changes require explicit orphan recovery under DV1-040.
   V1 does not warn managers when a due-date change causes a conflict.
   Implementation: [models.py](models.py): `CalendarEntry.due_date_override`, `CalendarEntry.open_due_date`, `CalendarEntry.revision`. [api.py](api.py): `DiaryInstance.update_due_date`, `DiaryInstance._can_edit_date`. [forms.py](forms.py): `TaskDueDateForm`. [views.py](views.py): `TaskDetailView.respond`.
   Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_user_edits_personal_due_date_without_changing_original_rule_or_other_records`, `TaskEditingTests.test_user_cannot_edit_copied_group_team_or_other_person_dates`, `TaskEditingTests.test_manager_changes_copied_due_date_without_template_revision_or_warning_service`, `TaskEditingTests.test_stale_invalid_and_completed_due_date_changes_are_rejected`, `TaskEditingConcurrencyTests`.
@@ -518,22 +519,27 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Implemented pages and styling](../docs/design/diary-v1-remaining-work.md#dv1-041-pages-and-styling).
   Requirement: [D6].
 
-- [ ] **DV1-040: Ownership display and membership handling.**
+- [x] **DV1-040: Ownership display and membership handling.**
   Show person names, current role members, and “Whole team” as appropriate.
   Keep role references rather than copying a fixed member list.
   Preserve ownership when membership changes.
   Apply empty-group warnings at the validation points in section 9.
-  Resolve DEC-005 for a person who loses DiaryUser membership.
+  Put orphaned template tasks first in the manager list. Preserve the normal ordering within each task category.
+  Let managers leave these tasks unresolved or assign a replacement through the existing task editor.
+  Limit person replacements to active members of `DIARY_USER`. Also permit authorized ownership groups and whole-team ownership.
   Partial implementation: [views.py](views.py): `ManagerDiaryView.get_owner_labels`, `ManagerDiaryView.get_tasks`. [templates/Diary/partials/manager_tasks.html](templates/Diary/partials/manager_tasks.html): `.diary-manager-task-owner`, `.diary-manager-owner-members`.
   Verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_current_owners_private_entries_and_escaping`.
   Personal implementation: [views.py](views.py): `DiaryScopeMixin.dispatch`, `DiaryScopeMixin.get_diary_keys`, `DiaryScopeMixin.selected_key`, `PersonalDiaryView.get`, `PersonalDiaryView.filter_context`, `DiaryOwnerLabelsMixin.get_owner_labels`. [templates/Diary/partials/task_list.html](templates/Diary/partials/task_list.html): `.diary-task-late`, `.diary-task-blocked-late`, `.diary-task-blocked`, `.diary-task-owner`.
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Partial API implementation: [ownership.py](ownership.py): `orphaned_entry_keys`. [api.py](api.py): `DiaryInstance.reassign_task`.
+  API implementation: [ownership.py](ownership.py): `orphaned_entry_keys`. [api.py](api.py): `DiaryInstance.reassign_task`.
   API verification: [tests/test_ownership_recovery.py](tests/test_ownership_recovery.py): `OwnershipRecoveryTests`.
-  Remaining: Resolve DEC-005 for the manager review page. Verify concurrent membership changes and the proposed page.
-  Recovery design: [Ownership recovery API and proposed page](../docs/design/diary-v1-remaining-work.md#dv1-040-ownership-recovery-api-and-proposed-page).
+  Recovery implementation: [views.py](views.py): `ManagerDiaryView.get_tasks`, `ManagerDiaryView.task_order`, `TaskDetailView.respond`, `DjangoOwnerDirectory.person_in_groups`. [forms.py](forms.py): `TaskOwnerRecoveryForm`.
+  Recovery templates: [templates/Diary/partials/manager_tasks.html](templates/Diary/partials/manager_tasks.html): `.diary-manager-orphaned`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-recovery-form`.
+  Editor verification: [tests/test_ownership_recovery.py](tests/test_ownership_recovery.py): `ManagerOwnershipRecoveryTests`.
+  Browser verification: [tests/browser_ownership_recovery.py](tests/browser_ownership_recovery.py): `OwnershipRecoveryBrowserTests.test_existing_editor_reassigns_orphaned_template_task`.
+  Recovery design: [Ownership recovery in the existing editor](../docs/design/diary-v1-remaining-work.md#dv1-040-ownership-recovery-in-the-existing-editor).
   Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D9].
 
@@ -598,7 +604,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Verify concurrent membership changes and the proposed manager recovery page under DEC-005.
+  Remaining: Verify ownership recovery against simultaneous membership changes, completion, and diary closure through separate database connections.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
@@ -625,7 +631,7 @@ They do not reopen the confirmed V1 decisions.
 | DEC-002 | Resolved for this change: due-date edits only. Other task fields, ownership changes, and extra progress states have no implemented editing interface. | DV1-032 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
 | DEC-003 | Closed. Copying existing template tasks into existing diaries is not required. | DV1-034, not required | [Removed requirement](#removed-requirement-dv1-034). |
 | DEC-004 | Implemented with one generic marker for inaccessible open predecessors. No private content, identifiers, or count appear. | DV1-035 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
-| DEC-005 | Define review and ownership handling when a person loses DiaryUser membership. | DV1-040 | [D6] requires review and prohibits silent whole-team reassignment. |
+| DEC-005 | Resolved. Put orphaned template tasks first in the manager list. Allow unresolved ownership or explicit reassignment through the existing editor. | DV1-040 | Choose a DiaryUser, authorized ownership group, or Whole team. No dedicated popup is required. |
 
 ## Host integration work
 
@@ -715,11 +721,19 @@ These requirements have no assigned release and are not V1 completion conditions
 
 ## Review limits
 
+DEC-005 is resolved through the existing manager list and task editor.
+The standalone configuration passed 215 tests, including the ownership recovery Chrome test.
+The host configuration passed 215 tests, including the Garage Sale diary-key integration test.
+Both configurations used separate PostgreSQL test databases.
+The browser check covers orphan priority, existing-editor navigation, person choices, whole-team reassignment, and phone layout.
+DV1-044 retains checks for simultaneous membership changes, completion, and closure through separate database connections.
+No application migration or deployment occurred for this change. No additional migration is required.
+
 The resumed edits implement the DV1-043 milestone boundary and template-only predecessor choices.
 The standalone configuration passed 208 tests against a separate PostgreSQL database.
 The host configuration passed 209 tests, including the Garage Sale diary-key integration test.
 The Chrome preview check passed count links, completion updates, empty lists, disabled Diary, and desktop and phone layouts.
-The ownership recovery API is partial work under DV1-040. Its manager page remains proposed.
+That earlier change supplied the recovery API. The DEC-005 change above supplies the existing-editor controls.
 The dashboard preview uses three exclusive counts. Production dashboard integration remains outstanding.
 Issue 9 was available locally. A full dictionary and technical-name review remains incomplete.
 
