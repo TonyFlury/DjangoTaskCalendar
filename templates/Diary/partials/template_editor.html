@@ -1,0 +1,34 @@
+<section class="diary diary-template-editor" aria-labelledby="diary-template-heading" data-task-limit="{{ task_forms.max_num }}">
+    <nav class="diary-actions diary-template-navigation" aria-label="Template navigation">
+        <a class="diary-button diary-template-back" href="{% url 'Diary:template-list' %}">All templates</a>
+    </nav>
+    <h1 class="diary-heading" id="diary-template-heading">{% if creating %}Create template{% else %}Edit {{ template_data.name }}{% endif %}</h1>
+    <p class="diary-template-version">{% if template_data.number %}Version {{ template_data.number }} · {{ template_data.status }}.{% else %}No saved version.{% endif %} Save creates and approves a new version.</p>
+    <p class="diary-template-guidance">Existing diaries keep their tasks and dependencies. Template names stay fixed after creation.</p>
+    {% if ownership_warnings %}<aside class="diary-template-warnings" aria-label="Ownership warnings" role="status"><ul class="diary-warning-list">{% for warning in ownership_warnings %}<li class="diary-warning">{{ warning }}</li>{% endfor %}</ul></aside>{% endif %}
+    <form class="diary-template-form" method="post">
+        {% csrf_token %}
+        {{ header_form.expected_version_key }}
+        {% if header_form.expected_version_key.errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.expected_version_key.errors %}<li class="diary-form-error">Version: {{ error }}</li>{% endfor %}</ul>{% endif %}
+        {% if header_form.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+        <div class="diary-card diary-template-metadata">
+            {% include 'Diary/partials/template_field.html' with field=header_form.name %}
+            {% include 'Diary/partials/template_field.html' with field=header_form.description %}
+        </div>
+        {{ task_forms.management_form }}
+        {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+        <h2 class="diary-template-section-title">Tasks</h2>
+        <p class="diary-template-guidance">Use milestone dates or annual dates. Select predecessors that must finish before each task.</p>
+        <div class="diary-template-task-list">
+            {% for form in task_forms %}{% include 'Diary/partials/template_task.html' %}{% endfor %}
+        </div>
+        <p class="diary-template-live-message" aria-live="polite"></p>
+        <div class="diary-actions">
+            <button class="diary-button diary-template-add" type="submit" name="action" value="add_task" formnovalidate>Add task</button>
+            <button class="diary-button diary-button-primary diary-template-save" type="submit" name="action" value="save">Save template</button>
+        </div>
+    </form>
+    <datalist class="diary-template-milestone-options" id="diary-milestone-names">{% for milestone in milestones %}<option class="diary-template-milestone-option" value="{{ milestone.name }}">{{ milestone.label }}</option>{% endfor %}</datalist>
+    <template class="diary-template-empty-task">{% include 'Diary/partials/template_task.html' with form=task_forms.empty_form %}</template>
+    {{ empty_owner_roles|json_script:'diary-template-empty-roles' }}
+</section>

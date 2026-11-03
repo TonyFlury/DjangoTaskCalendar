@@ -67,3 +67,28 @@
     .diary { padding: .5rem; }
     .diary .diary-actions { flex-direction: column; align-items: stretch; }
 }
+
+/* Template controls expose classes for host styling without element-position selectors. */
+.diary .diary-template-list { list-style: none; padding: 0; }
+.diary .diary-template-name { margin-block: 0 .5rem; }
+.diary .diary-template-link { color: var(--diary-accent); overflow-wrap: anywhere; }
+.diary .diary-template-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diary .diary-template-task-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.diary .diary-template-task-title { overflow-wrap: anywhere; }
+.diary .diary-template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1rem; }
+.diary .diary-template-field { margin-block: .75rem; }
+.diary .diary-field-label { display: block; font-weight: bold; margin-block: .75rem .25rem; }
+.diary .diary-input { font: inherit; color: var(--diary-text); max-width: 100%; }
+.diary .diary-template-field-description, .diary .diary-template-field-name,
+.diary .diary-template-field-predecessors { width: 100%; }
+.diary .diary-field-help, .diary .diary-required, .diary .diary-template-version,
+.diary .diary-template-guidance { color: var(--diary-muted); }
+.diary .diary-field-help { margin-block: .25rem; }
+.diary .diary-field-errors, .diary .diary-form-errors { color: #a31515; }
+.diary .diary-template-field-invalid { border-inline-start: 3px solid #a31515; padding-inline-start: .75rem; }
+.diary .diary-template-warnings { border: 2px solid #a66300; border-radius: var(--diary-radius); padding: .75rem; }
+.diary .diary-template-task-deleted { border-style: dashed; }
+.diary .diary-template-hidden { display: none; }
+@media (max-width: 40rem) {
+    .diary .diary-template-task-header { align-items: stretch; flex-direction: column; gap: .25rem; }
+}

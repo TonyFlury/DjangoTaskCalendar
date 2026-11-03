@@ -1,0 +1,36 @@
+<section class="diary-card diary-template-task">
+    <div class="diary-template-task-header">
+        <h2 class="diary-template-task-title">{% if form.name.value %}{{ form.name.value }}{% else %}New task{% endif %}</h2>
+        <button class="diary-button diary-template-remove" type="button" hidden>Remove task</button>
+    </div>
+    <div class="diary-template-task-fields">
+        {{ form.entry_key }}
+        {% if form.entry_key.errors %}<ul class="diary-form-errors" role="alert">{% for error in form.entry_key.errors %}<li class="diary-form-error">Task key: {{ error }}</li>{% endfor %}</ul>{% endif %}
+        {% if form.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in form.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+        {% include 'Diary/partials/template_field.html' with field=form.name %}
+        {% include 'Diary/partials/template_field.html' with field=form.description %}
+        {% include 'Diary/partials/template_field.html' with field=form.date_kind %}
+        <div class="diary-template-milestone-fields">
+            {% include 'Diary/partials/template_field.html' with field=form.milestone_name %}
+            {% include 'Diary/partials/template_field.html' with field=form.milestone_label %}
+        </div>
+        <div class="diary-template-relative-fields">
+            {% include 'Diary/partials/template_field.html' with field=form.day_offset %}
+        </div>
+        <div class="diary-template-annual-fields diary-template-grid">
+            {% include 'Diary/partials/template_field.html' with field=form.month %}
+            {% include 'Diary/partials/template_field.html' with field=form.day %}
+            {% include 'Diary/partials/template_field.html' with field=form.year_offset %}
+        </div>
+        {% include 'Diary/partials/template_field.html' with field=form.owner_kind %}
+        <div class="diary-template-person-fields">{% include 'Diary/partials/template_field.html' with field=form.person_ref %}</div>
+        <div class="diary-template-role-fields">{% include 'Diary/partials/template_field.html' with field=form.role_ref %}</div>
+        <p class="diary-template-owner-warning" role="status"></p>
+        <div class="diary-template-predecessor-filter" hidden>
+            <label class="diary-field-label" for="{{ form.prefix }}-predecessor-search">Find predecessors</label>
+            <input class="diary-input diary-template-predecessor-search" id="{{ form.prefix }}-predecessor-search" type="search" placeholder="Task name">
+        </div>
+        {% include 'Diary/partials/template_field.html' with field=form.predecessors %}
+    </div>
+    <div class="diary-template-delete-field">{% include 'Diary/partials/template_field.html' with field=form.DELETE %}</div>
+</section>

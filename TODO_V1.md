@@ -144,10 +144,11 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve transaction safety without a partly created diary.
   Requirement: [D9].
 
-- [ ] **DV1-017: Empty-group warnings during template editing.**
+- [x] **DV1-017: Empty-group warnings during template editing.**
   Check current membership for the selected ownership group.
   Show an on-screen warning with the group name and affected task when it has no members.
   Keep this warning separate from creation validation.
+  Evidence: [editor forms](forms.py), [browser controls](static/Diary/scripts/template_editor.js), and [editor tests](tests/test_template_editor.py).
   Requirement: [D9].
 
 ## HTTP views and task selection
@@ -155,13 +156,15 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [ ] **DV1-018: Authenticated routed views.**
   Add production URL routes and views for task lists, details, template editing, entry creation, and completion.
   Use the callable API for data actions.
+  Template chooser, creation, and editing routes now exist. Task and completion routes remain outstanding.
   Enforce permissions on direct requests and save actions.
   Requirement: [D6] and [D8].
 
 - [ ] **DV1-019: View object selectors.**
   Accept `diary_key` or `template_name` through URL parameters or trusted server-supplied context.
   Apply the same host scope and visibility checks for either input method.
-  Resolve decision DEC-001 before finalizing conflicting-input behavior.
+  Template selectors accept URL values and trusted view context. Conflicting names return HTTP 400.
+  Diary selectors remain outstanding.
   Requirement: [D6].
 
 - [ ] **DV1-020: Personal task API across diaries.**
@@ -205,32 +208,37 @@ The final sections separate unresolved decisions, host integration, and deferred
   Reuse the V1 completion controls.
   Requirement: [D6] and [D8].
 
-- [ ] **DV1-024: Template chooser and named template view.**
+- [x] **DV1-024: Template chooser and named template view.**
   Without `template_name`, list available templates for selection.
   With a name, show its highest version number, including a draft when applicable.
   Do not substitute `DIARY_TEMPLATE_NAME` for the missing view selector.
   Restrict editing to DiaryManagers.
+  Evidence: [routed views](views.py), [routes](urls.py), and [editor tests](tests/test_template_editor.py).
   Requirement: [D6] and [D8].
 
 ## Template and entry operations
 
-- [ ] **DV1-025: Template authoring interface.**
+- [x] **DV1-025: Template authoring interface.**
   Support named milestones, reusable date rules, and optional person, role, or whole-team ownership.
   Offer only configured ownership roles.
   Keep template task content under the author's control.
+  Evidence: [editor forms](forms.py), [editor page](templates/Diary/template_editor.html), and [editor tests](tests/test_template_editor.py).
   Requirement: [D4], [D5], [D6], and [D9].
 
-- [ ] **DV1-026: Versioned template save and approval.**
+- [x] **DV1-026: Versioned template save and approval.**
   Preserve stable entry keys when creating a changed version.
   Approve the resulting version through the DiaryManager's save action.
   Require no separate approval action in V1.
   Keep existing diary copies unchanged.
+  Reject stale saves and preserve stable entry keys in each new approved version.
+  Evidence: [revision API](api.py), [editor tests](tests/test_template_editor.py), and its PostgreSQL concurrency test.
   Requirement: [D4] and [D8].
 
-- [ ] **DV1-027: Safe template predecessor editor.**
+- [x] **DV1-027: Safe template predecessor editor.**
   Exclude the task, its direct successors, its indirect successors, and tasks outside the selected template version.
   Recalculate choices using proposed unsaved links.
   Retain server validation and concurrency protection.
+  Evidence: [graph validation](template_graph.py), [browser controls](static/Diary/scripts/template_editor.js), and [editor tests](tests/test_template_editor.py).
   Requirement: [D6].
 
 - [ ] **DV1-028: Template-only dependency editing.**
@@ -374,7 +382,7 @@ They do not reopen the confirmed V1 decisions.
 
 | Identifier | Decision | Affected items | Documentation |
 | --- | --- | --- | --- |
-| DEC-001 | Define precedence or rejection when URL and context selectors conflict. | DV1-019 | [D6] defines both input methods without conflict behavior. |
+| DEC-001 | Template views reject conflicting selectors. Confirm the same rule when implementing diary views. | DV1-019 | [Usage guide](README.md#template-creation-and-editing). |
 | DEC-002 | Define additional editable instance fields, owner changes, and any extra progress states. | DV1-032 | [D12], especially item 16, retains owner-change decisions. |
 | DEC-003 | Define item-copy behavior when required milestones or predecessor tasks are absent. | DV1-034 | [D4] records this unresolved detail. |
 | DEC-004 | Define how the blocker list represents tasks whose details the current user cannot view. | DV1-035 | [D6] and [D8] require blocker inspection and personal-entry privacy. |
@@ -414,7 +422,9 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The entry mapping refactor passed 67 tests against a separate PostgreSQL database.
+The template workflow and existing Diary code passed 85 tests against a separate PostgreSQL database.
+The isolated configuration passed 84 tests with Django's standard user model and no host business apps.
+The optional Chrome test passed against a separate PostgreSQL database.
 The tests include the Garage Sale key integration test.
 Migration consistency checks found no model changes.
 No migration was applied to application data.

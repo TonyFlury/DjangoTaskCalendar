@@ -16,6 +16,7 @@ from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDe
                      EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
 from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
+from .template_graph import validate_template_graph
 
 API_VERSION = 1
 __all__ = [
@@ -296,6 +297,11 @@ class DiaryAPI:
         """
         return DiaryTemplate.create(actor=self.actor, name=name, description=description)
 
+    def templates(self):
+        """Return template names and keys for the manager's chooser without creating records."""
+        _require_template_access(self.actor)
+        return tuple(CalendarTemplate.objects.order_by('name').values('id', 'name', 'description'))
+
     def template(self, *, key=None, name=None):
         """Return a template reference selected by key or name.
         Raise ValidationError when both selectors are supplied.
@@ -347,6 +353,63 @@ class DiaryAPI:
 
 class DiaryTemplate(_BoundObject):
     """A template reference. Each operation reads current database state."""
+
+    def editor_data(self):
+        """Return template metadata and the highest numbered version, including a draft.
+        Return an empty entry sequence when the template has no version.
+        """
+        _require_template_access(self.actor)
+        template = CalendarTemplate.objects.get(pk=self.key)
+        version = template.versions.order_by('-number').first()
+        result = {'key': template.pk, 'name': template.name, 'description': template.description,
+                  'version_key': None, 'number': 0, 'status': '', 'entries': ()}
+
+        # Empty templates must open for editing without creating a draft during a read.
+        if version is not None:
+            data = DiaryTemplateVersion(actor=self.actor, key=version.pk).read()
+            result.update(version_key=data['key'], number=data['number'], status=data['status'],
+                          entries=data['entries'])
+        return result
+
+    @transaction.atomic
+    def save_version(self, *, entries, predecessors, expected_version_key, description=None,
+                     milestone_definitions=None, directory=None):
+        """Save and approve a complete new version after checking its predecessor graph.
+        Preserve supplied entry keys and existing diaries. Lock the template against concurrent saves.
+        Reject a stale expected_version_key with ValidationError. None expects an unversioned template.
+        Define new milestones from name-to-label values without changing existing milestone labels.
+        """
+        _require(self.actor, 'edit')
+        template = CalendarTemplate.objects.select_for_update().get(pk=self.key)
+        latest = template.versions.order_by('-number').first()
+
+        # Compare the editor's base version under the lock to prevent lost changes.
+        current_key = latest.pk if latest is not None else None
+
+        # Normalize UUID strings while preserving None for a template without versions.
+        expected = UUID(str(expected_version_key)) if expected_version_key is not None else None
+
+        # A newer save requires the manager to reopen the editor and review those changes.
+        if current_key != expected:
+            raise ValidationError('This template changed. Reopen it before saving your changes.')
+        specs = tuple(entries)
+        graph = validate_template_graph((spec.entry_key for spec in specs), predecessors)
+        for name, label in (milestone_definitions or {}).items():
+            Milestone.objects.get_or_create(name=name, defaults={'label': label})
+
+        # A new version follows the highest existing number, including any draft.
+        number = latest.number + 1 if latest is not None else 1
+        version = self.create_version(number=number)
+        for spec in specs:
+            version.add_entry(spec=spec, directory=directory)
+        for key, values in graph.items():
+            version.set_predecessors(entry_key=key, predecessor_keys=values)
+
+        # Omitted descriptions preserve template metadata for callable API users.
+        if description is not None:
+            template.description = description
+            template.save()
+        return version.approve()
 
     @classmethod
     def from_key(cls, *, actor, key):

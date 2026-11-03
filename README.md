@@ -7,8 +7,9 @@ API version: `1`.
 
 This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
-It does not provide HTTP endpoints, routed pages, reminders, or automatic event callbacks.
-The routed Diary pages and the host dashboard need a subsequent implementation step.
+It provides authenticated template creation and editing pages.
+Task pages, completion endpoints, reminders, and automatic event callbacks remain outside the current implementation.
+The host dashboard also needs a subsequent implementation step.
 Diary is for configured DiaryUsers and DiaryManagers who have actions to complete for a successful event.
 Diary has no public view.
 Task role ownership alone does not grant Diary access.
@@ -224,8 +225,252 @@ The next server restart, diary creation, or template edit is the next validation
 
 The current implementation validates the two access setting values and checks configured ownership-role existence.
 Database checks for access-group existence, membership, and diary creation remain implementation work.
-Template editor warnings also remain implementation work.
+The template editor now warns about selected ownership groups without members.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
+
+## Template creation and editing
+
+The template pages require current membership in the group selected by `DIARY_MANAGER`.
+DiaryUsers cannot read or change templates through these pages.
+The pages use Django authentication, CSRF protection, and the configured user model.
+
+Garage Sale mounts the pages at `/diary/templates/`.
+Other projects can include the same URL configuration:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [path('diary/', include('Diary.urls'))]
+```
+
+| URL name | Default path | Behavior |
+| --- | --- | --- |
+| `Diary:template-list` | `/diary/templates/` | Choose a template. An absent selector never uses `DIARY_TEMPLATE_NAME`. |
+| `Diary:template-create` | `/diary/templates/new/` | Create a named template and its first approved version. |
+| `Diary:template-edit` | `/diary/templates/edit/<template_name>/` | Edit the highest numbered version, including a draft. |
+
+The chooser route also accepts the URL query parameter `template_name`.
+Trusted calling views can supply `TemplateEditorView.as_view(template_name='Preparation')`.
+They can instead supply `extra_context={'template_name': 'Preparation'}` to `as_view()`.
+Conflicting selectors return HTTP 400.
+An unknown selected name returns HTTP 404.
+GET requests do not create templates, drafts, or tasks.
+
+1. Select **Create template** or choose an existing template.
+2. Enter the template name and description.
+3. Select **Add task** for each reusable task.
+4. Enter each task name and date rule.
+5. Select its owner type and any required person or group.
+6. Select its predecessors.
+7. Select **Save template**.
+
+Existing template names stay fixed in this editor.
+The description can change.
+Date rules support a milestone date, signed days from a milestone, or an annual date with a year offset.
+One-time dates are unavailable because template tasks must be reusable.
+A new milestone name defines a stable milestone when Save succeeds.
+Its optional label defaults to its name.
+Existing milestone labels stay unchanged.
+The template's required milestone set consists of the milestones referenced by its tasks.
+
+Ownership can identify a person, a configured ownership group, or the whole team.
+Person choices use `get_user_model()` and current DiaryUser or DiaryManager group membership.
+The HTTP workflow uses the technical reference format `user:<primary-key>`.
+Callable clients must use that format for person references that they want to edit through these pages.
+Other opaque reference formats remain available through the callable API and a suitable `OwnerDirectory`.
+
+An empty ownership group produces “No role members” with the task and group names.
+The browser also shows a warning immediately when that group is selected.
+An empty group does not prevent template saving or change the assignment.
+An absent or unconfigured group prevents saving.
+The server checks current group existence and person eligibility during Save.
+Warnings use current membership when the editor loads or submits.
+They do not continuously monitor membership changes.
+
+Predecessor choices exclude the task itself and all its direct and indirect successors.
+The browser recalculates choices from unsaved edits across the complete task list.
+Use **Find predecessors** to search task names while keeping selected predecessors visible.
+The server validates the complete proposed graph and rejects circular or foreign links.
+Removing a task in the browser also removes references to it from the proposed graph.
+**Restore task** reverses removal before Save, but removed predecessor selections must be selected again.
+Without JavaScript, **Add task** submits the form to add a row without saving records.
+Use the **Delete** checkbox to remove a task without JavaScript.
+Clear references to deleted tasks before saving through that fallback.
+
+Save creates the next numbered version and approves it in one database transaction.
+It retains the stable entry keys of the submitted tasks.
+It preserves earlier versions and all existing diary snapshots.
+There is no separate approval action in this workflow.
+The version shown when editing begins is the expected base version.
+A newer saved version causes Save to fail with an explanation and preserves the submitted form values.
+Reopen the template before applying changes to the newer version.
+
+The editor bounds task rows using Django's `DATA_UPLOAD_MAX_NUMBER_FIELDS` setting.
+It reserves twenty request fields and permits at most two hundred task rows.
+Increase that Django setting when a larger template exceeds the current request limit.
+A value of `4000` supports two hundred rows with ordinary predecessor selections.
+Each selected predecessor also counts toward Django's request field limit.
+Templates with many dependencies can require a higher setting.
+The callable save operation does not use that HTML row limit.
+
+### Complete revision API
+
+These operations supplement the existing draft-building methods.
+They require DiaryManager access and do not grant calendar access.
+
+| Operation | Arguments | Result |
+| --- | --- | --- |
+| `DiaryAPI.templates()` | None. | Tuple of dictionaries with `id`, `name`, and `description`. |
+| `DiaryTemplate.editor_data()` | None. | Template metadata and its highest numbered version, including a draft. |
+| `DiaryTemplate.save_version()` | `entries`, `predecessors`, `expected_version_key`, optional `description`, `milestone_definitions`, and `directory`. | New approved `DiaryTemplateVersion`. |
+
+`editor_data()` returns `key`, `name`, `description`, `version_key`, `number`, `status`, and `entries`.
+An unversioned template returns `version_key=None`, `number=0`, an empty status, and no entries.
+Each entry has the fields returned by `DiaryTemplateVersion.read()`.
+
+`entries` is the complete sequence of `EntrySpec` objects for the new version.
+Omitted tasks do not appear in that version.
+`predecessors` maps entry keys to their predecessor key sequences.
+Omitted graph entries have no predecessors.
+All dependency endpoints must occur in `entries`.
+`expected_version_key` must match the latest version, including a draft.
+Use `None` only when the template has no version.
+
+`milestone_definitions` maps new milestone names to labels.
+Existing names retain their labels.
+The optional `directory` checks person ownership through the existing `OwnerDirectory` contract.
+An omitted `description` preserves the template description.
+The operation rejects duplicate task names, duplicate entry keys, invalid rules, invalid owners, and invalid dependency graphs.
+Failed saves roll back new versions, entries, links, milestone definitions, and description changes.
+
+```python
+from Diary.api import DiaryAPI, EntrySpec
+from Diary.choices import DateKind
+
+client = DiaryAPI(actor=actor)
+template = client.create_template(name='Preparation')
+prepare = EntrySpec('Prepare materials', DateKind.RELATIVE,
+                    milestone_name='target', day_offset=-7)
+review = EntrySpec('Review materials', DateKind.SOURCE, milestone_name='target')
+version = template.save_version(
+    entries=[prepare, review],
+    predecessors={review.entry_key: [prepare.entry_key]},
+    expected_version_key=None,
+    milestone_definitions={'target': 'Target date'},
+)
+assert version.read()['status'] == 'approved'
+```
+
+Use `dataclasses.replace()` to change an existing `EntrySpec` while retaining its `entry_key`.
+Submit the complete task and predecessor sets with the version key returned by `editor_data()`.
+
+### Template workflow verification
+
+`Diary/tests/test_template_editor.py` covers permission checks, field validation, immutable versions, failed saves, and concurrent saves.
+`Diary/tests/browser_template_editor.py` provides an optional Chrome workflow check.
+It covers task controls, ownership warnings, predecessor search, selected tasks, saves, and narrow screens.
+The browser check requires Chrome and Selenium.
+Set the optional technical environment variable `DIARY_CHROMEDRIVER` to an existing ChromeDriver executable.
+Otherwise, Selenium locates the driver.
+Run the optional check explicitly with the project's PostgreSQL test settings:
+
+```sh
+python manage.py test Diary.tests.browser_template_editor --settings=your_project.test_settings --noinput
+```
+
+`your_project.test_settings` is an example technical module name.
+Select test settings that use a separate PostgreSQL test database.
+The browser check creates its own users and templates in that database.
+
+### Template page styling
+
+The complete pages are `Diary/template_list.html` and `Diary/template_editor.html`.
+Their reusable content lives in `Diary/partials/template_list.html` and `Diary/partials/template_editor.html`.
+An embedded editor requires `Diary/scripts/template_editor.js` once after its content.
+The fragment requires the context supplied by `TemplateEditorView`.
+The current fragment uses one formset prefix and fixed accessibility identifiers.
+Include only one editor fragment in each document.
+
+All classes below use the `.diary` namespace.
+Existing class names and CSS variables remain unchanged.
+The editor adds no CSS variables.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-template-chooser` | Template chooser root. |
+| `diary-template-list` | Available template list. |
+| `diary-template-summary` | One template summary card. |
+| `diary-template-name` | Summary name heading. |
+| `diary-template-link` | Link to edit the named template. |
+| `diary-template-description` | Summary description. |
+| `diary-template-empty` | Empty chooser message. |
+| `diary-template-create` | Create template link. |
+| `diary-template-editor` | Editor root. |
+| `diary-template-navigation` | Template navigation container. |
+| `diary-template-back` | Return link to the chooser. |
+| `diary-template-version` | Current version and save behavior. |
+| `diary-template-guidance` | Workflow guidance. |
+| `diary-template-warnings` | Server ownership warning container. |
+| `diary-warning-list` | Warning list. |
+| `diary-warning` | One task-specific warning. |
+| `diary-template-form` | Complete revision form. |
+| `diary-template-metadata` | Template metadata card. |
+| `diary-template-section-title` | Task section heading. |
+| `diary-template-task-list` | Task form container. |
+| `diary-template-task` | One task form card. |
+| `diary-template-task-header` | Task heading and removal control. |
+| `diary-template-task-title` | Current task name. |
+| `diary-template-task-fields` | Task fields that hide after removal. |
+| `diary-template-remove` | Remove or restore task button. |
+| `diary-template-delete-field` | Server deletion checkbox container. |
+| `diary-template-task-deleted` | Task marked for removal from the next version. |
+| `diary-template-field` | One labeled field. |
+| `diary-template-field-invalid` | Field with validation errors. |
+| `diary-field-label` | Form field label. |
+| `diary-required` | Required field indication. |
+| `diary-input` | Shared form control class. |
+| `diary-field-help` | Field instructions. |
+| `diary-field-errors` | Field error list. |
+| `diary-field-error` | One field error. |
+| `diary-form-errors` | Whole-form error list. |
+| `diary-form-error` | One whole-form error. |
+| `diary-template-milestone-fields` | Milestone name and label fields. |
+| `diary-template-relative-fields` | Day offset fields. |
+| `diary-template-annual-fields` | Annual date fields. |
+| `diary-template-grid` | Responsive field grid. |
+| `diary-template-person-fields` | Person selection fields. |
+| `diary-template-role-fields` | Ownership group selection fields. |
+| `diary-template-owner-warning` | Immediate group membership warning. |
+| `diary-template-predecessor-filter` | Browser predecessor search container. |
+| `diary-template-predecessor-search` | Search control that retains selected predecessors. |
+| `diary-template-live-message` | Screen reader announcement of task changes. |
+| `diary-template-add` | Add task button. |
+| `diary-template-save` | Save and approve button. |
+| `diary-template-milestone-options` | Existing milestone name suggestions. |
+| `diary-template-milestone-option` | One milestone suggestion. |
+| `diary-template-empty-task` | Inert task form used for browser additions. |
+| `diary-template-hidden` | Hidden rule panel or fallback control. |
+
+Each form control also has the corresponding technical field class:
+
+| Class | Field |
+| --- | --- |
+| `diary-template-field-name` | Template or task name. |
+| `diary-template-field-description` | Template or task description. |
+| `diary-template-field-expected-version-key` | Hidden base version key. |
+| `diary-template-field-entry-key` | Hidden stable task key. |
+| `diary-template-field-date-kind` | Reusable date rule. |
+| `diary-template-field-milestone-name` | Stable milestone name. |
+| `diary-template-field-milestone-label` | Label for a new milestone. |
+| `diary-template-field-day-offset` | Signed offset from a milestone. |
+| `diary-template-field-month` | Annual month. |
+| `diary-template-field-day` | Annual day. |
+| `diary-template-field-year-offset` | Annual year offset. |
+| `diary-template-field-owner-kind` | Whole-team, person, or role ownership. |
+| `diary-template-field-person-ref` | Django person selection. |
+| `diary-template-field-role-ref` | Configured ownership group selection. |
+| `diary-template-field-predecessors` | Multiple predecessor selection. |
+| `diary-template-field-delete` | Remove task checkbox. |
 
 ## API objects and factories
 
