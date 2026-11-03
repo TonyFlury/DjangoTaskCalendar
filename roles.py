@@ -77,6 +77,7 @@ def task_owner_roles():
 # DV1-009: Configured ownership role names and existence checks.
 # DV1-048: Standard Django groups and optional template default.
 # DV1-015: Startup ownership-group membership validation.
+# DV1-016: Reuse current ownership checks during diary creation.
 def validate_task_owner_roles():
     """Check that every configured ownership group exists and contains a user.
     Raise ImproperlyConfigured for missing groups, empty groups, or unavailable database checks.
@@ -94,7 +95,7 @@ def validate_task_owner_roles():
     except DatabaseError as error:
         raise ImproperlyConfigured(
             'Diary cannot validate DIARY_TASK_OWNER_ROLES against the database. '
-            'Check the database connection, apply migrations, and populate the configured roles before startup.'
+            'Check the database connection, apply migrations, and populate the configured roles before continuing.'
         ) from error
     missing = roles - existing.keys()
 
@@ -114,5 +115,5 @@ def validate_task_owner_roles():
     if problems:
         raise ImproperlyConfigured(
             'DIARY_TASK_OWNER_ROLES validation failed. ' + ' '.join(problems)
-            + ' Create missing groups and add at least one user to each configured role before startup.'
+            + ' Create missing groups and add at least one user to each configured role before continuing.'
         )

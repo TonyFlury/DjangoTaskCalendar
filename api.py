@@ -16,6 +16,7 @@ from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDe
                      EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
 from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
+from .roles import validate_task_owner_roles as _validate_task_owner_roles
 from .template_graph import validate_template_graph
 
 API_VERSION = 1
@@ -347,6 +348,7 @@ class DiaryAPI:
             return DiaryTemplateVersion.from_default(actor=self.actor)
         return DiaryTemplateVersion.from_key(actor=self.actor, key=key)
 
+    # DV1-016: Revalidate ownership groups through the instance factory.
     def create_diary(self, *, event_ref, name, event_year, milestone_dates, template_version_key=None,
                      template_name=None):
         """Create a diary using this actor and return its API reference.
@@ -625,6 +627,7 @@ class DiaryInstance(_DependencyAPI):
 
     # DV1-004: Named diary creation and template snapshots.
     # DV1-048: Standard Django groups and optional template default.
+    # DV1-016: Current ownership-group validation within the creation transaction.
     @classmethod
     @transaction.atomic
     def create(cls, *, actor, event_ref, name, event_year, milestone_dates, template_version_key=None,
@@ -632,8 +635,11 @@ class DiaryInstance(_DependencyAPI):
         """Create a diary reference with a stable key from an approved template.
         Copy its rules, owners, and dependencies in one transaction.
         Repeated identical inputs reuse the existing diary, while conflicting inputs raise ValidationError.
+        Revalidate configured ownership groups on every call, including repeated requests.
+        Raise ImproperlyConfigured when a configured group is missing or empty.
         """
         _require(actor, 'use')
+        _validate_task_owner_roles()
         selected = _template_version(key=template_version_key, name=template_name)
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
 

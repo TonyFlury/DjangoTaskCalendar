@@ -3,6 +3,7 @@ from datetime import date
 from uuid import uuid4
 
 from django.contrib.auth.models import Group
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, override_settings
@@ -26,7 +27,11 @@ class Directory:
 )
 class DiaryTests(TestCase):
     def setUp(self):
-        Group.objects.get_or_create(name='SponsorshipManager')
+        """Create a populated ownership group and the reusable template used by API tests."""
+        role, _ = Group.objects.get_or_create(name='SponsorshipManager')
+        model = get_user_model()
+        member = model._default_manager.create_user(**{model.USERNAME_FIELD: 'diary-owner@example.test'})
+        member.groups.add(role)
         self.officer = api.Actor('person:1', frozenset({'Officer', 'ExecMember'}))
         self.exec_member = api.Actor('person:2', frozenset({'ExecMember'}))
         api.DiaryAPI(actor=self.officer).define_milestones(

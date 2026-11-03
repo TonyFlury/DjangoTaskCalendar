@@ -258,7 +258,7 @@ Errors distinguish a missing group, an empty group, and an unavailable database.
 They identify the relevant settings and group names.
 Validation does not create groups or assign users.
 The startup path also checks configured ownership-group existence and membership.
-Ownership validation during diary creation remains implementation work under DV1-016.
+Ownership validation also runs during diary creation under DV1-016.
 The template editor now warns about selected ownership groups without members.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
 
@@ -284,6 +284,25 @@ Commands such as `runserver`, `check`, and `collectstatic` perform normal databa
 The test suite explicitly calls the normal startup path against its separate PostgreSQL database.
 It verifies the command exceptions without querying application data.
 Projects can use Django's standard setup commands without providing `sync_access_policy`.
+
+### Ownership checks during diary creation
+
+`DiaryAPI.create_diary()` and `DiaryInstance.create()` both validate current ownership configuration.
+The instance factory calls `Diary.roles.validate_task_owner_roles()` after checking caller permission, inside the creation transaction.
+Each group in `DIARY_TASK_OWNER_ROLES` must exist and contain at least one user.
+The checks include configured groups that no selected template task currently uses.
+An empty ownership-role collection needs no ownership-group query.
+
+Missing groups, empty groups, and unavailable database checks raise `ImproperlyConfigured`.
+Invalid ownership configuration creates no diary, milestone records, task copies, or dependency links.
+Failure during a later copy step rolls back all new diary records.
+The checks do not change groups, user memberships, templates, or existing diaries.
+
+Repeated creation calls perform the same checks before returning an existing diary reference.
+A failed retry preserves that diary and its tasks.
+Repair the configured groups before retrying the call.
+An already running process checks repaired membership on its next creation call.
+Later membership changes remain subject to the documented runtime monitoring limit.
 
 ## Template creation and editing
 

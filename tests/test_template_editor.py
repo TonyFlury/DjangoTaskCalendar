@@ -100,6 +100,7 @@ class TemplateEditorTests(TestCase):
     # Verifies DV1-026: Versioned template save and approval.
     def test_create_and_edit_approve_versions_and_preserve_existing_diaries(self):
         """Save two revisions while retaining task keys and an existing diary snapshot."""
+        self.user.groups.add(self.helpers)
         data = self.payload()
         data['tasks-1-predecessors'] = [str(self.spec.entry_key)]
         response = self.client.post(reverse('Diary:template-create'), data)
