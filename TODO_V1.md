@@ -270,6 +270,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Provide explicit navigation to a permitted diary's date-ordered entries.
   Show the diary name without requiring host event metadata.
   Apply personal-entry privacy and display the date, source, owner, and state for each entry.
+  Apply DV1-052 for the manager's default task selection and checkbox filters.
   Requirement: [D6] and [D8].
 
 - [ ] **DV1-023: Task details view.**
@@ -277,6 +278,18 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve diary context and apply privacy to related task information.
   Reuse the V1 completion controls.
   Requirement: [D6] and [D8].
+
+- [ ] **DV1-052: Manager filters for one diary.**
+  Provide the checkboxes “include completed tasks”, “exclude blocked tasks”, and “exclude non-late tasks”.
+  Keep all three checkboxes clear by default.
+  Show all incomplete tasks by default, including blocked tasks and tasks that are not late.
+  Let managers inspect completion history and select late tasks only.
+  Preserve the selected diary, task privacy, and permitted diary scope.
+  Keep the separate DiaryUser default under DV1-049.
+  Implementation: Not started. No production view, control, or executable verification implements these filters.
+  Remaining: Implement the controls, combined selection behavior, completion history, and documented styling classes.
+  Design: [Manager filters for one diary](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
+  Requirement: [confirmed manager filters](README.md#confirmed-v1-manager-diary-filters) and the user request.
 
 - [x] **DV1-024: Template chooser and named template view.**
   Without `template_name`, list available templates for selection.
@@ -527,6 +540,14 @@ These requirements have no assigned release and are not V1 completion conditions
   Remaining: Implement collection support and verify separate ownership groups without common members.
   Design: [Multiple Diary user groups](../docs/design/diary-user-groups.md).
   Documentation only. No executable implementation or verification is complete for this requirement.
+
+- [ ] **DFUT-003: Future date-window filtering in all diary views.**
+  Let users select a future due-date window for incomplete tasks in every diary view.
+  Preserve task access rules and the selected permitted diary scope.
+  Implementation: Deferred. No production controls or executable verification implement this requirement.
+  Remaining: Define date boundaries and filter interactions before implementing the controls and task selection.
+  Design: [Future date-window filtering](../docs/design/diary-v1-remaining-work.md#dfut-003-future-date-window-filtering).
+  Documentation only. This requirement has no assigned release and is not a V1 completion condition.
 
 ## Review limits
 

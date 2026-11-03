@@ -119,6 +119,34 @@ The current `DiaryInstance.personal_tasks()` method reads one diary instance.
 It has no HTTP API or task query across multiple instances yet.
 The expanded view behavior above is a confirmed requirement and remains implementation work.
 
+### Confirmed V1 manager diary filters
+
+Requirement identifier: **DV1-052**. Implementation remains outstanding.
+
+When a DiaryManager views one permitted diary, provide these checkbox filters:
+
+| Interface label | Default | Effect when selected |
+| --- | --- | --- |
+| include completed tasks | Clear. | Include completed tasks so the manager can inspect completion history. |
+| exclude blocked tasks | Clear. | Exclude tasks blocked by incomplete predecessors. |
+| exclude non-late tasks | Clear. | Exclude tasks that are not late, for a view of late tasks only. |
+
+The default manager view shows all incomplete tasks, including blocked tasks and tasks that are not late.
+The filters must preserve the selected diary, task privacy, and permitted diary scope.
+This requirement applies to the manager's specific diary view.
+The personal DiaryUser view retains its separate ready-task default under DV1-049.
+See [manager diary filters](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary) for implementation boundaries and open decisions.
+
+### Deferred future date-window filter
+
+Requirement identifier: **DFUT-003**. No release is assigned.
+
+All diary views must eventually support a future due-date window for incomplete tasks.
+The user can select a window to inspect upcoming work.
+This requirement remains deferred and adds no V1 completion condition.
+Window boundaries and interactions with other filters remain open decisions.
+See [future date-window filtering](../docs/design/diary-v1-remaining-work.md#dfut-003-future-date-window-filtering).
+
 ### Current API configuration
 
 The host supplies this configuration in settings:
