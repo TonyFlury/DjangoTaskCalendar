@@ -164,6 +164,22 @@ def _visible_entries(actor, entries):
                  for entry in visible)
 
 
+# DV1-031: Search only results that have already passed the task visibility checks.
+def _search_entries(entries, query):
+    """Return visible entries whose names or descriptions contain the supplied text.
+    Ignore case and surrounding spaces. Raise ValidationError for invalid or excessive input.
+    """
+
+    # A bounded text value prevents accidental broad searches from invalid caller inputs.
+    if not isinstance(query, str) or len(query) > 256:
+        raise ValidationError('Supply search text with at most 256 characters.')
+    term = query.strip().casefold()
+
+    # Match visible names and descriptions, or return all visible entries when search text is empty.
+    return tuple(entry for entry in entries
+                 if not term or term in entry['name'].casefold() or term in entry.get('description', '').casefold())
+
+
 # DV1-020, DV1-050: Use one comparison date across all selected diaries.
 def _comparison_date(today):
     """Return an explicit date or today's date in the configured Diary time zone.
@@ -448,6 +464,30 @@ class DiaryAPI:
         """Group task results by diary name and key, with late tasks first within each diary."""
         return (task['diary_name'].casefold(), str(task['diary_key']), not task['late'],
                 task['date'] or date.max, task['name'].casefold(), str(task['entry_key']))
+
+    # DV1-031: Cross-diary searches retain the host scope and each task's privacy boundary.
+    def search_tasks(self, *, query='', diary_key=None):
+        """Search visible task names and descriptions in one or all permitted diaries.
+        Include completed tasks and closed diaries. Return diary keys and names with each task.
+        Raise the normal scope and lookup errors for an explicit diary selector.
+        """
+        _require(self.actor, 'view')
+
+        # Validate search input even when the actor has no permitted diaries.
+        _search_entries((), query)
+
+        # An explicit selector must not bypass scope checks or silently select another diary.
+        if diary_key is not None:
+            keys = (self.diary(key=diary_key).key,)
+
+        # Omitted selectors search only existing diaries that the host authorized.
+        else:
+            keys = EventCalendar.objects.filter(pk__in=self.actor.calendar_keys).values_list('pk', flat=True)
+        results = []
+        for key in keys:
+            results.extend(self.diary(key=key).search_tasks(query=query))
+        return tuple(sorted(results, key=lambda task: (
+            task['diary_name'].casefold(), str(task['diary_key']), task['name'].casefold(), str(task['entry_key']))))
 
 
 # DV1-046: Class-based callable API and factories.
@@ -1055,6 +1095,15 @@ class DiaryInstance(_DependencyAPI):
         DV1-031: Preserve blocking without exposing another person's private task.
         """
         return self._read()
+
+    # DV1-031: Search applies privacy before text matching and before returning related task references.
+    def search_tasks(self, *, query=''):
+        """Search visible task names and descriptions, including completion history.
+        Return diary keys and names. Preserve private-safe dependency and completion references.
+        """
+        data = self.read()
+        return tuple({**entry, 'diary_key': data['key'], 'diary_name': data['name']}
+                     for entry in _search_entries(data['entries'], query))
 
     def _read(self, *, filter_visibility=True):
         """Return current diary metadata, milestone values, entries, and dependency state.

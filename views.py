@@ -1,4 +1,4 @@
-"""Authenticated Diary lists, template editing, task creation, date editing, and completion."""
+"""Authenticated Diary pages, HTTP data reads, template editing, date editing, and completion."""
 from datetime import date
 from uuid import UUID, uuid4
 from urllib.parse import urlencode
@@ -10,12 +10,13 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
-from django.http import Http404, HttpResponseBadRequest
+from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic.base import ContextMixin
 from django.utils import timezone
+from django.utils.cache import patch_cache_control, patch_vary_headers
 
 from .api import Actor, DiaryAPI
 from .choices import OwnerKind
@@ -239,6 +240,73 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
         """Return a task-detail URL that keeps the selected diary and optional host route name."""
         name = self.view_context.get('task_detail_url_name', 'Diary:task-detail')
         return reverse(name, kwargs={'entry_key': entry_key}) + '?' + urlencode({'diary_key': diary_key})
+
+
+# DV1-031: HTTP data reads use the same identity, scope, and privacy checks as the callable API.
+class DiaryDataView(DiaryScopeMixin, View):
+    """Return read-only JSON task data within the authenticated host's permitted diary scope.
+    Hosts must supply trusted diary keys. Query parameters cannot grant access.
+    """
+
+    access_roles = ('manager', 'user')
+    resource = 'diary'
+
+    def dispatch(self, request, *args, **kwargs):
+        """Authenticate each request and prevent storage or sharing of its response."""
+        response = super().dispatch(request, *args, **kwargs)
+        patch_cache_control(response, private=True, no_store=True)
+        patch_vary_headers(response, ('Cookie',))
+        return response
+
+    def get(self, request, entry_key=None, *args, **kwargs):
+        """Return a permitted read result or a generic selector, validation, or lookup error."""
+        try:
+            key = self.selected_key()
+        except (ValueError, TypeError, AttributeError):
+            return JsonResponse({'error': 'Supply one valid diary key.'}, status=400)
+        api = DiaryAPI(actor=self.actor)
+        try:
+
+            # Search can span permitted diaries and must never search raw model records.
+            if self.resource == 'search':
+                data = api.search_tasks(diary_key=key, query=request.GET.get('q', ''))
+
+            # Personal results retain assignment selection across permitted open diaries.
+            elif self.resource == 'personal':
+                data = api.personal_tasks(diary_key=key)
+
+            # Diary metadata and task-specific resources require one explicit or trusted selector.
+            else:
+
+                # A task identifier alone cannot select a diary or grant diary scope.
+                if key is None:
+                    return JsonResponse({'error': 'Select a permitted diary.'}, status=400)
+                diary = api.diary(key=key)
+
+                # Metadata includes only tasks and related references visible to this actor.
+                if self.resource == 'diary':
+                    data = diary.read()
+
+                # Active results preserve blocking state calculated from the complete private graph.
+                elif self.resource == 'active':
+                    data = diary.active_tasks()
+
+                # Task inspection masks inaccessible blockers and completion targets.
+                elif self.resource == 'task':
+                    data = diary.task(entry_key=entry_key)
+
+                # Existing predecessor choices remain readable despite the V1 dependency edit restriction.
+                elif self.resource == 'predecessors':
+                    data = diary.available_predecessors(entry_key=entry_key)
+
+                # Unsupported host configuration cannot expose a broader default resource.
+                else:
+                    return JsonResponse({'error': 'Unknown Diary data resource.'}, status=400)
+        except ObjectDoesNotExist:
+            return JsonResponse({'error': 'The selected diary or task is unavailable.'}, status=404)
+        except ValidationError:
+            return JsonResponse({'error': 'The request contains invalid Diary data.'}, status=400)
+        return JsonResponse({'data': data})
 
 
 # Partial DV1-040: Shared current owner labels for task pages.

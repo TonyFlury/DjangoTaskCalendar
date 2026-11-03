@@ -69,7 +69,7 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [x] **DV1-007: Task reads for one diary.**
   `DiaryInstance.active_tasks()` and `DiaryInstance.personal_tasks()` calculate readiness and lateness without stored status flags.
   Personal selection uses current user and role references.
-  Callable reads protect personal entries. Remaining interfaces still need DV1-031.
+  Callable and HTTP data reads protect personal entries under DV1-031.
   Implementation: [api.py](api.py): `DiaryInstance.read`, `DiaryInstance.active_tasks`, `DiaryInstance.personal_tasks`.
   Verification: [tests/test_api.py](tests/test_api.py): `DiaryTests.test_personal_tasks_include_matching_roles_without_duplicate_entries`, `DiaryTests.test_no_persistent_readiness_or_lateness_flags`.
   Requirement: [D6] and [D8].
@@ -402,17 +402,23 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Task creation implementation](../docs/design/diary-v1-remaining-work.md#dv1-029-dv1-030-and-dv1-033-task-creation).
   Requirement: [D6] and [D8].
 
-- [ ] **DV1-031: Personal-entry privacy.**
+- [x] **DV1-031: Personal-entry privacy.**
   Show personally added tasks only to their owner and permitted DiaryManagers.
   Apply the rule to list reads, details, searches, predecessor choices, and both API interfaces.
   Prevent related-task information from exposing private task content.
-  Partial implementation: [api.py](api.py): `_visible_entries`, `DiaryInstance.read`, `DiaryInstance.active_tasks`, `_DependencyAPI.available_predecessors`. [views.py](views.py): `PersonalDiaryView.get`.
+  Implementation: [api.py](api.py): `_visible_entries`, `DiaryInstance.read`, `DiaryInstance.active_tasks`, `_DependencyAPI.available_predecessors`. [views.py](views.py): `PersonalDiaryView.get`.
   Verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests.test_private_entries_and_template_blockers_preserve_state`, `PersonalDiaryTests.test_role_membership_changes_and_manager_personal_selection`.
   Task creation implementation: [views.py](views.py): `TaskCreateView.respond`. [templates/Diary/partials/task_create.html](templates/Diary/partials/task_create.html): `.diary-create`.
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Apply and verify privacy in searches and the HTTP data API.
+  Search implementation: [api.py](api.py): `_search_entries`, `DiaryAPI.search_tasks`, `DiaryInstance.search_tasks`.
+  HTTP data implementation: [views.py](views.py): `DiaryDataView.dispatch`, `DiaryDataView.get`. [urls.py](urls.py): `urlpatterns`, routes `data-diary`, `data-active`, `data-personal`, `data-search`, `data-task`, and `data-predecessors`.
+  Privacy verification: [tests/test_privacy.py](tests/test_privacy.py): `PersonalEntryPrivacyTests`.
+  Searches inspect visible names and descriptions only. Private and unknown task lookups return the same unavailable response.
+  Related keys and completion comments remain protected. Blocking uses the complete dependency graph.
+  HTTP reads repeat authentication and trusted scope checks. Responses prohibit storage and vary by session cookie.
+  No privacy implementation remains for these V1 interfaces.
   Design: [Personal diary privacy boundary](../docs/design/diary-v1-remaining-work.md#dv1-020-dv1-021-and-dv1-049-personal-diary).
   Requirement: [D8].
 
@@ -578,7 +584,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Verify membership-loss handling under DEC-005 and the remaining privacy and milestone API boundaries.
+  Remaining: Verify membership-loss handling under DEC-005 and the remaining milestone API boundary.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
@@ -694,6 +700,12 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This backlog record adds no executable editing interface.
 
 ## Review limits
+
+The staged DV1-031 implementation passed 200 tests with each supported user model.
+Both runs used separate PostgreSQL test databases.
+All 15 Chrome cases passed, including one template-editor retry after a stale-element error.
+The new privacy test class covers callable search, JSON reads, HTML details, related references, current roles, and trusted scope.
+No application data or deployed services changed during verification.
 
 The staged dependency restriction passed 190 tests with each supported user model.
 Both runs used separate PostgreSQL test databases.

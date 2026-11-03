@@ -124,7 +124,80 @@ This view behavior differs from the current callable API's default selection of 
 `DiaryInstance.personal_tasks()` reads one diary instance.
 `DiaryAPI.personal_tasks()` reads one or all permitted open diaries.
 The HTML personal view implements the selection behavior above.
-A separate HTTP data API remains implementation work.
+The read-only HTTP data API applies the same task privacy and trusted diary scope.
+
+### HTTP data API
+
+The technical view class is `Diary.views.DiaryDataView`.
+JSON is a text format for structured data.
+DV1-031 applies personal-entry privacy to every data resource.
+These routes use Django session authentication and the current user groups.
+Anonymous requests follow the configured login redirect.
+An inactive user receives no data.
+Only GET, HEAD, and OPTIONS are permitted.
+POST, PUT, PATCH, and DELETE return HTTP 405 for authenticated callers.
+
+Hosts must supply `permitted_diary_keys` or override `get_diary_keys()` through trusted server context.
+The default routes grant no diary scope.
+A query parameter cannot grant permissions or replace the authenticated person.
+The technical view attribute `resource` selects one resource in trusted route configuration.
+Do not set it from request input.
+
+| Route name | Default path | Resource |
+| --- | --- | --- |
+| `Diary:data-diary` | `/diary/data/diary/` | Visible diary metadata and tasks. |
+| `Diary:data-active` | `/diary/data/active/` | Visible open tasks with readiness and lateness. |
+| `Diary:data-personal` | `/diary/data/personal/` | Current personal and role assignments from permitted open diaries. |
+| `Diary:data-search` | `/diary/data/search/` | Visible task names and descriptions, including history. |
+| `Diary:data-task` | `/diary/data/tasks/<entry_key>/` | Visible task details and private-safe blockers. |
+| `Diary:data-predecessors` | `/diary/data/tasks/<entry_key>/predecessors/` | Visible predecessor choices for an accessible task. |
+
+Supply `diary_key` as a query parameter or trusted view selector.
+Diary, active, task, and predecessor resources require one diary selector.
+Personal and search resources accept an omitted selector for all permitted diaries.
+Search includes closed diaries and completed tasks. Personal results include open assignments only.
+Predecessor reads do not permit dependency editing in existing diaries.
+
+Supply `q` to search names and descriptions without case sensitivity.
+Search ignores surrounding spaces and accepts at most 256 characters.
+Empty search text selects all visible tasks.
+`DiaryAPI.search_tasks(query='', diary_key=None)` provides the corresponding callable search.
+`DiaryInstance.search_tasks(query='')` searches one diary.
+Search results include `diary_key` and `diary_name` with each task.
+
+Successful JSON responses use the envelope `{"data": ...}`.
+UUIDs, dates, and timestamps use the standard Django JSON string representation.
+Arrays preserve task order. Results contain no pagination fields.
+Malformed or conflicting selectors and invalid search text return HTTP 400.
+Out-of-scope selectors and missing access-group membership return HTTP 403.
+Private and unknown task keys return the same generic HTTP 404 response.
+An unknown permitted diary also returns HTTP 404.
+Handled JSON errors use the envelope `{"error": "..."}`.
+Authentication redirects and framework permission errors use the normal Django response format.
+Successful responses and handled errors use `Cache-Control: private, no-store` and `Vary: Cookie`.
+
+Person-owned diary additions are visible only to their owner and permitted DiaryManagers.
+Template tasks remain visible through permitted diary reads, regardless of owner.
+Related references and completion comments cannot disclose inaccessible task content.
+Readiness still includes inaccessible predecessors.
+Task details represent inaccessible open blockers with one generic marker.
+
+This example supplies trusted scope for a search route:
+
+```python
+from django.urls import path
+from Diary.views import DiaryDataView
+
+urlpatterns = [
+    path('host/diary-search/', DiaryDataView.as_view(
+        resource='search', permitted_diary_keys=host_authorized_keys,
+    )),
+]
+```
+
+The technical name `host_authorized_keys` represents diary UUIDs from the host's access policy.
+Override `get_diary_keys()` when that policy depends on the current request.
+Do not obtain these keys from query or form data.
 
 ### Personal diary page integration
 
