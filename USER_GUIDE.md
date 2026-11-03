@@ -382,6 +382,9 @@ A later membership change does not produce continuous automatic warnings.
 
 A template change does not change predecessor links in existing diaries.
 The task detail page has no predecessor editor.
+V1 does not permit dependency changes in any existing diary, including manager changes.
+You cannot add, remove, or replace its predecessor links.
+Creating another template version does not change those links.
 
 ## Use Close all
 
@@ -434,7 +437,8 @@ The current web pages have these limits:
 - Managers receive no automatic warning when a due-date change causes a scheduling conflict.
 - Completed tasks cannot be reopened or edited.
 - A group or whole-team task has one shared completion record.
-- Task details provide no controls to change task names, descriptions, owners, or predecessor links.
+- Task details provide no controls to change task names, descriptions, or owners.
+- V1 freezes predecessor links after diary creation. Managers cannot edit those links.
 - Task details provide no task deletion control.
 - Milestone date editing is unavailable in these pages.
 - Creating or closing a diary depends on your website's separate process.
@@ -449,5 +453,8 @@ Diary does not calculate that choice from the diary's duration.
 
 The website's dashboard can differ from the Diary pages described here.
 A demonstration page does not establish that a function is available on your site.
+
+Controlled editing of existing diary dependencies is a backlog proposal for a later release.
+It has no assigned release number.
 
 For website setup, see the separate [integration and API guide](README.md).

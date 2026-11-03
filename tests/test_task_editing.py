@@ -20,6 +20,7 @@ from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import DateKind, OwnerKind
 from Diary.models import CalendarEntry, EntryDependency, EventCalendar, TemplateEntry, TemplateVersion
 from Diary.tests.test_task_creation import TaskCreationFixtures
+from Diary.tests.legacy_dependencies import seed_legacy_dependencies
 from Diary.views import ManagerDiaryView, PersonalDiaryView, TaskDetailView
 
 
@@ -90,7 +91,7 @@ class TaskEditingFixtures(TaskCreationFixtures):
 
     def block_personal(self):
         """Make the personal task depend on the two copied tasks through the final copied task."""
-        self.diary.set_predecessors(entry_key=self.personal, predecessor_keys=(self.second.entry_key,))
+        seed_legacy_dependencies(self.diary.key, ((self.personal, (self.second.entry_key,)),))
 
     def entry_snapshot(self):
         """Return all stored task fields for mutation, retry, and transaction checks."""
@@ -295,7 +296,7 @@ class TaskEditingTests(TaskEditingFixtures, TestCase):
         blocker = CalendarEntry.objects.get(entry_key=private)
 
         # A legacy link exercises privacy even when current creation rules exclude private additions as predecessors.
-        EntryDependency.objects.bulk_create([EntryDependency(entry=target, predecessor=blocker)])
+        seed_legacy_dependencies(self.diary.key, ((target.entry_key, (blocker.entry_key,)),))
         page = self.client.get(self.task_url())
         self.assertContains(page, 'One or more private predecessors remain open.')
         self.assertNotContains(page, 'Secret blocker')
@@ -308,7 +309,7 @@ class TaskEditingTests(TaskEditingFixtures, TestCase):
         private_target = self.diary.add_entry(spec=EntrySpec('Manager private target', DateKind.ONCE,
             fixed_date=date(2027, 7, 1), owner_kind=OwnerKind.PERSON, person_ref=f'user:{self.manager.pk}'),
             directory=self.owner_directory())
-        self.diary.set_predecessors(entry_key=private_target, predecessor_keys=(self.second.entry_key,))
+        seed_legacy_dependencies(self.diary.key, ((private_target, (self.second.entry_key,)),))
         inspected = self.diary.task(entry_key=private_target)
         self.diary.complete(entry_key=private_target, expected_revision=0, close_all=True,
                             expected_blockers=inspected['blocker_token'])

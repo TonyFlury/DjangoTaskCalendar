@@ -18,6 +18,7 @@ from django.urls import include, path, reverse
 from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import DateKind, OwnerKind
 from Diary.models import CalendarEntry, EventCalendar
+from Diary.tests.legacy_dependencies import seed_legacy_dependencies
 from Diary.views import ManagerDiaryView
 
 
@@ -85,9 +86,10 @@ class ManagerDiaryTests(TestCase):
         self.ordinary_blocked = self.add_task('Future blocked', date(2027, 6, 22))
         self.undated = self.add_task('Undated', None)
         self.done = self.add_task('Completed history', date(2027, 6, 1))
-        for entry, predecessor in ((self.blocked_late, self.late), (self.blocked, self.late),
-                                    (self.ordinary_blocked, self.future)):
-            self.bound.set_predecessors(entry_key=entry, predecessor_keys=[predecessor])
+        seed_legacy_dependencies(self.diary.key, (
+            (self.blocked_late, (self.late,)), (self.blocked, (self.late,)),
+            (self.ordinary_blocked, (self.future,)),
+        ))
         completed = CalendarEntry.objects.get(calendar_id=self.diary.key, entry_key=self.done)
         completed.completed_at = datetime(2027, 6, 2, 10, tzinfo=datetime_timezone.utc)
         completed.completed_by_ref = f'user:{self.manager.pk}'

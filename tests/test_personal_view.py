@@ -17,6 +17,7 @@ from django.urls import include, path, reverse
 from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import DateKind, OwnerKind
 from Diary.models import CalendarEntry, EntryDependency, EventCalendar
+from Diary.tests.legacy_dependencies import seed_legacy_dependencies
 from Diary.views import DjangoOwnerDirectory, PersonalDiaryView
 
 
@@ -87,8 +88,10 @@ class PersonalDiaryFixtures:
         self.blocked = self.add_task('My blocked task', date(2027, 6, 21))
         self.blocked_late = self.add_task('My late blocked task', date(2027, 6, 12))
         self.private = self.add_task('<Private blocker>', date(2027, 6, 10), person=f'user:{self.other_user.pk}')
-        for key in (self.blocked, self.blocked_late):
-            self.first.set_predecessors(entry_key=key, predecessor_keys=[self.blocker_spec.entry_key])
+        seed_legacy_dependencies(self.keys[0], (
+            (self.blocked, (self.blocker_spec.entry_key,)),
+            (self.blocked_late, (self.blocker_spec.entry_key,)),
+        ))
         self.undated = self.add_task('My undated task', None)
         self.done = self.add_task('My completed task', date(2027, 6, 1))
         completed = CalendarEntry.objects.get(calendar_id=self.keys[0], entry_key=self.done)
@@ -266,7 +269,7 @@ class PersonalDiaryTests(PersonalDiaryFixtures, TestCase):
         stored.save()
         blocker = stored.entry_key
         owned = self.add_task('Blocked by other group', date(2027, 6, 20))
-        self.first.set_predecessors(entry_key=owned, predecessor_keys=[blocker])
+        seed_legacy_dependencies(self.keys[0], ((owned, (blocker,)),))
         self.assertNotIn('Blocked by other group', self.names(self.page()))
         expanded = self.page(show_blocked='on', include_whole_team='on')
         self.assertIn('Blocked by other group', self.names(expanded))

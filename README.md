@@ -835,7 +835,7 @@ The static configuration methods do not need an actor.
 | `DiaryInstance.personal_tasks` | Optional `today`, optional `include_whole_team` | Open tasks for the actor or their roles. |
 | `DiaryInstance.set_milestone_dates` | `milestone_dates` | No result. Existing behavior outside the approved V1 change workflow. |
 | `DiaryInstance.available_predecessors` | `entry_key` | Safe predecessor choices. |
-| `DiaryInstance.set_predecessors` | `entry_key`, `predecessor_keys` | No result. Existing mutation that still needs the V1 template-only restriction. |
+| `DiaryInstance.set_predecessors` | `entry_key`, `predecessor_keys` | Rejected in V1 with `ValidationError` after normal role, scope, and closure checks. |
 
 Dependency methods use the receiving object's scope.
 They do not take `scope_key` or a `template` flag.
@@ -1113,7 +1113,7 @@ draft.set_predecessors(
 
 `set_predecessors` replaces that template entry's complete predecessor list.
 An empty list removes the predecessors from the draft template only under the V1 requirements.
-The existing instance mutation still needs the restriction recorded in the V1 checklist.
+The same method on a diary instance now raises `ValidationError` for every dependency edit.
 
 ## Close a diary instance
 
@@ -1600,25 +1600,59 @@ The shared headings and buttons keep their existing variables.
 
 ## Dependency integrity
 
-The confirmed V1 policy permits dependency edits only in templates by DiaryManagers.
-Existing diary dependency links must remain unchanged during template edits and task completion.
-The current `DiaryInstance.set_predecessors()` method also permits changes to open calendar instances.
-Restricting that existing behavior remains implementation work for V1.
-The preview's live entry dependency controls also need restriction.
+V1 permits dependency edits only in draft templates by DiaryManagers.
+Dependencies in an existing diary cannot be added, removed, replaced, or cleared.
+This restriction includes personally added tasks, manager actions, and already completed tasks.
+Closed diaries also remain immutable.
+An identical or empty selection through `DiaryInstance.set_predecessors()` still receives `ValidationError`.
+Role, diary scope, and closure checks remain in force.
 
-The selector excludes the task itself and every direct or indirect successor.
-It also excludes entries from other calendars or template versions.
-The API checks links again before save.
-It serializes dependency changes through a lock on the calendar or template version.
-A failed replacement keeps the previous links.
+Set predecessor links on a draft template before diary creation.
+Approve that template version before creating a diary.
+Diary creation copies its dependencies in the same transaction as its task copies.
+The graph becomes locked before creation returns.
+A failed creation leaves no partial diary or dependency snapshot.
+Creation retries keep the original graph unchanged.
 
-The current selector reads saved links.
-A future editor must calculate choices for its proposed unsaved links as well.
-The API still rejects a circular link from an old form.
+Changing a template creates a new version for future diaries.
+It does not update dependency links in existing diaries.
+Due-date changes, normal completion, and manager Close all keep those links unchanged.
+Current graph reads and predecessor inspection remain available.
+The legacy read method `available_predecessors()` does not grant dependency-edit permission.
 
-Callers must use the API instead of ORM bulk writes or direct many-to-many manager operations.
-Those ORM operations can bypass model validation and graph locks.
-Database constraints still enforce ownership shapes, date shapes, unique keys, and self-link prevention.
+### PostgreSQL enforcement
+
+Apply migration `0006_freeze_live_dependencies` before using this V1 restriction.
+It locks existing diary graphs without deleting or rebuilding their links.
+Existing tasks, due dates, and completion records remain unchanged.
+
+The technical field `EventCalendar.dependencies_locked` records an internal creation state.
+It is not a configuration option or public editing switch.
+New diaries use a brief initialization phase inside `DiaryInstance.create()`.
+PostgreSQL requires that phase to finish before the creation transaction commits.
+A locked diary cannot return to initialization.
+
+The database row guards reject direct insertion, update, and deletion of live dependency links.
+They also reject identity changes or diary moves for tasks referenced by dependency links.
+This protection covers bulk ORM writes and many-to-many relationship operations that bypass model methods.
+Normal model saves and deletes raise `ValidationError`.
+Rejected SQL-backed operations raise `IntegrityError`.
+
+The technical trigger names are `diary_live_dependency_write_guard`, `diary_dependency_unlock_guard`,
+`diary_dependency_initialization_complete`, and `diary_dependency_endpoint_identity_guard`.
+Their definitions are in `0006_freeze_live_dependencies`.
+The matching PostgreSQL functions enforce row writes, one-way locking, completed initialization, and stable endpoint identities.
+
+Callers must continue to use the supported API for other task changes.
+Bulk operations can still bypass unrelated model validation and permission checks.
+The database guards do not replace caller authentication or diary scope.
+
+### Future dependency editing
+
+DFUT-004 records possible controlled editing for a later release.
+No release number or relaxed editing policy is approved.
+A later design must define permissions, permitted graph changes, completion handling, history, and concurrent-save behavior.
+The existing V1 restriction remains enforced.
 
 ## Errors
 

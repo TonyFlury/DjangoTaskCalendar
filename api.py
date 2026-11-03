@@ -291,15 +291,19 @@ class _DependencyAPI(_BoundObject):
         return tuple(choices.exclude(pk__in=excluded)
                      .order_by('name').values('entry_key', 'name'))
 
-    # DV1-006: Saved dependency validation.
+    # DV1-006, DV1-028: Only draft template dependencies can change in V1.
     @transaction.atomic
     def set_predecessors(self, *, entry_key, predecessor_keys):
-        """Replace the task predecessor links within a locked scope.
-        Require a draft when the scope is a template version.
-        Reject invalid links and roll back the replacement on failure.
+        """Replace dependency links only in a permitted draft template version.
+        Raise ValidationError for every diary dependency edit, including additions, removals, and repeated selections.
+        Keep role, diary scope, and closure checks before reporting the V1 restriction.
         """
         actor, scope_key, template = self.actor, self.key, self._template_scope
         scope, model, links, field_name = _scope(actor, scope_key, template, 'edit')
+
+        # Live diary graphs are immutable, even when a manager submits an empty or identical predecessor list.
+        if not template:
+            raise ValidationError('V1 does not allow dependency changes in an existing diary.')
         scope = type(scope).objects.select_for_update().get(pk=scope.pk)
 
         # Approved template versions must keep their saved dependency graph unchanged.
@@ -744,8 +748,10 @@ class DiaryInstance(_DependencyAPI):
                     or existing.name != name.strip() or dates != milestone_dates):
                 raise ValidationError('This event reference already has a calendar with different inputs.')
             return cls(actor=actor, key=existing.pk)
+
+        # DV1-028: Only this new diary's creation transaction can initialize its dependency snapshot.
         calendar = EventCalendar.objects.create(template_version=version, event_ref=event_ref, name=name,
-                                                created_by_ref=actor.reference)
+                                                created_by_ref=actor.reference, dependencies_locked=False)
         _set_dates(calendar, milestone_dates)
         copied = {}
         for source in version.entries.all():
@@ -754,6 +760,10 @@ class DiaryInstance(_DependencyAPI):
                                                              **EntryMapper.snapshot_fields(source))
         for link in TemplateDependency.objects.filter(entry__version=version):
             EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
+
+        # The final creation step locks the graph before the API returns the diary to its caller.
+        calendar.dependencies_locked = True
+        calendar.save(update_fields=['dependencies_locked'])
         return cls(actor=actor, key=calendar.pk)
 
     # DV1-008: Close a diary instance.

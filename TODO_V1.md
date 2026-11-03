@@ -371,10 +371,17 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_predecessor_choices_exclude_self_and_unsaved_indirect_successors`, `TemplateEditorTests.test_complete_graph_rejects_cycles_self_links_duplicates_and_foreign_predecessors`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
   Requirement: [D6].
 
-- [ ] **DV1-028: Template-only dependency editing.**
+- [x] **DV1-028: Template-only dependency editing.**
   Reject dependency edits to existing live diary tasks through every V1 interface.
   Keep template changes from propagating into live diaries.
-  The current `DiaryInstance.set_predecessors()` operation still needs restriction.
+  `DiaryInstance.set_predecessors()` rejects all changes to existing diary graphs, including empty and identical selections.
+  Initial template copying finishes before the new diary leaves its creation transaction.
+  Existing graphs cannot return to initialization.
+  Implementation: [api.py](api.py): `_DependencyAPI.set_predecessors`, `DiaryInstance.create`. [models.py](models.py): `EventCalendar.dependencies_locked`, `EntryDependency.clean`, `EntryDependency.save`, `EntryDependency.delete`. [migrations/0006_freeze_live_dependencies.py](migrations/0006_freeze_live_dependencies.py): `Migration`, `FORWARD_SQL`.
+  Verification: [tests/test_live_dependencies.py](tests/test_live_dependencies.py): `LiveDependencyTests`, `LiveDependencyTransactionTests`, `LiveDependencyMigrationTests.test_existing_links_and_completion_records_are_preserved`. [tests/test_concurrency.py](tests/test_concurrency.py): `DependencyConcurrencyTests.test_concurrent_opposite_links_cannot_form_a_cycle`.
+  Database guards reject row insertion, replacement, deletion, unlock attempts, and identity changes to referenced tasks.
+  Backlog: DFUT-004 records possible controlled editing in a later release.
+  Design: [Frozen diary dependencies](../docs/design/diary-v1-remaining-work.md#dv1-028-frozen-diary-dependencies).
   Requirement: [D6] and [D12].
 
 - [x] **DV1-029: Personal entry form.**
@@ -420,7 +427,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   V1 does not warn managers when a due-date change causes a conflict.
   Implementation: [models.py](models.py): `CalendarEntry.due_date_override`, `CalendarEntry.open_due_date`, `CalendarEntry.revision`. [api.py](api.py): `DiaryInstance.update_due_date`, `DiaryInstance._can_edit_date`. [forms.py](forms.py): `TaskDueDateForm`. [views.py](views.py): `TaskDetailView.respond`.
   Verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests.test_user_edits_personal_due_date_without_changing_original_rule_or_other_records`, `TaskEditingTests.test_user_cannot_edit_copied_group_team_or_other_person_dates`, `TaskEditingTests.test_manager_changes_copied_due_date_without_template_revision_or_warning_service`, `TaskEditingTests.test_stale_invalid_and_completed_due_date_changes_are_rejected`, `TaskEditingConcurrencyTests`.
-  The guide records the conflict-warning limit. Existing callable dependency restrictions remain DV1-028.
+  The guide records the conflict-warning limit. DV1-028 now enforces the callable dependency restriction.
   Design: [Task editing and completion](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038).
   Requirement: [D4], [D8], and [D12].
 
@@ -571,7 +578,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Verify membership-loss handling under DEC-005 and the remaining privacy, dependency, and milestone API boundaries.
+  Remaining: Verify membership-loss handling under DEC-005 and the remaining privacy and milestone API boundaries.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
@@ -622,7 +629,7 @@ The following work is not a generic Diary V1 requirement:
 
 - Milestone date changes and their impact review belong in V2.
 - V2 must review the V1 force completion behavior.
-- Dependency editing in live diaries is deferred to a future review.
+- Controlled dependency editing in existing diaries is a backlog proposal under DFUT-004, without an assigned release.
 - Multiple sign-offs are outside V1.
 - Reminders have no confirmed release number.
 - A month display, exports, and broad retrospective template replacement are not approved V1 requirements.
@@ -677,7 +684,27 @@ These requirements have no assigned release and are not V1 completion conditions
   Design: [Future date-window filtering](../docs/design/diary-v1-remaining-work.md#dfut-003-future-date-window-filtering).
   Documentation only. This requirement has no assigned release and is not a V1 completion condition.
 
+- [ ] **DFUT-004: Controlled dependency editing in existing diaries.**
+  Consider a more flexible dependency editor for a later release.
+  No relaxed editing policy or release number is approved.
+  Keep the V1 dependency freeze until a later implementation explicitly replaces it.
+  Implementation: Not started. No supported operation edits dependencies in an existing diary.
+  Remaining: Define permissions, permitted changes, completion handling, history, cycle checks, concurrent saves, and closed-diary behavior.
+  Design: [Future live dependency editing](../docs/design/diary-v1-remaining-work.md#dfut-004-live-diary-dependency-editing).
+  Documentation only. This backlog record adds no executable editing interface.
+
 ## Review limits
+
+The staged dependency restriction passed 190 tests with each supported user model.
+Both runs used separate PostgreSQL test databases.
+All 15 Chrome cases passed.
+One navigation case required a retry after a Chrome document-node error.
+
+DV1-028 now rejects changes to existing diary dependencies through the API, model methods, and PostgreSQL row operations.
+Migration `0006_freeze_live_dependencies` preserves existing links and completion records.
+Historical graph fixtures represent records saved before that migration. Their helper operates only in the separate test database.
+The database guards remain enabled during the actual restriction checks.
+This change does not migrate application data or deploy services.
 
 The user confirmed that copying existing template tasks into existing diaries is not required.
 DV1-034 is removed from required work, and DEC-003 is closed.

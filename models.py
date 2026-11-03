@@ -138,6 +138,9 @@ class EventCalendar(ValidatedModel):
     closed_at = models.DateTimeField(null=True, blank=True)
     closed_by_ref = models.CharField(max_length=200, blank=True)
 
+    # DV1-028: Existing and normally constructed diaries start with an immutable dependency graph.
+    dependencies_locked = models.BooleanField(default=True, editable=False)
+
     class Meta:
         """Order diaries by name and enforce reference and closure conditions."""
 
@@ -445,10 +448,41 @@ class TemplateDependency(DependencyFields):
 
 
 class EntryDependency(DependencyFields):
+    """Store persisted diary dependency links."""
     scope_field = 'calendar_id'
     scope_model = EventCalendar
     entry = models.ForeignKey(CalendarEntry, on_delete=models.CASCADE, related_name='predecessor_links')
     predecessor = models.ForeignKey(CalendarEntry, on_delete=models.PROTECT, related_name='successor_links')
+
+    # DV1-028: Normal model validation freezes live graphs after their initial creation.
+    def clean(self):
+        """Reject live dependency writes and validate the initial predecessor graph."""
+        self._require_initialization()
+        super().clean()
+
+    # DV1-028: Normal model operations cannot change a graph after diary creation.
+    def _require_initialization(self):
+        """Reject writes outside a new diary's dependency initialization phase with ValidationError."""
+
+        # Field validation handles an absent entry before any diary lookup is possible.
+        if not self.entry_id:
+            return
+        calendar = EventCalendar.objects.get(pk=self.entry.calendar_id)
+
+        # The database also prevents reopening this initialization phase and committing an unfinished snapshot.
+        if calendar.dependencies_locked:
+            raise ValidationError('V1 does not allow dependency changes in an existing diary.')
+
+    def save(self, *args, **kwargs):
+        """Save a dependency only while its new diary initializes, after locking that diary."""
+        with transaction.atomic():
+            EventCalendar.objects.select_for_update().get(pk=self.entry.calendar_id)
+            self._require_initialization()
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Reject dependency deletion from any existing diary with ValidationError."""
+        raise ValidationError('V1 does not allow dependency changes in an existing diary.')
 
     class Meta(DependencyFields.Meta):
         abstract = False
