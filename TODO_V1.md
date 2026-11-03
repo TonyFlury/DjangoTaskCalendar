@@ -355,6 +355,16 @@ The final sections record confirmed decisions and deferred Diary features.
 
 ## Template and entry operations
 
+- [x] **DV1-054: Validated template fixture transfer.**
+  Export approved template definitions as Django JSON fixtures.
+  Export person ownership by email address. Resolve destination users by email and validate ownership and dependency cycles.
+  Permit explicit email overrides when an address differs between deployments.
+  Preserve existing diary copies and template history. Roll back the complete import after any failure.
+  Implementation: [management/commands/transfer_diary_templates.py](management/commands/transfer_diary_templates.py): `Command.export_fixture`, `Command.export_person_email`, `Command.read_fixture`, `Command.person_mappings`, `Command.import_person_reference`, `Command.import_fixture`, `Command.save_plan`.
+  Verification: [tests/test_template_transfer.py](tests/test_template_transfer.py): `TemplateTransferTests`.
+  Developer documentation: [Template fixture transfer](README.md#template-fixture-transfer).
+  Requirement: The user request for template export and validated import between deployments.
+
 - [x] **DV1-025: Template authoring interface.**
   Support named milestones, reusable date rules, and optional person, role, or whole-team ownership.
   Offer only configured ownership roles.
@@ -714,7 +724,23 @@ These requirements have no assigned release and are not V1 completion conditions
   Design: [Future live dependency editing](../docs/design/diary-v1-remaining-work.md#dfut-004-live-diary-dependency-editing).
   Documentation only. This backlog record adds no executable editing interface.
 
+- [ ] **DFUT-005: Installable Python package.**
+  Distribute Diary as an installable Python package after V1.
+  Keep the package independent of Garage Sale business models and integration code.
+  Implementation: Not started. No distribution metadata, build, publication workflow, or installation verification implements this requirement.
+  Remaining: Define package names, supported versions, distribution location, release policy, and migration compatibility.
+  Design: [Diary installable Python package](../docs/design/diary-python-package.md).
+  Documentation only. No later release number is assigned, and this item is not a V1 completion condition.
+
 ## Review limits
+
+DV1-054 passed 225 standalone tests and 226 host tests against separate PostgreSQL databases.
+Its 11 transfer tests cover fixture imports, email ownership, cycles, dry runs, repeated imports, revision consent, and complete rollback.
+Person assignments use email addresses in exported fixtures. The command resolves local user references during import.
+User Management requires no changes. No database migration or static collection is needed for this command.
+The full developer guide documents the command and its transfer limits.
+DFUT-005 records installable Python packaging as post-V1 work. No packaging implementation or release number is assigned.
+The full Issue 9 dictionary and technical-name review remains incomplete.
 
 DEC-001 and DEC-002 now identify confirmed behavior in the full developer guide.
 The selector logging change passed 28 manager and template tests against a separate PostgreSQL database.

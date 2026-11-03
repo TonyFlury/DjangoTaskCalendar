@@ -1797,6 +1797,98 @@ Database uniqueness constraints can raise `IntegrityError` if conflicting creati
 The caller must report the conflict and read the stored record before a retry.
 A failed atomic call does not keep partial entries or dependency changes.
 
+## Template fixture transfer
+
+The technical management command `transfer_diary_templates` exports and imports Diary template definitions under DV1-054.
+It requires an active local user in the configured DiaryManager group through `--actor`.
+The actor value uses the configured user model's username field.
+The destination records identify that local manager as their creator and approver.
+
+### Export a template
+
+Run this command on the source deployment:
+
+```sh
+python manage.py transfer_diary_templates export diary-templates.json --actor 'manager@example.test' --template 'Preparation'
+```
+
+Replace the example actor and template name with source values.
+Repeat `--template` to select additional names. Omit it to select all templates.
+Each selected template must have an approved version.
+The export contains its latest approved version, tasks, dependency links, and referenced milestone definitions.
+It excludes draft versions, older versions, live diaries, users, and groups.
+The command creates a Django JSON fixture. It refuses to overwrite an existing file.
+
+### Validate and import a fixture
+
+Copy the fixture to the destination deployment.
+Create the configured access and ownership groups before importing.
+Assign users to those groups before normal application startup.
+Run a dry run with an active destination manager:
+
+```sh
+python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --dry-run
+```
+
+Run the same command without `--dry-run` to retain the imported definitions:
+
+```sh
+python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test'
+```
+
+Use this command instead of `loaddata` for template transfers that require Diary validation.
+The command deserializes source objects without saving them directly.
+It validates dependency cycles, self-links, duplicate task keys, and references outside the template version.
+It checks person eligibility, configured ownership roles, group existence, and configured group membership.
+Normal model validation checks task dates and ownership field combinations.
+One failure rolls back the entire import, including templates saved earlier in the same fixture.
+A dry run performs the same import and rolls back all changes.
+
+### Resolve person owners by email
+
+Source user primary keys can identify different people on the destination deployment.
+The export therefore stores each person owner's email address in the fixture's technical field `person_ref`.
+Stored Diary task records retain their original local person references.
+The export requires valid, unambiguous source email addresses.
+Import resolves each address to exactly one active destination user.
+The destination person must belong to a configured DiaryUser or DiaryManager group.
+No mapping is needed when that person uses the same email on both deployments.
+Missing or ambiguous destination email matches stop the import.
+
+Use the technical option `--person-map` only when a person's email differs between deployments:
+
+```sh
+python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --person-map 'alex@old.example=alex@new.example' --dry-run
+```
+
+Repeat `--person-map SOURCE_EMAIL=LOCAL_EMAIL` for each address that needs an override.
+The command compares email addresses without letter-case differences.
+It uses Django's configured user model and email field. User Management requires no model or schema changes.
+Export supports local Django person references. Other identity namespaces need a source identity adapter before export.
+Role ownership retains its group name. The group must exist in the destination's configured ownership roles.
+Whole-team ownership needs no person mapping.
+The command does not create users, groups, or memberships.
+
+### Existing templates and record identities
+
+The import matches destination templates by name without letter-case differences.
+Identical approved content is skipped after ownership and graph validation.
+Different content requires explicit permission to create another approved version:
+
+```sh
+python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --new-version --dry-run
+```
+
+Retain any necessary person mappings on every import command.
+Remove `--dry-run` after the validation succeeds.
+The command preserves existing template versions and existing diary copies.
+It preserves stable task `entry_key` values for version matching.
+It creates fresh destination identifiers for new templates, versions, task rows, and milestone definitions.
+It preserves milestone names, labels, and descriptions.
+Different text for an existing milestone name stops the import.
+Source version numbers, approval history, and database primary keys are not restored.
+This transfer is a validated definition import, not a database backup restoration.
+
 ## Deployment and verification
 
 The initial Diary migration has no dependency on another project app.
