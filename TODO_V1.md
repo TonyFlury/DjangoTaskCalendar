@@ -142,6 +142,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Use `DIARY_TIME_ZONE` when the host defines it.
   Otherwise use Django's project-default `TIME_ZONE`, independently of a temporarily activated user time zone.
   Preserve the caller's explicit `today` argument.
+  The [configuration warning](README.md#current-api-configuration) explains UTC fallback, daylight saving time, and local-midnight lateness.
   Implementation: [api.py](api.py): `DiaryInstance.active_tasks`.
   Verification: [tests/test_time_zone.py](tests/test_time_zone.py): `DiaryTimeZoneTests`.
   Requirement: [usage guide](README.md#current-api-configuration) and [D6].

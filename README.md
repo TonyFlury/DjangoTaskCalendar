@@ -136,10 +136,28 @@ DIARY_TASK_OWNER_ROLES = ('ExecMember', 'Officer', 'SponsorshipManager')
 
 `DIARY_MANAGER` identifies the DiaryManager group.
 `DIARY_USER` identifies the DiaryUser group.
-`DIARY_TIME_ZONE` is optional and overrides Django's project-default `TIME_ZONE` setting.
-Omit `DIARY_TIME_ZONE` to use the project default.
 Both settings must contain a nonempty group name without surrounding spaces.
 Missing or invalid values raise `ImproperlyConfigured`, including during application startup.
+
+`DIARY_TIME_ZONE` is optional and overrides Django's project-default `TIME_ZONE` setting.
+Omit `DIARY_TIME_ZONE` to use the project default.
+
+<!-- DV1-050: Explain daylight saving time when selecting the project fallback. -->
+
+**Warning: daylight saving time.** New Django project templates normally set `TIME_ZONE = 'UTC'`.
+See the [Django setting reference](https://docs.djangoproject.com/en/5.0/ref/settings/#time-zone).
+UTC does not follow daylight saving time.
+A regional zone such as `Europe/London` includes the applicable daylight saving rules.
+See the [Python time-zone reference](https://docs.python.org/3/library/zoneinfo.html).
+
+If the project uses UTC, omitting `DIARY_TIME_ZONE` can change task lateness around local midnight during daylight saving time.
+During British Summer Time, 00:30 in London is 23:30 UTC on the previous date.
+A task due that day would become late one hour later under UTC.
+This difference applies throughout British Summer Time, not only on transition days.
+
+Set `DIARY_TIME_ZONE = 'Europe/London'` when the Diary must follow UK local dates.
+Alternatively, omit the override when the project's `TIME_ZONE` already specifies the correct regional zone.
+[Garage Sale settings](../GarageSale/settings.py) currently use `TIME_ZONE = 'UTC'` and `DIARY_TIME_ZONE = 'Europe/London'`.
 
 Managers inherit DiaryUser capabilities without membership in the `DIARY_USER` group.
 They also have all template permissions, including viewing, creation, editing, and approval.
