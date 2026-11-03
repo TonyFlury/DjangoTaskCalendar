@@ -8,7 +8,8 @@ API version: `1`.
 This implementation provides models, migrations, and a Python callable API.
 It also provides a standalone task list template and its reusable content fragment.
 It provides authenticated template creation and editing pages.
-Task pages, completion endpoints, reminders, and automatic event callbacks remain outside the current implementation.
+Personal and manager task lists and the task creation page are implemented.
+Task details, completion endpoints, reminders, and automatic event callbacks remain outside the current implementation.
 The host dashboard also needs a subsequent implementation step.
 Diary is for configured DiaryUsers and DiaryManagers who have actions to complete for a successful event.
 Diary has no public view.
@@ -115,9 +116,77 @@ Only DiaryManagers can edit templates.
 An absent name must open the chooser rather than select `DIARY_TEMPLATE_NAME` automatically.
 This view behavior differs from the current callable API's default selection of an approved template version.
 
-The current `DiaryInstance.personal_tasks()` method reads one diary instance.
-It has no HTTP API or task query across multiple instances yet.
-The expanded view behavior above is a confirmed requirement and remains implementation work.
+`DiaryInstance.personal_tasks()` reads one diary instance.
+`DiaryAPI.personal_tasks()` reads one or all permitted open diaries.
+The HTML personal view implements the selection behavior above.
+A separate HTTP data API remains implementation work.
+
+### Personal diary page integration
+
+The technical view class is `Diary.views.PersonalDiaryView`.
+The default Diary route `Diary:personal-diary` uses `/diary/` in the standard project URL configuration.
+It requires an authenticated, active DiaryUser or DiaryManager.
+Managers see their own assignments in this personal view.
+The separate manager view retains its broader task selection.
+
+Host code must supply `permitted_diary_keys` through trusted context or override `get_diary_keys()`.
+The default route grants no diary scope.
+The personal and manager views share `DiaryScopeMixin` for authentication, scope, and selector validation.
+A query parameter cannot grant access to a diary.
+
+This example configures the personal view for host-authorized diaries:
+
+```python
+from Diary.views import PersonalDiaryView
+
+personal_view = PersonalDiaryView.as_view(extra_context={
+    'permitted_diary_keys': permitted_diary_keys,
+})
+```
+
+The host registers the configured callable in its own URL configuration.
+Add `diary_key` to trusted context to select one permitted diary.
+Alternatively, use the GET selector `?diary_key=<diary UUID>`.
+Both names also work as `as_view()` keyword arguments.
+A host subclass can provide dynamic context through `get_context_data()` or dynamic scope through `get_diary_keys()`.
+
+Without a selector, My Diary groups owned tasks across permitted open diaries.
+Each group retains its diary key, including when diary names are identical.
+A selected diary retains its name when the filters produce no tasks.
+Completed tasks and closed diaries contribute no personal tasks.
+A selected closed diary displays an explanatory message.
+Malformed, blank, and conflicting selectors return HTTP 400.
+Out-of-scope selectors return HTTP 403.
+An unknown permitted key returns HTTP 404.
+
+| Control | Technical GET name | Default and effect |
+| --- | --- | --- |
+| show blocked also | `show_blocked` | Clear. Adds blocked owned tasks to the general open-task selection. |
+| include whole-team tasks | `include_whole_team` | Clear. Adds whole-team work without adding unrelated person or group assignments. |
+| Task status | `task_status` | `all`. Uses the blocked-task checkbox for the general open-task selection. |
+
+The status values are `all`, `late`, `ready`, and `blocked`.
+Specific status selections take precedence over the blocked-task checkbox.
+`late` includes ready and blocked incomplete tasks due today or earlier.
+`ready` includes ready tasks that are not late.
+`blocked` includes blocked tasks that are not late.
+Thus, each owned task contributes to exactly one status count.
+The Late, Ready, and Blocked count links use the same rules.
+Counts include whole-team work only when its checkbox is selected.
+Undated tasks are not late.
+Invalid status values return HTTP 400.
+
+Select **Apply filters** to submit the current choices.
+Select **Reset filters** to restore ready-only defaults while keeping the selected diary.
+Status links also retain a selected diary and optional whole-team selection.
+The view reads current group membership on each request.
+It creates no diary records and changes no task data.
+Future due-date window controls remain deferred under DFUT-003.
+
+The technical page template is `Diary/personal_diary.html`.
+The reusable fragment `Diary/partials/personal_diary.html` supplies the `.diary` namespace.
+It uses the shared `Diary/partials/task_list.html` fragment for each diary group.
+A host document can include the personal fragment with the view's context and the Diary stylesheet.
 
 ### Confirmed V1 manager diary filters
 
@@ -744,6 +813,7 @@ The static configuration methods do not need an actor.
 | `DiaryAPI.permission_groups` | None. | `manager` and `user` group-name strings in a new dictionary. |
 | `DiaryAPI.task_owner_roles` | None. | A `frozenset` of permitted task-owner role names. |
 | `DiaryAPI.define_milestones` | `definitions` | Milestone UUIDs by name. |
+| `DiaryAPI.personal_tasks` | Optional `diary_key`, `today`, `include_whole_team=False` | Owned open tasks from one or all permitted open diaries. |
 | `DiaryTemplateVersion.required_milestones` | None. | Distinct milestone definitions used by this version. |
 | `DiaryTemplateVersion.read` | None. | Version rules, entry keys, and predecessor keys. |
 | `DiaryTemplateVersion.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
@@ -912,7 +982,7 @@ An invalid annual occurrence has no due date.
 Approved template entries and dependencies remain immutable.
 A changed version needs its own entries before approval.
 The V1 application save must include `DiaryTemplateVersion.approve()` without another user approval action.
-The class refactor does not implement that combined save workflow.
+`DiaryInstance.create_task()` implements the combined save workflow with an approved template revision.
 
 Diary entries retain their copied template content after creation.
 An explicit addition of a selected new template item remains V1 implementation work.
@@ -1087,8 +1157,10 @@ These assignment checks already exist in the callable API.
 A personal entry is a task that a user adds with themselves as its owner.
 Only that owner and permitted DiaryManagers may view the entry.
 The requirement applies to lists, details, searches, predecessor choices, and both API interfaces.
-The current calendar read API does not yet enforce this personal entry visibility rule.
-That visibility filter remains implementation work.
+The current diary read, active-task, personal-task, and predecessor-choice APIs enforce personal entry visibility.
+Private predecessors still affect readiness and warning summaries.
+Their names, dates, and keys are withheld from unauthorized task results.
+Future task-detail and search interfaces must use the same visibility rule.
 
 For person assignments, the DiaryManager supplies an `OwnerDirectory` implementation.
 Its `person_in_groups(reference, group_names)` method checks person eligibility.
@@ -1105,19 +1177,173 @@ The “show blocked also” checkbox is clear by default.
 Selecting it also shows blocked tasks assigned to the user or their groups.
 A task remains blocked while any required predecessor is incomplete, regardless of that predecessor’s owner.
 The checkbox does not grant access to other users’ tasks or private predecessor details.
-This display filter does not change the callable API task results.
-The production view and checkbox remain implementation work.
+The ready-task default is an HTML display filter.
+The callable API continues to return owned ready and blocked tasks.
+`PersonalDiaryView` and `PersonalDiaryFilterForm` implement the production view and checkbox.
+An explicit status filter takes precedence over the checkbox, as described under personal page integration.
 See DV1-049 in [the V1 checklist](TODO_V1.md).
 
-The full event list from `active_tasks` is an explicit view choice, not the default landing page.
-It excludes whole-team tasks unless `include_whole_team=True`.
+The full diary list remains an explicit view choice.
+Personal task selection excludes whole-team tasks unless `include_whole_team=True`.
 The list returns each task once.
 Membership changes take effect when the host supplies a new Actor.
+
+## Task creation page
+
+DV1-029, DV1-030, and DV1-033 provide task creation through `Diary.views.TaskCreateView`.
+The route `Diary:task-create` uses `/diary/tasks/new/` in the standard project URL configuration.
+The host must supply trusted permitted diary keys for this view.
+The default route grants no diary scope.
+Use the same scope policy for personal, manager, and creation views.
+
+This example uses the technical view argument `extra_context`:
+
+```python
+from Diary.views import TaskCreateView
+
+task_create_view = TaskCreateView.as_view(extra_context={
+    'permitted_diary_keys': permitted_diary_keys,
+})
+```
+
+The host registers this callable in its URL configuration.
+For dynamic access, override `get_diary_keys()` in a host subclass.
+The host supplies the current authenticated user's permitted keys on each request.
+GET values cannot grant diary scope.
+
+The technical context name `task_create_url` supplies an optional host creation path for personal and manager page links.
+Use a path without a query string.
+Without that context value, links use `Diary:task-create`.
+Those links keep the selected diary when available.
+A link does not grant access to the selected diary.
+
+Without `diary_key`, the creation page lists permitted open diaries.
+Supply the selector through GET, view attributes, or trusted view context.
+POST requires an explicit permitted diary selector.
+Malformed, blank, or conflicting selectors return HTTP 400.
+Out-of-scope selectors return HTTP 403.
+Unknown permitted keys return HTTP 404.
+Closed diaries display an explanation and reject POST with HTTP 400.
+GET requests do not change records.
+
+DiaryUsers create tasks for themselves only.
+The form hides ownership and template controls for these users.
+The server rejects submitted values that request another owner or a template revision.
+DiaryManagers can select an active eligible person, a configured ownership group, or Whole team.
+Person choices use the configured Django user model and current access-group membership.
+Role choices use `DIARY_TASK_OWNER_ROLES`.
+
+Select a date rule for the diary task.
+Complete only the fields for that rule.
+One-time tasks require an exact date.
+Milestone rules use existing named milestones.
+Annual rules require a valid month and day.
+Use the template editor to define a new milestone when necessary.
+
+Managers can select **Add to template for future diaries**.
+This checkbox is clear initially.
+Complete the future-rule section only when this checkbox is selected.
+Select the future rule explicitly.
+The future task uses the same name, description, owner, and entry key as the diary task.
+The diary and future tasks can use different date rules.
+An exact diary date never becomes an annual template date automatically.
+
+The save adds the diary task and approves a new source-template version in one transaction.
+The new version keeps the highest existing version's entries and dependencies, including a draft when present.
+The hidden technical field `expected_version_key` prevents changes from overwriting a newer template version.
+A stale form or template-save failure changes neither diary nor template records.
+Open a new form after a stale-version error.
+Repeated combined saves return an error without another task or revision.
+Identical diary-only retries reuse the existing task.
+Changed content with the same entry key returns an error.
+
+The diary task remains an addition without a `source_entry` reference.
+Its shared entry key identifies the new template item.
+Other existing diaries keep their task copies and original template versions.
+Successful saves redirect to the selected creation page and display **Task added.**
+Validation errors keep submitted values.
+
+The technical callable operation is `DiaryInstance.create_task(spec=..., template_spec=None, expected_version_key=None, directory=None)`.
+Omit `template_spec` for a diary-only addition.
+A combined save requires manager permissions and a reusable `EntrySpec` with the same task identity and owner.
+Supply the source template's current highest version key as `expected_version_key`.
+Supply an eligible person directory when assigning a person through a manager call.
+The operation returns the task's stable entry key.
+It raises `ValidationError` for stale versions, conflicting keys, invalid specifications, and duplicate combined requests.
+It raises `PermissionDenied` for unauthorized ownership, template changes, or diary scope.
+
+### Task creation styling classes
+
+The page uses `Diary/task_create.html`, block `diary_content`.
+Reusable content uses `Diary/partials/task_create.html` and `Diary/partials/task_create_field.html`.
+All component styles remain within `.diary`.
+No existing styling class was renamed or removed.
+No CSS variable was added.
+The component uses existing variables `--diary-muted`, `--diary-late`, and `--diary-ready`.
+The shared heading and button rules keep their existing variables.
+
+| Class | Content role |
+| --- | --- |
+| `diary-create` | Complete creation component. |
+| `diary-create-heading` | Page heading. |
+| `diary-create-selection` | Selected diary name. |
+| `diary-create-form` | Task creation form. |
+| `diary-create-task` | Diary task and owner field group. |
+| `diary-create-future` | Optional future-template field group. |
+| `diary-create-legend` | Field-group heading. |
+| `diary-create-template` | Source template name and current version. |
+| `diary-create-template-review` | Link to examine the source template before saving. |
+| `diary-create-guidance` | Form instructions and ownership explanation. |
+| `diary-create-field` | One visible field and its supporting text. |
+| `diary-create-label` | Field label. |
+| `diary-create-help` | Field help text. |
+| `diary-create-control` | Shared input-control styling interface. |
+| `diary-create-errors` | Field or form error list. |
+| `diary-create-error` | Individual error or unavailable-state explanation. |
+| `diary-create-state` | Error, success, or empty task state. |
+| `diary-create-success` | Successful addition message. |
+| `diary-create-actions` | Save action container. |
+| `diary-create-save` | Save button. |
+| `diary-create-diary-list` | Permitted open diary chooser. |
+| `diary-create-diary` | One chooser item. |
+| `diary-create-diary-link` | Diary selection link. |
+| `diary-create-empty` | Empty chooser explanation. |
+| `diary-create-navigation` | Creation navigation on personal and manager pages. |
+| `diary-create-link` | Add task link. |
+
+Each control also has an exact field-specific class:
+
+| Class | Technical field name |
+| --- | --- |
+| `diary-create-field-entry-key` | `entry_key`, hidden stable task key. |
+| `diary-create-field-name` | `name`. |
+| `diary-create-field-description` | `description`. |
+| `diary-create-field-date-kind` | `date_kind`. |
+| `diary-create-field-milestone-name` | `milestone_name`. |
+| `diary-create-field-day-offset` | `day_offset`. |
+| `diary-create-field-month` | `month`. |
+| `diary-create-field-day` | `day`. |
+| `diary-create-field-year-offset` | `year_offset`. |
+| `diary-create-field-owner-kind` | `owner_kind`, hidden for ordinary users. |
+| `diary-create-field-person-ref` | `person_ref`, hidden for ordinary users. |
+| `diary-create-field-role-ref` | `role_ref`, hidden for ordinary users. |
+| `diary-create-field-fixed-date` | `fixed_date`. |
+| `diary-create-field-add-to-template` | `add_to_template`, hidden for ordinary users. |
+| `diary-create-field-expected-version-key` | `expected_version_key`, hidden template base key. |
+| `diary-create-future-date-kind` | `future-date_kind`. |
+| `diary-create-future-milestone-name` | `future-milestone_name`. |
+| `diary-create-future-day-offset` | `future-day_offset`. |
+| `diary-create-future-month` | `future-month`. |
+| `diary-create-future-day` | `future-day`. |
+| `diary-create-future-year-offset` | `future-year_offset`. |
 
 ## Readiness and lateness
 
 `active_tasks` excludes completed entries.
-Each result includes `state`, `late`, `date_not_set`, ownership references, and blocking predecessor keys.
+Each active-task result includes `state`, `late`, `date_not_set`, ownership references, and visible blocking predecessor keys.
+The technical field `blocked_late` summarizes whether a direct incomplete predecessor is late.
+Each result also includes the technical fields `diary_key` and `diary_name`.
+These fields identify its permitted diary without exposing host business records.
 The state is `ready` if all predecessors are complete.
 Otherwise, the state is `blocked`.
 An entry without predecessors is ready.
@@ -1497,6 +1723,54 @@ Scope host overrides within `.diary`.
 | `diary-manager-completion-time` | Completion timestamp. |
 | `diary-manager-completion-due` | Preserved due date at completion. |
 | `diary-manager-results-empty` | Empty filtered task-list message. |
+
+### Personal diary styling classes
+
+These technical class names extend the existing shared task styling interface.
+The personal view adds no CSS variables.
+
+| Class | Purpose |
+| --- | --- |
+| `diary-personal` | Personal fragment root. Use with diary. |
+| `diary-personal-heading` | My Diary heading. |
+| `diary-personal-description` | Personal ownership explanation. |
+| `diary-personal-selection` | Selected diary name. |
+| `diary-personal-closed` | Closed-diary message. |
+| `diary-personal-error` | Invalid selector or filter message. |
+| `diary-personal-filters` | GET filter form. |
+| `diary-personal-selector` | Hidden selected diary key. |
+| `diary-personal-filter-group` | Filter fieldset. |
+| `diary-personal-filter-legend` | Filter group label. |
+| `diary-personal-filter-label` | Control and its text label. |
+| `diary-personal-filter-text` | Visible control label text. |
+| `diary-personal-control` | Shared checkbox and status-control styling. |
+| `diary-personal-filter-show-blocked` | Blocked-task checkbox. |
+| `diary-personal-filter-include-whole-team` | Whole-team checkbox. |
+| `diary-personal-filter-task-status` | Status select control. |
+| `diary-personal-filter-help` | Filter precedence explanation. |
+| `diary-personal-filter-actions` | Apply and reset action container. |
+| `diary-personal-apply` | Apply filters button. |
+| `diary-personal-reset` | Reset filters link. |
+| `diary-personal-status-links` | Status-count navigation. |
+| `diary-personal-status-link` | One status-count link. |
+| `diary-personal-status-late` | Late task-count link. |
+| `diary-personal-status-ready` | Ready and not-late task-count link. |
+| `diary-personal-status-blocked` | Blocked and not-late task-count link. |
+| `diary-personal-status-count` | Status count value. |
+| `diary-personal-result-count` | Number of displayed tasks. |
+| `diary-personal-group` | One diary group with its retained key. |
+| `diary-personal-empty` | Empty personal selection message. |
+| `diary-task-blocked-late` | Shared task row blocked by a late direct predecessor. |
+| `diary-owner-members` | Current ownership-group members in the shared task fragment. |
+| `diary-owner-member` | One current ownership-group member name. |
+| `diary-owner-empty` | Empty ownership-group membership message. |
+
+Existing shared task classes retain their meanings.
+`diary-task-blocked` now adds a dashed border in the production task fragment.
+`diary-task-blocked-late` adds an amber border and shadow.
+`diary-task-late` adds a red border and shadow, with priority over blocked styling.
+Host overrides of these existing task classes can require corresponding border and shadow rules.
+Manager task classes remain separate and retain their existing behavior.
 
 ### Replace the default stylesheet
 

@@ -1,3 +1,15 @@
+/* DV1-029, DV1-030, DV1-033: Task creation fields support narrow screens and host overrides. */
+.diary .diary-create-form { min-width: 0; }
+.diary .diary-create-task, .diary .diary-create-future { min-width: 0; }
+.diary .diary-create-field { margin-block: .75rem; }
+.diary .diary-create-control { max-width: 100%; }
+.diary .diary-create-label, .diary .diary-create-legend { font-weight: bold; }
+.diary .diary-create-help, .diary .diary-create-guidance { color: var(--diary-muted); }
+.diary .diary-create-error { color: var(--diary-late); overflow-wrap: anywhere; }
+.diary .diary-create-success { color: var(--diary-ready); }
+.diary .diary-create-state { border: 1px solid currentColor; padding: .75rem; }
+.diary .diary-create-selection, .diary .diary-create-template { overflow-wrap: anywhere; }
+
 /* DV1-011: Default styling for complete documents and reusable task fragments. */
 
 /* All default rules stay inside the Diary component. Host styles can override the variables. */
@@ -121,3 +133,18 @@
 .diary .diary-manager-status-blocked { color: var(--diary-blocked); }
 .diary .diary-manager-status-ready { color: var(--diary-ready); }
 .diary .diary-manager-status-completed, .diary .diary-manager-completion { color: var(--diary-completed); }
+
+/* DV1-021, DV1-039, DV1-041, DV1-049: Personal filters and shared task highlights. */
+.diary .diary-personal-filter-group { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; }
+.diary .diary-personal-filter-legend { font-weight: bold; }
+.diary .diary-personal-filter-label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-weight: normal; }
+.diary .diary-personal-control { max-width: 100%; accent-color: var(--diary-accent); }
+.diary .diary-personal-filter-text { overflow-wrap: anywhere; }
+.diary .diary-personal-error { color: var(--diary-late); }
+.diary .diary-personal-status-links { display: flex; flex-wrap: wrap; gap: .75rem; }
+.diary .diary-personal-status-link { color: var(--diary-accent); border: 1px solid var(--diary-border); border-radius: var(--diary-radius); padding: .4rem .7rem; }
+.diary .diary-personal-status-count { font-weight: bold; }
+.diary .diary-personal-group { overflow-wrap: anywhere; }
+.diary .diary-task-blocked { border: 1px dashed var(--diary-border); padding: 1rem; border-radius: var(--diary-radius); }
+.diary .diary-task-blocked-late { border: 2px solid var(--diary-blocked); box-shadow: 0 0 .4rem var(--diary-blocked); }
+.diary .diary-task-late { border: 2px solid var(--diary-late); box-shadow: 0 0 .4rem var(--diary-late); padding: 1rem; border-radius: var(--diary-radius); }

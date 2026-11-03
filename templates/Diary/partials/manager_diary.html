@@ -4,6 +4,11 @@
     {% if manager_error %}
         <p class="diary-manager-error" role="alert">{{ manager_error }}</p>
     {% elif diary_data %}
+        {# DV1-030, DV1-033: New tasks use a separately authorized creation route. #}
+        {% if not diary_data.closed %}
+            {% url 'Diary:task-create' as default_task_create_url %}
+            <nav class="diary-create-navigation" aria-label="Task creation"><a class="diary-button diary-create-link" href="{{ task_create_url|default:default_task_create_url }}?diary_key={{ diary_data.key }}">Add task</a></nav>
+        {% endif %}
         {% if diary_data.closed %}
             <p class="diary-manager-closed" role="status">Closed diary. Entries are shown for reference.</p>
         {% endif %}

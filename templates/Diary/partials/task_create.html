@@ -1,0 +1,66 @@
+{# DV1-029, DV1-030, DV1-033: Reusable task creation content within trusted diary scope. #}
+<section class="diary diary-create" aria-label="Add task">
+    <h1 class="diary-heading diary-create-heading">Add task</h1>
+
+    {# A selected diary keeps its name visible during creation and after form errors. #}
+    {% if diary_data %}<p class="diary-create-selection">Diary: {{ diary_data.name }}</p>{% endif %}
+
+    {# Invalid selections show an error. Valid targets show a form. Missing targets show a chooser. #}
+    {% if creation_error %}
+        <p class="diary-create-error diary-create-state" role="alert">{{ creation_error }}</p>
+    {% elif creation_form %}
+
+        {# The view shows success only after it finds the visible task in the selected diary. #}
+        {% if created_task %}<p class="diary-create-success diary-create-state" role="status">Task added.</p>{% endif %}
+        <p class="diary-create-guidance">Select a date rule for this diary task. Complete only the fields for that rule.</p>
+
+        {# Managers choose an owner. Ordinary users receive a self-owned task. #}
+        {% if creation_manager %}
+            <p class="diary-create-guidance">Select a person, an ownership group, or Whole team.</p>
+        {% else %}
+            <p class="diary-create-guidance">This personal task belongs to you.</p>
+        {% endif %}
+        <form class="diary-create-form" method="post">
+            {% csrf_token %}
+
+            {# Form errors must remain visible when the save cannot proceed. #}
+            {% if creation_form.non_field_errors %}<ul class="diary-create-errors" role="alert">{% for error in creation_form.non_field_errors %}<li class="diary-create-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+            {% for field in creation_form.hidden_fields %}
+                {{ field }}
+
+                {# Hidden keys can fail validation and need visible error messages. #}
+                {% if field.errors %}<ul class="diary-create-errors" role="alert">{% for error in field.errors %}<li class="diary-create-error">{{ field.label }}: {{ error }}</li>{% endfor %}</ul>{% endif %}
+            {% endfor %}
+            <fieldset class="diary-card diary-create-task">
+                <legend class="diary-create-legend">Diary task and owner</legend>
+                {% for field in creation_form.visible_fields %}{% include 'Diary/partials/task_create_field.html' %}{% endfor %}
+            </fieldset>
+
+            {# Only managers can inspect or change the template for future diaries. #}
+            {% if creation_manager %}
+                <fieldset class="diary-card diary-create-future">
+                    <legend class="diary-create-legend">Template for future diaries</legend>
+                    <p class="diary-create-template">Template: {{ creation_template.name }}. Current version: {{ creation_template.number }} ({{ creation_template.status }}).</p>
+                    <a class="diary-button diary-create-template-review" href="{% url 'Diary:template-edit' template_name=creation_template.name %}">Review template</a>
+                    <p class="diary-create-guidance">Complete this section only when you select “Add to template for future diaries”.</p>
+                    <p class="diary-create-guidance">The future task uses the task name, description, and owner selected above.</p>
+                    <p class="diary-create-guidance">The new version includes every task in the current highest version, including a draft.</p>
+                    <p class="diary-create-guidance">Select a reusable date rule explicitly. Saving creates an approved template version. Other existing diaries keep their tasks.</p>
+                    {% for field in future_form %}{% include 'Diary/partials/task_create_field.html' %}{% endfor %}
+                </fieldset>
+            {% endif %}
+            <div class="diary-actions diary-create-actions"><button class="diary-button diary-button-primary diary-create-save" type="submit">Add task</button></div>
+        </form>
+    {% else %}
+        <p class="diary-create-guidance">Select a permitted open diary for the new task.</p>
+        <ul class="diary-create-diary-list">
+            {% for diary in creation_diaries %}
+                <li class="diary-create-diary"><a class="diary-create-diary-link" href="?diary_key={{ diary.pk }}">{{ diary.name }}</a></li>
+
+            {# An empty permitted scope must not select another diary or create one. #}
+            {% empty %}
+                <li class="diary-create-empty diary-create-state">No permitted open diaries are available.</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</section>

@@ -1,4 +1,5 @@
 """Forms for complete template revisions and reusable task rules."""
+from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from django.utils.functional import cached_property
 
 from .api import EntrySpec
 from .choices import DateKind, OwnerKind
+from .models import Milestone
 from .roles import access_groups, task_owner_roles
 from .template_graph import validate_template_graph
 
@@ -54,6 +56,24 @@ class ManagerDiaryFilterForm(forms.Form):
         super().__init__(*args, **kwargs)
         for name, field in self.fields.items():
             field.widget.attrs['class'] = f'diary-manager-checkbox diary-manager-filter-{name.replace("_", "-")}'
+
+
+# DV1-021, DV1-049: Personal task display filters.
+class PersonalDiaryFilterForm(forms.Form):
+    """Select blocked tasks, whole-team tasks, and non-overlapping status categories."""
+
+    show_blocked = forms.BooleanField(required=False, label='show blocked also')
+    include_whole_team = forms.BooleanField(required=False, label='include whole-team tasks')
+    task_status = forms.ChoiceField(required=False, label='Task status', choices=(
+        ('all', 'All open tasks'), ('late', 'Late only'), ('ready', 'Ready and not late'),
+        ('blocked', 'Blocked and not late'),
+    ))
+
+    def __init__(self, *args, **kwargs):
+        """Give each personal filter a stable class without relying on its element ID."""
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = f'diary-personal-control diary-personal-filter-{name.replace("_", "-")}'
 
 
 class TemplateTaskForm(StyledForm):
@@ -259,6 +279,132 @@ def editor_task_limit():
     if limit is None:
         return 200
     return min(200, max(0, (limit - 20) // (len(TemplateTaskForm.base_fields) + 1)))
+
+
+# DV1-029, DV1-030, DV1-033: Task creation with server-controlled ownership.
+class TaskCreateForm(TemplateTaskForm):
+    """Define diary task fields and reject ownership choices outside the caller's permissions."""
+
+    fixed_date = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='One-time date')
+    add_to_template = forms.BooleanField(required=False, label='Add to template for future diaries')
+    expected_version_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, actor, **kwargs):
+        """Read current eligible owners and configure controls for the authenticated caller."""
+        self.actor = actor
+        self.manager = access_groups()['manager'] in actor.groups
+        users = get_user_model()._default_manager.filter(
+            is_active=True, groups__name__in=access_groups().values()).distinct()
+        people = tuple((f'user:{user.pk}', user.get_full_name().strip() or user.get_username()) for user in users)
+        super().__init__(*args, people=people, roles=sorted(task_owner_roles()), **kwargs)
+        self.fields.pop('predecessors')
+        self.fields.pop('milestone_label')
+        self.fields['milestone_name'].widget = forms.Select(
+            choices=[('', 'Select a milestone'), *Milestone.objects.order_by('name').values_list('name', 'label')])
+        self.fields['milestone_name'].help_text = 'Select an existing milestone for a milestone date rule.'
+        self.fields['date_kind'].choices = [*self.fields['date_kind'].choices, (DateKind.ONCE, 'One-time date')]
+        self.initial.setdefault('date_kind', DateKind.ONCE)
+        self.initial.setdefault('owner_kind', OwnerKind.PERSON)
+        self.initial.setdefault('person_ref', actor.reference)
+
+        # Ordinary users cannot change ownership or request a template revision through hidden fields.
+        if not self.manager:
+            for name in ('owner_kind', 'person_ref', 'role_ref', 'add_to_template', 'expected_version_key'):
+                self.fields[name].disabled = True
+                self.fields[name].widget = forms.HiddenInput()
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = f'diary-create-control diary-create-field-{name.replace("_", "-")}'
+
+    def clean(self):
+        """Validate the selected date rule and reject forged ordinary-user ownership inputs."""
+        data = super().clean()
+
+        # An exact date is required when this task uses a one-time rule.
+        if data.get('date_kind') == DateKind.ONCE and not data.get('fixed_date'):
+            self.add_error('fixed_date', 'Enter a one-time date.')
+
+        # Disabled fields protect storage, while explicit rejection exposes modified ownership requests.
+        if not self.manager:
+            allowed = {'owner_kind': OwnerKind.PERSON, 'person_ref': self.actor.reference,
+                       'role_ref': '', 'add_to_template': '', 'expected_version_key': ''}
+            for name, value in allowed.items():
+
+                # Forms accept plain dictionaries and query dictionaries with repeated field values.
+                values = (self.data.getlist(self.add_prefix(name)) if hasattr(self.data, 'getlist')
+                          else (self.data.get(self.add_prefix(name), value),))
+
+                # Every submitted value must agree with the server's personal ownership rule.
+                if any(item != value for item in values):
+                    self.add_error(None, 'Personal tasks must belong to you and cannot change a template.')
+                    break
+        return data
+
+    def entry_spec(self):
+        """Return the validated task specification with an exact date when selected."""
+        spec = super().entry_spec()
+
+        # One-time rules store an exact date instead of a milestone or annual rule.
+        if spec.date_kind == DateKind.ONCE:
+            spec = replace(spec, fixed_date=self.cleaned_data['fixed_date'])
+        return spec
+
+
+# DV1-033: Require a separate reusable rule before a template addition.
+class ReusableTaskRuleForm(StyledForm):
+    """Define future date fields while keeping the diary task's identity and owner."""
+
+    date_kind = forms.ChoiceField(label='Future date rule', choices=(
+        (DateKind.SOURCE, 'Milestone date'), (DateKind.RELATIVE, 'Days from a milestone'),
+        (DateKind.ANNUAL, 'Annual date')))
+    milestone_name = forms.ChoiceField(required=False, label='Future milestone')
+    day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647, label='Future day offset')
+    month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Future month')
+    day = forms.IntegerField(required=False, min_value=1, max_value=31, label='Future day')
+    year_offset = forms.IntegerField(required=False, min_value=-32768, max_value=32767, label='Future year offset')
+
+    def __init__(self, *args, **kwargs):
+        """Use existing milestones and stable styling classes for each future-rule control."""
+        super().__init__(*args, **kwargs)
+        self.fields['date_kind'].choices = [('', 'Select a future date rule'), *self.fields['date_kind'].choices]
+        self.fields['milestone_name'].choices = [('', 'Select a milestone'),
+                                                *Milestone.objects.order_by('name').values_list('name', 'label')]
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = f'diary-create-control diary-create-future-{name.replace("_", "-")}'
+
+    def clean(self):
+        """Require the fields needed by the explicitly selected reusable rule."""
+        data = super().clean()
+
+        # Milestone rules cannot silently select an unrelated source date.
+        if data.get('date_kind') in {DateKind.SOURCE, DateKind.RELATIVE} and not data.get('milestone_name'):
+            self.add_error('milestone_name', 'Select a future milestone.')
+
+        # A leap year permits February 29 while rejecting impossible annual dates.
+        if data.get('date_kind') == DateKind.ANNUAL:
+            try:
+                date(2000, data.get('month'), data.get('day'))
+            except (TypeError, ValueError):
+                self.add_error('day', 'Enter a valid future month and day.')
+        return data
+
+    def entry_spec(self, task):
+        """Return the reusable rule with the diary task's unchanged identity, text, and owner."""
+        data = self.cleaned_data
+        values = {'date_kind': data['date_kind'], 'fixed_date': None, 'milestone_name': '',
+                  'month': None, 'day': None, 'day_offset': 0, 'year_offset': 0}
+
+        # Annual rules need only their explicit month, day, and optional year offset.
+        if data['date_kind'] == DateKind.ANNUAL:
+            values.update(month=data['month'], day=data['day'], year_offset=data.get('year_offset') or 0)
+
+        # Source and relative rules both keep the chosen milestone.
+        else:
+            values['milestone_name'] = data['milestone_name']
+
+            # Only relative rules use the signed offset from the milestone date.
+            if data['date_kind'] == DateKind.RELATIVE:
+                values['day_offset'] = data.get('day_offset') or 0
+        return replace(task, **values)
 
 
 TaskFormSet = formset_factory(TemplateTaskForm, formset=TemplateTaskFormSet, extra=0,

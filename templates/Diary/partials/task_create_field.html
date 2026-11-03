@@ -1,0 +1,11 @@
+{# DV1-029, DV1-030, DV1-033: Accessible task and future-rule field content. #}
+<div class="diary-create-field">
+    <label class="diary-create-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+
+    {# Supporting text appears only when the field defines it. #}
+    {% if field.help_text %}<p class="diary-create-help">{{ field.help_text }}</p>{% endif %}
+
+    {# Field errors identify the values that the user must correct before saving. #}
+    {% if field.errors %}<ul class="diary-create-errors" role="alert">{% for error in field.errors %}<li class="diary-create-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+</div>

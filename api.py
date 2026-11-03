@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .choices import DateKind, OwnerKind, VersionStatus
@@ -135,6 +136,44 @@ def _open_calendar(actor, key, action):
     return calendar
 
 
+# DV1-031: Personal entries belong only to their owner and permitted managers.
+def _visible_entries(actor, entries):
+    """Remove private tasks and private predecessor references from serialized entries.
+    Preserve readiness calculated from the complete dependency graph.
+    """
+
+    # Managers can inspect every task within their host-authorized diary scope.
+    if _allowed(actor, 'edit'):
+        return tuple(entries)
+
+    # Diary additions with person ownership are private to that person.
+    visible = tuple(entry for entry in entries if entry['source'] == 'template'
+                    or entry['owner_kind'] != OwnerKind.PERSON or entry['person_ref'] == actor.reference)
+    keys = {entry['entry_key'] for entry in visible}
+
+    # Related keys must not disclose a private task, even when that task blocks visible work.
+    return tuple({**entry,
+                  'predecessors': tuple(key for key in entry['predecessors'] if key in keys),
+                  'blocking_predecessors': tuple(key for key in entry['blocking_predecessors'] if key in keys)}
+                 for entry in visible)
+
+
+# DV1-020, DV1-050: Use one comparison date across all selected diaries.
+def _comparison_date(today):
+    """Return an explicit date or today's date in the configured Diary time zone.
+    Raise ValidationError for timestamps and other incompatible values.
+    """
+
+    # The active user time zone must not replace the project or Diary setting.
+    if today is None:
+        today = timezone.localdate(timezone=ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', settings.TIME_ZONE)))
+
+    # Lateness compares calendar dates rather than timestamps.
+    if type(today) is not date:
+        raise ValidationError('Supply a date for today.')
+    return today
+
+
 # DV1-048: Standard Django groups and optional template default.
 def _template_version(key=None, name=None):
     """Resolve a version key or the latest approved version of a template name.
@@ -222,7 +261,13 @@ class _DependencyAPI(_BoundObject):
         """
         actor, scope_key, template = self.actor, self.key, self._template_scope
         scope, model, links, field_name = _scope(actor, scope_key, template, 'view')
-        entry = model.objects.get(**{field_name: scope, 'entry_key': entry_key})
+        choices = model.objects.filter(**{field_name: scope})
+
+        # DV1-031: Private diary entries cannot become lookup targets or choices for other users.
+        if not template and not _allowed(actor, 'edit'):
+            choices = choices.filter(Q(source_entry__isnull=False) | ~Q(owner_kind=OwnerKind.PERSON)
+                                     | Q(person_ref=actor.reference))
+        entry = choices.get(entry_key=entry_key)
         successors = {}
         for item, predecessor in links.objects.filter(**{f'entry__{field_name}': scope}).values_list('entry_id',
                                                                                                      'predecessor_id'):
@@ -237,7 +282,7 @@ class _DependencyAPI(_BoundObject):
             if item not in excluded:
                 excluded.add(item)
                 pending.extend(successors.get(item, ()))
-        return tuple(model.objects.filter(**{field_name: scope}).exclude(pk__in=excluded)
+        return tuple(choices.exclude(pk__in=excluded)
                      .order_by('name').values('entry_key', 'name'))
 
     # DV1-006: Saved dependency validation.
@@ -364,6 +409,35 @@ class DiaryAPI:
     def diary(self, *, key):
         """Return a diary reference after checking the key against this actor role and calendar scope."""
         return DiaryInstance.from_key(actor=self.actor, key=key)
+
+    # DV1-020: Owned tasks from one or all permitted open diaries.
+    def personal_tasks(self, *, diary_key=None, today=None, include_whole_team=False):
+        """Return owned open tasks with diary keys and names within the actor's scope.
+        An omitted selector includes every permitted open diary.
+        Explicit invalid or unauthorized selectors retain the normal diary lookup errors.
+        """
+        _require(self.actor, 'view')
+        today = _comparison_date(today)
+
+        # An explicit selector must pass the same scope and existence checks as other diary reads.
+        if diary_key is not None:
+            keys = (self.diary(key=diary_key).key,)
+
+        # A broad selection can include only existing open diaries authorized by the host.
+        else:
+            keys = EventCalendar.objects.filter(pk__in=self.actor.calendar_keys, closed_at__isnull=True).values_list('pk', flat=True)
+        result = []
+        for key in keys:
+            instance = DiaryInstance(actor=self.actor, key=key)
+            for task in instance.personal_tasks(today=today, include_whole_team=include_whole_team):
+                result.append(task)
+        return tuple(sorted(result, key=self.personal_task_order))
+
+    @staticmethod
+    def personal_task_order(task):
+        """Group task results by diary name and key, with late tasks first within each diary."""
+        return (task['diary_name'].casefold(), str(task['diary_key']), not task['late'],
+                task['date'] or date.max, task['name'].casefold(), str(task['entry_key']))
 
 
 # DV1-046: Class-based callable API and factories.
@@ -736,10 +810,63 @@ class DiaryInstance(_DependencyAPI):
         return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
                                             **EntryMapper.to_model_fields(spec)).entry_key
 
+    # DV1-029, DV1-030, DV1-033: Save a task and an optional template revision together.
+    @transaction.atomic
+    def create_task(self, *, spec, template_spec=None, expected_version_key=None, directory=None):
+        """Add a diary task and optionally approve a new version of its source template.
+        Use the same entry key and owner for both additions.
+        Reject repeated combined saves, stale versions, and nonreusable template rules with ValidationError.
+        Roll back both additions if either operation fails.
+        """
+        calendar = _open_calendar(self.actor, self.key, 'use')
+
+        # A diary-only addition keeps the existing ownership and safe-retry checks.
+        if template_spec is None:
+            return self.add_entry(spec=spec, directory=directory)
+        _require(self.actor, 'edit')
+
+        # A recurring template task needs an explicitly supplied reusable rule and matching identity.
+        if (template_spec.date_kind == DateKind.ONCE
+                or template_spec.entry_key != spec.entry_key
+                or (template_spec.name, template_spec.description, template_spec.owner_kind,
+                    template_spec.person_ref, template_spec.role_ref)
+                != (spec.name, spec.description, spec.owner_kind, spec.person_ref, spec.role_ref)):
+            raise ValidationError('Use a reusable date rule with the same task identity and owner.')
+
+        # The diary lock serializes retries before either addition can create another record.
+        if calendar.entries.filter(entry_key=spec.entry_key).exists():
+            raise ValidationError('This task was already added. Open a new task form.')
+        template = DiaryTemplate(actor=self.actor, key=calendar.template_version.template_id)
+        CalendarTemplate.objects.select_for_update().get(pk=template.key)
+        data = template.editor_data()
+        specs = []
+        graph = {}
+        for entry in data['entries']:
+
+            # Serialized dependency and model fields are not EntrySpec constructor inputs.
+            values = {name: entry[name] for name in EntrySpec.__dataclass_fields__ if name in entry}
+            specs.append(EntrySpec(**values))
+            graph[entry['entry_key']] = entry['predecessors']
+
+        # A reused key must not replace a task in the current template revision.
+        if template_spec.entry_key in graph:
+            raise ValidationError('This task key already exists in the template.')
+        self.add_entry(spec=spec, directory=directory)
+        graph[spec.entry_key] = ()
+        template.save_version(entries=(*specs, template_spec), predecessors=graph,
+                              expected_version_key=expected_version_key, directory=directory)
+        return spec.entry_key
+
     # DV1-007: Task reads for one diary.
     def read(self):
+        """Return diary metadata and visible entries without private predecessor references.
+        DV1-031: Preserve blocking without exposing another person's private task.
+        """
+        return self._read()
+
+    def _read(self, *, filter_visibility=True):
         """Return current diary metadata, milestone values, entries, and dependency state.
-        Use preserved due dates for completed tasks.
+        Internal state calculations can inspect the full graph before filtering output.
         """
         actor, calendar_key = self.actor, self.key
         calendar = _calendar(actor, calendar_key)
@@ -764,10 +891,12 @@ class DiaryInstance(_DependencyAPI):
                             'completed_by_ref': entry.completed_by_ref,
                             'ready': entry.completed_at is None and all(
                                 item.completed_at is not None for item in predecessors)})
+        # Public reads protect private entries after calculating readiness from all predecessors.
+        visible = _visible_entries(actor, entries) if filter_visibility else tuple(entries)
         return {'key': calendar.pk, 'name': calendar.name, 'event_ref': calendar.event_ref,
                 'closed': calendar.closed_at is not None, 'closed_at': calendar.closed_at,
                 'closed_by_ref': calendar.closed_by_ref,
-                'milestones': context, 'entries': tuple(entries)}
+                'milestones': context, 'entries': visible}
 
     # DV1-003: Date calculation.
     # DV1-007: Task reads for one diary.
@@ -779,18 +908,15 @@ class DiaryInstance(_DependencyAPI):
         Return an empty tuple for a closed diary.
         """
 
-        # An omitted comparison date uses the Diary override or the project's default Django time zone.
-        if today is None:
-            today = timezone.localdate(timezone=ZoneInfo(getattr(settings, 'DIARY_TIME_ZONE', settings.TIME_ZONE)))
-
-        # Date comparisons must not accept timestamps or other incompatible values.
-        if type(today) is not date:
-            raise ValidationError('Supply a date for today.')
-        calendar = self.read()
+        today = _comparison_date(today)
+        calendar = self._read(filter_visibility=False)
 
         # A closed diary keeps its records but contributes no active tasks.
         if calendar['closed']:
             return ()
+        # Aggregate blocker lateness without returning private dates, text, or keys.
+        late_keys = {entry['entry_key'] for entry in calendar['entries']
+                     if entry['completed_at'] is None and entry['date'] is not None and entry['date'] <= today}
         result = []
         for entry in calendar['entries']:
 
@@ -802,8 +928,10 @@ class DiaryInstance(_DependencyAPI):
             # Tasks due today are late, while tasks without a due date are not late.
             result.append({**entry, 'state': 'ready' if entry['ready'] else 'blocked',
                            'late': entry['date'] is not None and entry['date'] <= today,
+                           'blocked_late': any(key in late_keys for key in entry['blocking_predecessors']),
+                           'diary_key': calendar['key'], 'diary_name': calendar['name'],
                            'date_not_set': entry['date'] is None})
-        return tuple(sorted(result, key=lambda item: (not item['late'], item['date'] or date.max,
+        return tuple(sorted(_visible_entries(self.actor, result), key=lambda item: (not item['late'], item['date'] or date.max,
                                                       item['name'].casefold(), str(item['entry_key']))))
 
     # DV1-007: Task reads for one diary.

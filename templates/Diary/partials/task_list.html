@@ -4,7 +4,7 @@
         <h2 class="diary-heading diary-task-heading">{{ diary_heading|default:"Tasks" }}</h2>
         <ul class="diary-task-list">
             {% for task in tasks %}
-                <li class="diary-task {% if task.state == 'blocked' %}diary-task-blocked{% else %}diary-task-ready{% endif %}{% if task.late %} diary-task-late{% endif %}">
+                <li class="diary-task {% if task.state == 'blocked' %}diary-task-blocked{% else %}diary-task-ready{% endif %}{% if task.blocked_late and not task.late %} diary-task-blocked-late{% endif %}{% if task.late %} diary-task-late{% endif %}">
                     <strong class="diary-task-title">{{ task.name }}</strong>
                     {% if task.description %}<p class="diary-task-description">{{ task.description }}</p>{% endif %}
                     <p class="diary-task-meta">
@@ -20,6 +20,7 @@
                         {% endif %}
                         {% if task.late %}<span class="diary-status diary-status-late">Late</span>{% endif %}
                     </p>
+                    {% if task.owner_kind == 'role' %}<p class="diary-muted diary-owner-members">Current members: {% for member in task.owner_members %}<span class="diary-owner-member">{{ member }}</span>{% if not forloop.last %}, {% endif %}{% empty %}<span class="diary-owner-empty">No current members.</span>{% endfor %}</p>{% endif %}
                     <p class="diary-muted diary-task-owner">
                         {% if task.owner_label %}
                             {{ task.owner_label }}
