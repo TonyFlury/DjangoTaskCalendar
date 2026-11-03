@@ -6,7 +6,7 @@ from .views import ManagerDiaryView, PersonalDiaryView, TaskCreateView, TaskDeta
 app_name = 'Diary'
 
 # DV1-024: Template chooser and selected-template routes.
-# Partial DV1-018: The ordinary-user full diary list and existing-template-item copy routes remain outstanding.
+# DV1-018: Required HTML routes exist. Template-to-diary copying is not required.
 urlpatterns = [
 
     # DV1-029, DV1-030, DV1-033: Task creation retains the host's permitted diary scope.

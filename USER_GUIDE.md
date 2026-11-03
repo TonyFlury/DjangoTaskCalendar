@@ -438,7 +438,7 @@ The current web pages have these limits:
 - Task details provide no task deletion control.
 - Milestone date editing is unavailable in these pages.
 - Creating or closing a diary depends on your website's separate process.
-- Copying an existing template task into an existing diary is unavailable in these pages.
+- Copying existing template tasks into existing diaries is not a required function.
 - **My Diary** lists assigned tasks. The full diary list is a manager page.
 - Reminders, exports, a calendar month view, and future date-window filters are unavailable.
 

@@ -43,8 +43,9 @@ Only DiaryManagers can add tasks owned by another person.
 In V1, DiaryManagers can edit dependencies only in templates.
 Template dependency changes do not propagate into live diaries.
 DiaryManagers cannot remove or replace live diary predecessors through dependency editing.
-Template changes leave existing diaries unchanged by default.
-V1 must let a DiaryManager explicitly add a new template item to an existing active diary, including a late task.
+Template changes leave existing diaries unchanged.
+Copying existing template tasks into existing diaries is not a required feature.
+A manager can create a new diary task and optionally add it to a template for future diaries.
 
 ## V1 implementation tracking
 
@@ -992,8 +993,8 @@ The V1 application save must include `DiaryTemplateVersion.approve()` without an
 `DiaryInstance.create_task()` implements the combined save workflow with an approved template revision.
 
 Diary entries retain their copied template content after creation.
-An explicit addition of a selected new template item remains V1 implementation work.
-The class refactor does not implement that addition workflow.
+Copying an existing template task into an existing diary is not required.
+DEC-003 is closed, and DV1-034 is removed from required work.
 
 ## EntrySpec fields
 
