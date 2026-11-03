@@ -82,7 +82,8 @@ The final sections separate unresolved decisions, host integration, and deferred
 - [x] **DV1-009: Configured ownership role names and existence checks.**
   `DIARY_TASK_OWNER_ROLES` controls assignment choices.
   Startup validates role existence directly through Django's standard group model.
-  Ownership-role membership checks at startup and creation still need DV1-015 and DV1-016.
+  Ownership-role membership checks at startup are implemented under DV1-015.
+  Creation validation still needs DV1-016.
   Template warnings are implemented under DV1-017.
   Implementation: [roles.py](roles.py): `task_owner_roles`, `validate_task_owner_roles`. [apps.py](apps.py): `DiaryConfig.ready`.
   Verification: [tests/test_roles.py](tests/test_roles.py): `RoleConfigurationTests`, `DjangoGroupDatabaseTests`.
@@ -172,10 +173,13 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Completed startup validation](../docs/design/diary-v1-remaining-work.md#dv1-014-startup-access-group-validation).
   Requirement: [D9].
 
-- [ ] **DV1-015: Startup ownership membership validation.**
+- [x] **DV1-015: Startup ownership membership validation.**
   Check that every configured task ownership role exists and has at least one member.
   Report each absent or empty role through `ImproperlyConfigured`.
-  Extend the current Django group checks to validate membership.
+  Startup checks current membership through the configured Django user model.
+  Implementation: [roles.py](roles.py): `validate_task_owner_roles`. [apps.py](apps.py): `DiaryConfig.ready`.
+  Verification: [tests/test_roles.py](tests/test_roles.py): `OwnershipGroupMembershipTests`, `DjangoGroupDatabaseTests`, `RoleConfigurationTests`.
+  Preserve the existing setup and repair command exceptions.
   Requirement: [D9].
 
 - [ ] **DV1-016: Ownership validation during diary creation.**
@@ -486,8 +490,8 @@ The following work is not a generic Diary V1 requirement:
 ## Review limits
 
 The status review inspected the implementation, migrations, tests, and preview boundaries.
-The startup validation and existing Diary code passed 97 tests against a separate PostgreSQL database.
-The isolated configuration passed 96 tests with Django's standard user model and no host business apps.
+The startup validation and existing Diary code passed 109 tests against a separate PostgreSQL database.
+The isolated configuration passed 108 tests with Django's standard user model and no host business apps.
 The optional time-zone change passed 37 targeted tests against a separate PostgreSQL database.
 The optional Chrome test passed against a separate PostgreSQL database.
 The tests include the Garage Sale key integration test.

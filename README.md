@@ -220,15 +220,17 @@ Diary checks role existence directly through `django.contrib.auth.models.Group`.
 Role assignments do not need a caller-supplied lookup or `OwnerDirectory`.
 The former `DIARY_ROLE_LOOKUP` setting is no longer used.
 
-Startup checks every configured role against the standard Django group table.
-Missing roles raise `ImproperlyConfigured` with their names and the relevant settings.
+Startup checks that every configured ownership group exists and contains at least one user.
+`Diary.roles.validate_task_owner_roles()` uses the configured Django user model for membership checks.
+Missing groups and empty groups raise `ImproperlyConfigured` with separate explanations and the `DIARY_TASK_OWNER_ROLES` setting name.
+One error identifies all missing and empty configured ownership groups.
 Invalid settings and database access failures also produce configuration errors.
 The check does not create roles or change existing task ownership.
 
 Database setup and repair commands defer the database checks described below.
 They still validate access-setting values and the form of `DIARY_TASK_OWNER_ROLES`.
 After setup, restart the application to perform normal startup validation.
-Normal startup checks ownership-group existence when the configured collection is not empty.
+Normal startup checks ownership-group existence and membership when the configured collection is not empty.
 
 ### Startup and ownership validation requirements
 
@@ -255,8 +257,8 @@ The current implementation validates both access-setting values and checks that 
 Errors distinguish a missing group, an empty group, and an unavailable database.
 They identify the relevant settings and group names.
 Validation does not create groups or assign users.
-The startup path also checks configured ownership-group existence.
-Ownership-group membership checks and diary-creation validation remain implementation work.
+The startup path also checks configured ownership-group existence and membership.
+Ownership validation during diary creation remains implementation work under DV1-016.
 The template editor now warns about selected ownership groups without members.
 See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
 

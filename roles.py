@@ -76,10 +76,11 @@ def task_owner_roles():
 
 # DV1-009: Configured ownership role names and existence checks.
 # DV1-048: Standard Django groups and optional template default.
+# DV1-015: Startup ownership-group membership validation.
 def validate_task_owner_roles():
-    """Check configured ownership-group existence without creating groups.
-    Raise ImproperlyConfigured for absent groups or unavailable database checks.
-    Membership validation remains DV1-015 work.
+    """Check that every configured ownership group exists and contains a user.
+    Raise ImproperlyConfigured for missing groups, empty groups, or unavailable database checks.
+    Leave groups and memberships unchanged.
     """
     roles = task_owner_roles()
 
@@ -87,18 +88,31 @@ def validate_task_owner_roles():
     if not roles:
         return
     try:
-        existing = set(Group.objects.filter(name__in=roles).values_list('name', flat=True))
+        members = get_user_model()._base_manager.filter(groups=OuterRef('pk'))
+        existing = dict(Group.objects.filter(name__in=roles).annotate(
+            has_members=Exists(members)).values_list('name', 'has_members'))
     except DatabaseError as error:
         raise ImproperlyConfigured(
             'Diary cannot validate DIARY_TASK_OWNER_ROLES against the database. '
-            'Check the database connection, apply migrations, and create the configured roles before startup.'
+            'Check the database connection, apply migrations, and populate the configured roles before startup.'
         ) from error
-    missing = roles - existing
+    missing = roles - existing.keys()
+
+    # Existing ownership groups must have a member independently of the access groups.
+    empty = {name for name, populated in existing.items() if not populated}
+    problems = []
 
     # Absent configured ownership groups prevent ordinary application startup.
     if missing:
+        problems.append('Roles missing from the database: ' + ', '.join(sorted(missing)) + '.')
+
+    # Empty groups need user assignments, so report them separately from absent groups.
+    if empty:
+        problems.append('Empty roles with no members: ' + ', '.join(sorted(empty)) + '.')
+
+    # Report all invalid ownership groups together without silently changing template assignments.
+    if problems:
         raise ImproperlyConfigured(
-            'DIARY_TASK_OWNER_ROLES contains roles missing from the database: '
-            + ', '.join(sorted(missing))
-            + '. Create these Django groups or correct DIARY_TASK_OWNER_ROLES.'
+            'DIARY_TASK_OWNER_ROLES validation failed. ' + ' '.join(problems)
+            + ' Create missing groups and add at least one user to each configured role before startup.'
         )

@@ -42,6 +42,7 @@ class AccessGroupConfigurationTests(SimpleTestCase):
 
 
 # Verifies DV1-009: Configured ownership role names and existence checks.
+# Verifies DV1-015: Startup ownership-group membership validation.
 @override_settings(DIARY_TASK_OWNER_ROLES=('ConfiguredRole',))
 class RoleConfigurationTests(SimpleTestCase):
     """Verify ownership-role configuration independently of access-group database checks."""
@@ -51,7 +52,8 @@ class RoleConfigurationTests(SimpleTestCase):
         def groups_matching(*, name__in):
             """Return configured matching ownership names from the fake group directory."""
             query = Mock()
-            query.values_list.return_value = {'ConfiguredRole'} & set(name__in)
+            query.annotate.return_value = query
+            query.values_list.return_value = [(name, True) for name in {'ConfiguredRole'} & set(name__in)]
             return query
 
         query_patch = patch.object(Group.objects, 'filter', side_effect=groups_matching)
@@ -107,6 +109,7 @@ class RoleConfigurationTests(SimpleTestCase):
 
 # Verifies DV1-009: Configured ownership role names and existence checks.
 # Verifies DV1-048: Standard Django groups and optional template default.
+# Verifies DV1-015: Startup ownership-group membership validation.
 @override_settings(DIARY_TASK_OWNER_ROLES=('CustomOwner',))
 class DjangoGroupDatabaseTests(TestCase):
     """Verify ownership role existence against the separate PostgreSQL test database."""
@@ -116,7 +119,12 @@ class DjangoGroupDatabaseTests(TestCase):
         with self.assertRaisesMessage(ImproperlyConfigured, 'CustomOwner'):
             validate_task_owner_roles()
         self.assertFalse(Group.objects.filter(name='CustomOwner').exists())
-        Group.objects.create(name='CustomOwner')
+        group = Group.objects.create(name='CustomOwner')
+        with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles with no members: CustomOwner'):
+            validate_task_owner_roles()
+        model = get_user_model()
+        member = model._default_manager.create_user(**{model.USERNAME_FIELD: 'owner@example.test'})
+        member.groups.add(group)
         validate_task_owner_roles()
 
 
@@ -250,3 +258,90 @@ class AccessGroupDatabaseTests(TestCase):
                 with self.settings(DIARY_MANAGER=None), self.assertNumQueries(0):
                     with self.assertRaisesMessage(ImproperlyConfigured, 'DIARY_MANAGER'):
                         self.config.ready()
+
+
+# Verifies DV1-015: Startup ownership-group membership validation.
+@override_settings(DIARY_MANAGER='OwnerManagers', DIARY_USER='OwnerUsers',
+                   DIARY_TASK_OWNER_ROLES=('FirstOwner', 'SecondOwner'))
+class OwnershipGroupMembershipTests(TestCase):
+    """Verify ownership-group membership during startup against PostgreSQL."""
+
+    def setUp(self):
+        """Create populated access groups and empty ownership groups with configurable names."""
+        self.first = Group.objects.create(name='FirstOwner')
+        self.second = Group.objects.create(name='SecondOwner')
+        managers = Group.objects.create(name='OwnerManagers')
+        users = Group.objects.create(name='OwnerUsers')
+        model = get_user_model()
+        self.member = model._default_manager.create_user(**{model.USERNAME_FIELD: 'ownership-member@example.test'})
+        self.member.groups.add(managers, users)
+        self.config = apps.get_app_config('Diary')
+
+    def test_populated_roles_validate_in_one_query_without_membership_changes(self):
+        """Check every ownership group together without copying or changing memberships."""
+        self.assertEqual(connection.vendor, 'postgresql')
+        self.member.groups.add(self.first, self.second)
+        before = set(self.member.groups.values_list('pk', flat=True))
+        with self.assertNumQueries(1):
+            validate_task_owner_roles()
+        self.assertEqual(set(self.member.groups.values_list('pk', flat=True)), before)
+
+    def test_error_distinguishes_all_missing_and_empty_roles(self):
+        """Report missing groups separately from every empty configured ownership group."""
+        self.second.delete()
+        with self.settings(DIARY_TASK_OWNER_ROLES=('FirstOwner', 'SecondOwner', 'ThirdOwner')):
+            with self.assertRaises(ImproperlyConfigured) as raised:
+                validate_task_owner_roles()
+        message = str(raised.exception)
+        self.assertIn('DIARY_TASK_OWNER_ROLES', message)
+        self.assertIn('Roles missing from the database: SecondOwner, ThirdOwner.', message)
+        self.assertIn('Empty roles with no members: FirstOwner.', message)
+        self.assertFalse(Group.objects.filter(name='ThirdOwner').exists())
+
+    def test_populated_access_groups_do_not_satisfy_ownership_membership(self):
+        """Reject empty ownership groups even when both access groups have members."""
+        validate_access_groups()
+        with patch('sys.argv', ['manage.py', 'runserver']):
+            with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles with no members: FirstOwner, SecondOwner'):
+                self.config.ready()
+
+    def test_membership_removal_and_user_deletion_are_detected(self):
+        """Read current ownership memberships on each validation call."""
+        self.member.groups.add(self.first, self.second)
+        validate_task_owner_roles()
+        self.member.groups.remove(self.first)
+        with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles with no members: FirstOwner.'):
+            validate_task_owner_roles()
+        self.member.groups.add(self.first)
+        validate_task_owner_roles()
+        self.member.delete()
+        with self.assertRaisesMessage(ImproperlyConfigured, 'FirstOwner, SecondOwner'):
+            validate_task_owner_roles()
+
+    def test_database_failure_preserves_configuration_context(self):
+        """Report query failures with the ownership setting and the original database exception."""
+        with patch('django.db.models.query.QuerySet._fetch_all', side_effect=OperationalError('Unavailable')):
+            with self.assertRaisesMessage(ImproperlyConfigured, 'DIARY_TASK_OWNER_ROLES') as raised:
+                validate_task_owner_roles()
+        self.assertIsInstance(raised.exception.__cause__, OperationalError)
+
+    def test_no_configured_roles_need_no_membership_query(self):
+        """Permit projects without role-owned tasks to omit ownership groups."""
+        with self.settings(DIARY_TASK_OWNER_ROLES=()), self.assertNumQueries(0):
+            validate_task_owner_roles()
+
+    def test_normal_startup_accepts_only_populated_roles(self):
+        """Apply ownership membership checks to management, WSGI, and ASGI startup."""
+        for argv in (['manage.py', 'runserver'], ['manage.py', 'check'], ['server']):
+            with self.subTest(argv=argv), patch('sys.argv', argv):
+                with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles'):
+                    self.config.ready()
+        self.member.groups.add(self.first, self.second)
+        with patch('sys.argv', ['server']), self.assertNumQueries(2):
+            self.config.ready()
+
+    def test_setup_commands_remain_available_with_empty_ownership_groups(self):
+        """Defer ownership database checks only for the existing setup and test commands."""
+        for command in ('migrate', 'sync_access_policy', 'shell', 'createsuperuser', 'loaddata', 'test'):
+            with self.subTest(command=command), patch('sys.argv', ['manage.py', command]), self.assertNumQueries(0):
+                self.config.ready()
