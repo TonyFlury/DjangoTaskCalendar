@@ -12,6 +12,8 @@ Each item gives its completion condition and requirement reference.
 Implementation and verification annotations name files and exact technical symbols.
 Source comments use the same DV1 identifiers.
 Partial implementation annotations do not mark an item complete.
+Each partial item has a Remaining annotation.
+Substantial remaining work has a linked design document.
 Template blocks, CSS selectors, and JavaScript functions identify implementations without Python symbols.
 Documentation-only items identify their section instead of an executable symbol.
 The source links also identify the applicable design rules.
@@ -145,6 +147,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Completion requires access tests with different host group names.
   Partial implementation: [views.py](views.py): `DjangoOwnerDirectory.person_in_groups`, `TemplateEditorView.dispatch`. [forms.py](forms.py): `TemplateTaskFormSet.__init__`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_person_ownership_uses_configured_user_model_and_rejects_other_users`.
+  Remaining: Add shared identity and ownership handling for task HTTP operations. Apply trusted diary scope and verify alternate groups across all operations.
+  Design: [Remaining work for DV1-013](../docs/design/diary-v1-remaining-work.md#dv1-013-identity-and-role-adapters).
   Requirement: [D4] and [D8].
 
 - [ ] **DV1-014: Startup access-group validation.**
@@ -155,6 +159,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Keep database and group setup commands available.
   Partial implementation: [roles.py](roles.py): `access_groups`. [apps.py](apps.py): `DiaryConfig.ready`.
   Verification: [tests/test_roles.py](tests/test_roles.py): `AccessGroupConfigurationTests`.
+  Remaining: Validate configured access-group existence and membership at startup. Add distinct configuration errors and database/setup-command tests.
+  Design: [Remaining work for DV1-014](../docs/design/diary-v1-remaining-work.md#dv1-014-startup-access-group-validation).
   Requirement: [D9].
 
 - [ ] **DV1-015: Startup ownership membership validation.**
@@ -186,6 +192,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Enforce permissions on direct requests and save actions.
   Partial implementation: [views.py](views.py): `TemplateEditorView`, `TemplateCreateView`. [urls.py](urls.py): `urlpatterns`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_anonymous_and_ordinary_users_cannot_access_or_save_templates`, `TemplateEditorTests.test_http_post_requires_csrf_token`.
+  Remaining: Implement personal lists, diary lists, task details, task creation, and completion routes. Enforce task privacy, host scope, and action permissions.
+  Design: [Remaining work for DV1-018](../docs/design/diary-v1-remaining-work.md#dv1-018-remaining-authenticated-task-views).
   Requirement: [D6] and [D8].
 
 - [ ] **DV1-019: View object selectors.**
@@ -195,6 +203,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Diary selectors remain outstanding.
   Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
+  Remaining: Implement diary-key inputs and cross-diary selection. Resolve DEC-001 for diary conflicts and verify invalid or unauthorized keys.
+  Design: [Remaining work for DV1-019](../docs/design/diary-v1-remaining-work.md#dv1-019-diary-selectors).
   Requirement: [D6].
 
 - [ ] **DV1-020: Personal task API across diaries.**
@@ -381,6 +391,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Verify keyboard access, text state labels, narrow screens, and host overrides.
   Partial implementation: [forms.py](forms.py): `StyledForm.__init__`. [templates/Diary/template_editor.html](templates/Diary/template_editor.html): `diary_content`. [templates/Diary/partials/template_editor.html](templates/Diary/partials/template_editor.html): `.diary-template-editor`. [static/Diary/styles/diary.css](static/Diary/styles/diary.css): `.diary-template-field`.
   Verification: [tests/test_styling.py](tests/test_styling.py): `DiaryStyleOverrideTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
+  Remaining: Build remaining task documents and fragments. Complete task-state styling, class documentation, keyboard checks, narrow-screen checks, and host-override verification.
+  Design: [Remaining work for DV1-041](../docs/design/diary-v1-remaining-work.md#dv1-041-remaining-pages-and-styling).
   Requirement: [D6].
 
 - [ ] **DV1-042: Empty states and invalid selections.**
@@ -390,6 +402,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Do not require a host current-event attribute.
   Partial implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `TemplateEditorView.get`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_reads_do_not_create_records_and_missing_name_opens_chooser`, `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
+  Remaining: Implement empty and error states for task pages and diary instances. Verify privacy, preserved diary context, and reads without creation.
+  Design: [Remaining work for DV1-042](../docs/design/diary-v1-remaining-work.md#dv1-042-remaining-empty-and-error-states).
   Requirement: [D4], [D6], and [D8].
 
 - [ ] **DV1-043: Enforce the V1 milestone-change boundary.**
@@ -405,6 +419,8 @@ The final sections separate unresolved decisions, host integration, and deferred
   Run database tests only against a separate PostgreSQL test database.
   Verify installation without host business application models.
   Partial implementation: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateRevisionConcurrencyTests`, `TemplateEditorTests`. [tests/browser_template_editor.py](tests/browser_template_editor.py): `EditorBrowserTests.test_editor`.
+  Remaining: Verify unimplemented identity, group, selection, privacy, task-editing, and completion workflows. Cover transaction rollback and concurrent completion, closure, and permitted edits.
+  Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
 - [ ] **DV1-045: Release documentation and deployment checks.**

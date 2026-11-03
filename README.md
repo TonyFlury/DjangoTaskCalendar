@@ -48,6 +48,8 @@ It gives each item a stable identifier, completion conditions, and links to the 
 It separates implemented components, outstanding work, unresolved details, host integration, and deferred features.
 The checklist replaces the earlier duplicated remaining-work list.
 Previews do not complete production page requirements.
+Each partial checklist item states its remaining work.
+The [partial implementation design](../docs/design/diary-v1-remaining-work.md) describes substantial gaps and separates requirements from proposals.
 
 ## App boundary
 
