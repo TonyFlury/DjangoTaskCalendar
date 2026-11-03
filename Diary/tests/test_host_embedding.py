@@ -70,3 +70,13 @@ class HostEmbeddingTests(SimpleTestCase):
             ).render(context)
             self.assertEqual(html.lower().count('<!doctype html>'), 1)
             self.assertIn('Host task', html)
+
+    def test_manager_filter_actions_stay_inside_panel(self):
+        """Keep Apply filters and Clear filters inside the package's manager filter fieldset."""
+        html = render_to_string('Diary/partials/manager_diary.html', self.context())
+        panel = html.split('<fieldset class="diary-manager-filter-group">', 1)[1].split('</fieldset>', 1)[0]
+        self.assertIn('diary-manager-filter-controls', panel)
+        self.assertIn('diary-manager-apply', panel)
+        self.assertIn('diary-manager-reset', panel)
+        self.assertIn('Clear filters', panel)
+        self.assertIn('diary-manager-filter-help', panel)

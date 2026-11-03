@@ -2561,3 +2561,13 @@ The [host embedding guide](HOST_EMBEDDING.md) describes page inheritance, truste
 New package classes are `diary-selection-form`, `diary-selection-kind`, and `diary-host-field`.
 These classes identify hidden selection forms, selection types, and host fields. They add no CSS variables.
 Existing component classes remain unchanged. Selection links become buttons only when the host enables POST selection.
+
+## Compact manager filters
+
+The manager filter panel contains its checkboxes and the Apply filters and Clear filters controls.
+The controls share one row when sufficient width is available. They wrap when necessary.
+The help text remains inside the panel below the controls.
+The new class `diary-manager-filter-controls` identifies the wrapping control row.
+The existing `diary-manager-filter-actions` class now identifies actions inside that row.
+Existing label, button, and help classes remain unchanged. No CSS variables are added.
+Verification: `Diary/tests/test_host_embedding.py`: `HostEmbeddingTests.test_manager_filter_actions_stay_inside_panel`.

@@ -557,6 +557,9 @@ The final sections record confirmed decisions and deferred Diary features.
   Requirement: [D6] and [D9].
 
 - [x] **DV1-041: Complete pages, fragments, and styling interface.**
+  Compact manager filters: [manager_diary.html](templates/Diary/partials/manager_diary.html): `.diary-manager-filter-controls` and `.diary-manager-filter-actions`.
+  Styling: [diary.css](static/Diary/styles/diary.css): `.diary-manager-filter-group`, `.diary-manager-filter-label`, and `.diary-manager-filter-help`.
+  Verification: [test_host_embedding.py](tests/test_host_embedding.py): `HostEmbeddingTests.test_manager_filter_actions_stay_inside_panel`.
   Host embedding: [HOST_EMBEDDING.md](HOST_EMBEDDING.md). Package pages accept `diary_base_template` and `diary_ui`.
   Implementation: [views.py](views.py): `DiaryScopeMixin.task_url`, `PersonalDiaryView.filter_context`, `TemplateEditorView.get`, and `TemplateEditorView.render_editor`.
   Shared forms: [selection_forms.html](templates/Diary/partials/selection_forms.html): `.diary-selection-form` and `.diary-selection-kind`.

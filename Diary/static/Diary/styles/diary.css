@@ -115,9 +115,13 @@
 
 /* DV1-022, DV1-039, DV1-041, DV1-052: Manager diary controls and task states. */
 .diary .diary-manager-error { color: var(--diary-late); }
-.diary .diary-manager-filter-group { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; }
+.diary .diary-manager-filter-group { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; margin: 0; padding: .5rem .75rem .75rem; }
 .diary .diary-manager-filter-legend { font-weight: bold; padding-inline: .25rem; }
-.diary .diary-manager-filter-label { display: flex; align-items: baseline; gap: .5rem; margin-block: .5rem; font-weight: normal; }
+.diary .diary-manager-filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.diary .diary-manager-filter-label { display: flex; align-items: center; gap: .35rem; margin: 0; min-width: 0; font-weight: normal; }
+.diary .diary-manager-filter-actions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0; }
+.diary .diary-manager-filter-actions .diary-button { padding: .35rem .65rem; }
+.diary .diary-manager-filter-help { margin-block: .5rem 0; font-size: .875rem; }
 .diary .diary-manager-checkbox { flex: 0 0 auto; accent-color: var(--diary-accent); }
 .diary .diary-manager-filter-text { overflow-wrap: anywhere; }
 .diary .diary-manager-closed { border-inline-start: .25rem solid var(--diary-border); padding-inline-start: .75rem; }
