@@ -1,4 +1,4 @@
-{% extends "Diary/base.html" %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-022, DV1-041, DV1-052: Full document and reusable manager diary content. #}
 {% block diary_title %}{{ diary_data.name|default:"Manager diary" }}{% endblock %}

@@ -1,4 +1,4 @@
-{% extends "Diary/base.html" %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-011: The diary_content block includes the reusable task fragment. #}
 {% block diary_title %}Diary tasks{% endblock %}

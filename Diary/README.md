@@ -2277,7 +2277,7 @@ The settings name `DIARY_TEMPLATE_NAME` selects calendar data, not a Django HTML
 
 ### Standalone pages and reusable fragments
 
-Every Diary page must have a complete browser document through `Diary/base.html`.
+Complete Diary pages use `Diary/base.html` unless the host supplies `diary_base_template`.
 The page content belongs in a reusable fragment under `Diary/partials/`.
 For example, `Diary/task_list.html` includes `Diary/partials/task_list.html`.
 The standalone page loads the default stylesheet.
@@ -2542,3 +2542,11 @@ Existing class names remain unchanged. These rules use the existing `--diary-lat
 | `diary-recovery-submit` | Explicit assignment button. |
 
 The ownership form uses the existing task-detail error classes for validation messages.
+
+## Host embedding configuration
+
+Use the package partials directly inside a host page. Do not copy them into the host project.
+The [host embedding guide](HOST_EMBEDDING.md) describes page inheritance, trusted scope, navigation controls, and hidden form fields.
+New package classes are `diary-selection-form`, `diary-selection-kind`, and `diary-host-field`.
+These classes identify hidden selection forms, selection types, and host fields. They add no CSS variables.
+Existing component classes remain unchanged. Selection links become buttons only when the host enables POST selection.

@@ -1,4 +1,4 @@
-{% extends 'Diary/base.html' %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-029, DV1-030, DV1-033: Complete task creation document. #}
 {% block diary_title %}Add task | Diary{% endblock %}

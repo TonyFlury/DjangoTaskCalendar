@@ -8,7 +8,7 @@
     <p class="diary-template-guidance">Existing diaries keep their tasks and dependencies. Template names stay fixed after creation.</p>
     {% if ownership_warnings %}<aside class="diary-template-warnings" aria-label="Ownership warnings" role="status"><ul class="diary-warning-list">{% for warning in ownership_warnings %}<li class="diary-warning">{{ warning }}</li>{% endfor %}</ul></aside>{% endif %}
     <form class="diary-template-form" method="post">
-        {% csrf_token %}
+        {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
         {{ header_form.expected_version_key }}
         {% if header_form.expected_version_key.errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.expected_version_key.errors %}<li class="diary-form-error">Version: {{ error }}</li>{% endfor %}</ul>{% endif %}
         {% if header_form.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}

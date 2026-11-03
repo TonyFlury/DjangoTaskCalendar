@@ -8,7 +8,7 @@
                     <strong class="diary-task-title">{{ task.name }}</strong>
 
                     {# DV1-023: Routed task lists retain their diary scope in the detail link. Plain embedded lists can omit it. #}
-                    {% if task.detail_url %}<a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>{% endif %}
+                    {% if task.detail_url %}{% if diary_ui.selection_url %}<button class="diary-button diary-task-detail-link" type="submit" form="diary-select-task" name="entry_key" value="{{ task.entry_key }}">View and update task</button>{% else %}<a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>{% endif %}{% endif %}
                     {% if task.description %}<p class="diary-task-description">{{ task.description }}</p>{% endif %}
                     <p class="diary-task-meta">
                         {% if task.date %}

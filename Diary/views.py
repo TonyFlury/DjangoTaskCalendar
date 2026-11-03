@@ -104,7 +104,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
 
         # A missing name must show all templates without creating an empty template or version.
         if self.template is None and not self.creating:
-            return render(request, 'Diary/template_list.html', {'templates': self.api.templates()})
+            return render(request, 'Diary/template_list.html', {**(self.extra_context or {}), 'templates': self.api.templates()})
         header = TemplateForm(initial=self.header_initial(), editing=not self.creating)
         tasks = TaskFormSet(prefix='tasks', initial=list(self.data['entries']))
         return self.render_editor(header, tasks)
@@ -173,6 +173,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
     def render_editor(self, header, tasks, status=200):
         """Render the complete editor document with task-specific ownership warnings."""
         return render(self.request, self.page_template, {
+            **(self.extra_context or {}),
             'header_form': header, 'task_forms': tasks, 'creating': self.creating,
             'template_data': self.data, 'ownership_warnings': tasks.ownership_warnings(),
             'empty_owner_roles': tasks.empty_roles,
@@ -247,6 +248,11 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
     # DV1-023: Host routes supply their own task detail scope through a named view.
     def task_url(self, entry_key, diary_key):
         """Return a task-detail URL that keeps the selected diary and optional host route name."""
+        ui = self.view_context.get('diary_ui', {})
+
+        # DV1-041: Host POST selection supplies record scope outside the browser URL.
+        if ui.get('selection_url'):
+            return ui.get('task_detail_url', self.request.path)
         name = self.view_context.get('task_detail_url_name', 'Diary:task-detail')
         return reverse(name, kwargs={'entry_key': entry_key}) + '?' + urlencode({'diary_key': diary_key})
 
@@ -733,8 +739,8 @@ class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         for category, count in counts.items():
             params = {'task_status': category}
 
-            # Status links must keep a selected diary instead of expanding to every permitted diary.
-            if key is not None:
+            # DV1-041: Trusted host scope replaces selectors without expanding permitted Diary access.
+            if key is not None and not self.view_context.get('diary_ui', {}).get('trusted_scope'):
                 params['diary_key'] = str(key)
 
             # Keep optional display choices when following a status count.

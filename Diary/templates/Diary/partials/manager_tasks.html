@@ -10,7 +10,7 @@
             {% endif %}
 
             {# DV1-023: Detail navigation uses the manager page's permitted diary and optional host route name. #}
-            <a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>
+            {% if diary_ui.selection_url %}<button class="diary-button diary-task-detail-link" type="submit" form="diary-select-task" name="entry_key" value="{{ task.entry_key }}">View and update task</button>{% else %}<a class="diary-task-detail-link" href="{{ task.detail_url }}">View and update task</a>{% endif %}
             {% if task.description %}<p class="diary-manager-task-description">{{ task.description }}</p>{% endif %}
             <p class="diary-manager-task-date-row">
                 {% if task.date %}

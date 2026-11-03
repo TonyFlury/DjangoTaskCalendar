@@ -1,0 +1,2 @@
+{# DV1-041: Host fields remain escaped and never replace server authorization. #}
+{% for name, value in diary_ui.form_fields.items %}<input class="diary-host-field" type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}

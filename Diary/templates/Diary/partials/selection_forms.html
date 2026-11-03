@@ -1,0 +1,11 @@
+{# DV1-041: Optional host POST navigation keeps identifiers out of browser URLs. #}
+{% if diary_ui.selection_url %}
+    <form class="diary-selection-form" id="diary-select-task" method="post" action="{{ diary_ui.selection_url }}" hidden>
+        {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
+        <input class="diary-selection-kind" type="hidden" name="selection" value="task">
+    </form>
+    <form class="diary-selection-form" id="diary-select-template" method="post" action="{{ diary_ui.selection_url }}" hidden>
+        {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
+        <input class="diary-selection-kind" type="hidden" name="selection" value="template">
+    </form>
+{% endif %}

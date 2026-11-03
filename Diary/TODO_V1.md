@@ -557,6 +557,11 @@ The final sections record confirmed decisions and deferred Diary features.
   Requirement: [D6] and [D9].
 
 - [x] **DV1-041: Complete pages, fragments, and styling interface.**
+  Host embedding: [HOST_EMBEDDING.md](HOST_EMBEDDING.md). Package pages accept `diary_base_template` and `diary_ui`.
+  Implementation: [views.py](views.py): `DiaryScopeMixin.task_url`, `PersonalDiaryView.filter_context`, `TemplateEditorView.get`, and `TemplateEditorView.render_editor`.
+  Shared forms: [selection_forms.html](templates/Diary/partials/selection_forms.html): `.diary-selection-form` and `.diary-selection-kind`.
+  Hidden fields: [form_fields.html](templates/Diary/partials/form_fields.html): `.diary-host-field`.
+  Verification: [test_host_embedding.py](tests/test_host_embedding.py): `HostEmbeddingTests`.
   Use a complete base document for each routed page and reusable fragments for embedded content.
   Give visible components, controls, content roles, and states stable `diary-` classes within `.diary`.
   Avoid inline presentation rules and styling dependencies on IDs, text, tags, or element positions.

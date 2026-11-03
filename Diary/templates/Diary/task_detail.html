@@ -1,4 +1,4 @@
-{% extends 'Diary/base.html' %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-023, DV1-032, DV1-035, DV1-036, DV1-037, DV1-038: Complete task detail document. #}
 {% block diary_title %}Task details | Diary{% endblock %}

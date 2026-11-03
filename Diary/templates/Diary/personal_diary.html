@@ -1,4 +1,4 @@
-{% extends "Diary/base.html" %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-021, DV1-041, DV1-049: Complete personal page and reusable content. #}
 {% block diary_title %}My Diary{% endblock %}

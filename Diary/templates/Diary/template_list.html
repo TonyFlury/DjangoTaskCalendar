@@ -1,4 +1,4 @@
-{% extends 'Diary/base.html' %}
+{% extends diary_base_template|default:"Diary/base.html" %}
 
 {# DV1-024: Template chooser document with a reusable content block. #}
 {% block diary_title %}Templates | Diary{% endblock %}

@@ -1,10 +1,11 @@
 <section class="diary diary-template-chooser" aria-labelledby="diary-template-list-heading">
+{% include "Diary/partials/selection_forms.html" %}
     <h1 class="diary-heading" id="diary-template-list-heading">Diary templates</h1>
     <div class="diary-actions"><a class="diary-button diary-button-primary diary-template-create" href="{% url 'Diary:template-create' %}">Create template</a></div>
     <ul class="diary-template-list">
         {% for template in templates %}
         <li class="diary-card diary-template-summary">
-            <h2 class="diary-template-name"><a class="diary-template-link" href="{% url 'Diary:template-edit' template_name=template.name %}">{{ template.name }}</a></h2>
+            <h2 class="diary-template-name">{% if diary_ui.selection_url %}<button class="diary-button diary-template-link" type="submit" form="diary-select-template" name="template_name" value="{{ template.name }}">{{ template.name }}</button>{% else %}<a class="diary-template-link" href="{% url 'Diary:template-edit' template_name=template.name %}">{{ template.name }}</a>{% endif %}</h2>
             <p class="diary-template-description">{{ template.description }}</p>
         </li>
         {% empty %}<li class="diary-template-empty">No templates exist. Create a template to define reusable tasks.</li>{% endfor %}
