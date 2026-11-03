@@ -1,7 +1,49 @@
-# Diary callable API
+# Diary full developer guide
 
 For browser instructions, see the [Diary web user guide](USER_GUIDE.md).
 This document covers integration, configuration, and the callable API.
+V1 uses English only. Localization is not required for the current release.
+
+## Confirmed selector and task-edit rules
+
+### DEC-001: Conflicting selectors
+
+The technical selectors `diary_key` and `template_name` can come from URL parameters or trusted server context.
+View attributes can also supply these selectors.
+All supplied values must identify the same diary or template.
+Diary selectors compare parsed UUID values. Template selectors compare names without letter-case differences.
+Conflicting URL and context values return HTTP 400. Neither input takes priority.
+The shared diary selector applies this rule to personal, manager, creation, detail, and HTTP data views.
+The template editor applies the same rule to template selection.
+Matching selections still require the caller's permissions and trusted diary scope.
+
+For example, a URL that selects Diary A conflicts with context that selects Diary B.
+The view returns HTTP 400 without reading or changing the selected diary's tasks.
+Malformed or blank diary selectors also return HTTP 400.
+
+The technical logger `Diary.views` records selector conflicts at WARNING level.
+Its message identifies the selector name, view class, rejection reason, and HTTP status.
+It omits submitted selector values and task content.
+Hosts must configure a logging handler for this logger or its parent.
+The technical method `DiaryScopeMixin.selected_key()` logs diary conflicts.
+The technical method `TemplateEditorView.dispatch()` logs conflicting or disallowed template selections.
+
+### DEC-002: V1 edits to template-created tasks
+
+Managers can change the due date of a template-created task in the selected diary.
+Managers can also edit ownership when that template-created task is orphaned, as defined under DEC-005.
+Ownership changes are ordinary task edits through the existing task detail page.
+No separate popup, approval step, or mandatory resolution workflow is required.
+Person replacements must be active DiaryUser members. Authorized ownership groups and Whole team are also permitted.
+An ownership edit preserves the task's due date and dependency links.
+Managers can leave an orphaned task unresolved.
+
+Names, descriptions, original date rules, milestone dates, and dependency links remain unchanged in V1.
+The normal task editor does not change the source template or other diary instances.
+Completion remains a separate task action under the existing completion rules.
+Completed tasks and closed diaries reject edits.
+
+## API overview
 
 API module: `Diary.api`.
 API version: `1`.

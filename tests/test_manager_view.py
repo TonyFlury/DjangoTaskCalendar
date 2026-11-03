@@ -151,8 +151,12 @@ class ManagerDiaryTests(TestCase):
         self.assertEqual(response.status_code, 400)
         same = self.client.get(reverse('host-manager'), {'diary_key': [self.diary.key, str(self.diary.key).upper()]})
         self.assertEqual(same.status_code, 200)
-        with self.settings(MANAGER_TEST_CONTEXT_KEY=self.other.key):
+        # DV1-019, DEC-001: Conflicting URL and trusted context require a diagnostic without selector values.
+        with self.settings(MANAGER_TEST_CONTEXT_KEY=self.other.key), self.assertLogs('Diary.views', level='WARNING') as logs:
             self.assertEqual(self.page().status_code, 400)
+        self.assertIn('selector=diary_key', logs.output[0])
+        self.assertIn('status=400', logs.output[0])
+        self.assertNotIn(str(self.diary.key), logs.output[0])
         missing = uuid4()
         with self.settings(MANAGER_TEST_KEYS=(missing,)):
             self.assertEqual(self.page(diary_key=missing).status_code, 404)

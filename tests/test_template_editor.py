@@ -143,6 +143,15 @@ class TemplateEditorTests(TestCase):
         configured_view = TemplateEditorView.as_view(extra_context=trusted_context)
         response = configured_view(request)
         self.assertEqual(response.status_code, 200)
+
+        # DV1-019, DEC-001: Template context cannot override a conflicting URL selection without a diagnostic.
+        request = factory.get('/embedded-editor/', {'template_name': 'Another'})
+        request.user = self.manager
+        with self.assertLogs('Diary.views', level='WARNING') as logs:
+            self.assertEqual(configured_view(request).status_code, 400)
+        self.assertIn('selector=template_name', logs.output[0])
+        self.assertIn('status=400', logs.output[0])
+        self.assertNotIn('Reusable plan', logs.output[0])
         response = self.client.get(reverse('Diary:template-edit', args=['Reusable plan']), {'template_name': 'Another'})
         self.assertEqual(response.status_code, 400)
         response = self.client.get(reverse('Diary:template-edit', args=['Unknown']))

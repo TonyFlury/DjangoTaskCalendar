@@ -253,6 +253,9 @@ The final sections separate unresolved decisions, host integration, and deferred
   Accept `diary_key` or `template_name` through URL parameters or trusted server-supplied context.
   Apply the same host scope and visibility checks for either input method.
   Template selectors accept URL values and trusted view context. Conflicting names return HTTP 400.
+  Conflicting selectors produce a WARNING through the technical logger `Diary.views`.
+  Implementation: [views.py](views.py): `DiaryScopeMixin.selected_key`, `TemplateEditorView.dispatch`.
+  Log verification: [tests/test_manager_view.py](tests/test_manager_view.py): `ManagerDiaryTests.test_conflicting_malformed_repeated_and_unknown_selectors`. [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
   Manager and personal selectors accept GET input and trusted view context. Personal selection supports one or all permitted open diaries.
   Implementation: [views.py](views.py): `TemplateEditorView.dispatch`, `ManagerDiaryView.selected_key`, `ManagerDiaryView.get_diary_keys`.
   Verification: [tests/test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_named_view_selects_latest_draft_and_supports_url_or_trusted_context`.
@@ -592,6 +595,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Requirement: [D7].
 
 - [ ] **DV1-044: Regression and concurrency verification.**
+  Scope: Test cases and verification only. This item adds no product interface.
   Cover privacy, configured groups, membership checks, selectors, template saves, task additions, and completion operations.
   Verify transaction failures, repeated requests, and races between completion, diary closure, and permitted edits.
   Run database tests only against a separate PostgreSQL test database.
@@ -609,6 +613,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Requirement: [D4], [D6], [D8], and [D9].
 
 - [ ] **DV1-045: Release documentation and deployment checks.**
+  Scope: English only for V1. Localization is not required.
   Update API signatures, view inputs, settings, migration instructions, and styling documentation for the final implementation.
   Preserve the documented runtime warning limit for ownership group changes.
   Check all V1 items against their completion conditions before release.
@@ -620,15 +625,15 @@ The final sections separate unresolved decisions, host integration, and deferred
   Remaining: Complete final release checks, deployment verification, and the full Issue 9 dictionary and technical-name review.
   Requirement: [D4], [D6], [D9], and [usage documentation](README.md).
 
-## Decisions needed by specific items
+## Confirmed decisions for specific items
 
 These entries record decisions for specific implementation items.
 They do not reopen the confirmed V1 decisions.
 
 | Identifier | Decision | Affected items | Documentation |
 | --- | --- | --- | --- |
-| DEC-001 | Template and manager diary views reject conflicting selectors. Apply this rule to remaining diary views. | DV1-019 | [Usage guide](README.md#template-creation-and-editing). |
-| DEC-002 | Resolved for this change: due-date edits only. Other task fields, ownership changes, and extra progress states have no implemented editing interface. | DV1-032 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
+| DEC-001 | Resolved. Reject conflicting URL and context selectors with HTTP 400 and a WARNING log message. Neither input takes priority. | DV1-019 | [Full developer guide](README.md#dec-001-conflicting-selectors). |
+| DEC-002 | Resolved. Managers can edit template-created task due dates and orphaned-task ownership through the existing task editor. Other task content stays unchanged. | DV1-032, DV1-040 | [Full developer guide](README.md#dec-002-v1-edits-to-template-created-tasks). |
 | DEC-003 | Closed. Copying existing template tasks into existing diaries is not required. | DV1-034, not required | [Removed requirement](#removed-requirement-dv1-034). |
 | DEC-004 | Implemented with one generic marker for inaccessible open predecessors. No private content, identifiers, or count appear. | DV1-035 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
 | DEC-005 | Resolved. Put orphaned template tasks first in the manager list. Allow unresolved ownership or explicit reassignment through the existing editor. | DV1-040 | Choose a DiaryUser, authorized ownership group, or Whole team. No dedicated popup is required. |
@@ -720,6 +725,12 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This backlog record adds no executable editing interface.
 
 ## Review limits
+
+DEC-001 and DEC-002 now identify confirmed behavior in the full developer guide.
+The selector logging change passed 28 manager and template tests against a separate PostgreSQL database.
+Conflict tests verify HTTP 400, WARNING records, selector names, and omission of submitted selector values.
+The change adds no database migration or deployed service change.
+DV1-044 remains test work. DV1-045 requires English documentation only, with no current localization requirement.
 
 DEC-005 is resolved through the existing manager list and task editor.
 The standalone configuration passed 215 tests, including the ownership recovery Chrome test.

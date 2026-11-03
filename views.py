@@ -1,4 +1,5 @@
 """Authenticated Diary pages, HTTP data reads, template editing, date editing, and completion."""
+import logging
 from datetime import date
 from uuid import UUID, uuid4
 from urllib.parse import urlencode
@@ -26,6 +27,8 @@ from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTas
 from .models import EventCalendar, Milestone
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
+
+logger = logging.getLogger(__name__)
 
 
 class DjangoOwnerDirectory:
@@ -78,6 +81,8 @@ class TemplateEditorView(LoginRequiredMixin, View):
 
         # Reject conflicts between trusted context and URL selectors rather than assigning precedence.
         if len({name.casefold() for name in names}) > 1 or (self.creating and names):
+            logger.warning('Diary selector rejected: selector=template_name view=%s reason=conflicting or disallowed selection status=400',
+                           type(self).__name__)
             return HttpResponseBadRequest('Supply one template name.')
         self.selected_name = next(iter(names), None)
         self.template = None
@@ -234,6 +239,8 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
 
         # Conflicting inputs must not silently select a different permitted diary.
         if len(keys) > 1:
+            logger.warning('Diary selector rejected: selector=diary_key view=%s reason=conflicting selections status=400',
+                           type(self).__name__)
             raise ValueError('Supply one diary key.')
         return next(iter(keys), None)
 
