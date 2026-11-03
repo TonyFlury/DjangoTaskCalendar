@@ -1,5 +1,8 @@
 # Diary callable API
 
+For browser instructions, see the [Diary web user guide](USER_GUIDE.md).
+This document covers integration, configuration, and the callable API.
+
 API module: `Diary.api`.
 API version: `1`.
 

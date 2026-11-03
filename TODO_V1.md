@@ -7,6 +7,8 @@ Each identifier stays unchanged when its status changes.
 A checked item identifies an implemented component, not a complete V1 release.
 Unchecked items remain implementation or verification work.
 Previews demonstrate behavior but do not complete production view requirements.
+The [web user guide](USER_GUIDE.md) explains the current pages for DiaryUsers and DiaryManagers.
+The [integration guide](README.md) documents setup, API operations, and integration limits.
 
 Each item gives its completion condition and requirement reference.
 Implementation and verification annotations name files and exact technical symbols.
@@ -585,6 +587,11 @@ The final sections separate unresolved decisions, host integration, and deferred
   Preserve the documented runtime warning limit for ownership group changes.
   Check all V1 items against their completion conditions before release.
   Record the language review limits without claiming unverified ASD-STE100 compliance.
+  Partial documentation: [USER_GUIDE.md](USER_GUIDE.md): `Start using Diary`, `Find your tasks`, `Change a due date`, `Complete a task`, and manager procedures.
+  The web guide includes privacy, shared completion, template version behavior, recovery instructions, and the V1 date-conflict warning limit.
+  Verification: Manual comparison with current forms, page templates, task permissions, and existing implementation evidence.
+  Documentation only. This change adds no executable symbols or application tests.
+  Remaining: Complete final release checks, deployment verification, and the full Issue 9 dictionary and technical-name review.
   Requirement: [D4], [D6], [D9], and [usage documentation](README.md).
 
 ## Decisions needed by specific items
@@ -664,6 +671,12 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This requirement has no assigned release and is not a V1 completion condition.
 
 ## Review limits
+
+The web user guide describes the current production page templates and their form labels.
+Its instructions distinguish ordinary users from managers and separate implemented controls from current limits.
+The documentation check covers local links, sentence lengths, and selected Issue 9 dictionary entries.
+Issue 9 was available locally. A full dictionary and technical-name review remains incomplete.
+This documentation-only change does not repeat application tests or confirm deployment.
 
 Task editing and completion use migration `0005_task_dates_and_completion`.
 The exact staged implementation passed 177 tests with the standard user model and 177 tests with the host user model.
