@@ -220,6 +220,11 @@ Diary checks role existence directly through `django.contrib.auth.models.Group`.
 Role assignments do not need a caller-supplied lookup or `OwnerDirectory`.
 The former `DIARY_ROLE_LOOKUP` setting is no longer used.
 
+**V1 assumption:** Every member of each group in `DIARY_TASK_OWNER_ROLES` also belongs to the group named by `DIARY_USER`.
+The Diary app does not check this assumption.
+The host application must maintain this membership relationship.
+Ownership-group membership alone does not grant DiaryUser access.
+
 Startup checks that every configured ownership group exists and contains at least one user.
 `Diary.roles.validate_task_owner_roles()` uses the configured Django user model for membership checks.
 Missing groups and empty groups raise `ImproperlyConfigured` with separate explanations and the `DIARY_TASK_OWNER_ROLES` setting name.
