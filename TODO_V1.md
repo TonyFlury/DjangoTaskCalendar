@@ -19,7 +19,7 @@ Substantial remaining work has a linked design document.
 Template blocks, CSS selectors, and JavaScript functions identify implementations without Python symbols.
 Documentation-only items identify their section instead of an executable symbol.
 The source links also identify the applicable design rules.
-The final sections separate unresolved decisions, host integration, and deferred features.
+The final sections record confirmed decisions and deferred Diary features.
 
 ## Implemented components
 
@@ -608,12 +608,18 @@ The final sections separate unresolved decisions, host integration, and deferred
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Verify ownership recovery against simultaneous membership changes, completion, and diary closure through separate database connections.
+  Transactions provide rollback. The shared diary row lock serializes supported writes to the same diary.
+  Existing verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingConcurrencyTests.test_date_edit_and_completion_use_one_consistent_task_revision`, `TaskEditingConcurrencyTests.test_diary_closure_and_completion_leave_no_write_after_closure`.
+  Membership changes use separate user and group records. The diary lock does not prevent those changes.
+  A membership removal after an eligibility check can leave the assigned task orphaned again.
+  This item records verification work, not a demonstrated transaction defect or missing application feature.
+  Remaining: Test ownership recovery with simultaneous membership changes. Verify that recovery shares the existing completion and closure lock behavior.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
 - [ ] **DV1-045: Release documentation and deployment checks.**
   Scope: English only for V1. Localization is not required.
+  Schedule: Perform these checks when needed for release. This item does not identify an unimplemented application feature.
   Update API signatures, view inputs, settings, migration instructions, and styling documentation for the final implementation.
   Preserve the documented runtime warning limit for ownership group changes.
   Check all V1 items against their completion conditions before release.
@@ -637,22 +643,6 @@ They do not reopen the confirmed V1 decisions.
 | DEC-003 | Closed. Copying existing template tasks into existing diaries is not required. | DV1-034, not required | [Removed requirement](#removed-requirement-dv1-034). |
 | DEC-004 | Implemented with one generic marker for inaccessible open predecessors. No private content, identifiers, or count appear. | DV1-035 | [Task editing design](../docs/design/diary-v1-remaining-work.md#task-editing-and-completion-dv1-023-dv1-032-and-dv1-035-through-dv1-038). |
 | DEC-005 | Resolved. Put orphaned template tasks first in the manager list. Allow unresolved ownership or explicit reassignment through the existing editor. | DV1-040 | Choose a DiaryUser, authorized ownership group, or Whole team. No dedicated popup is required. |
-
-## Host integration work
-
-These items belong to the [Garage Sale integration design](../GarageSale/DIARY_INTEGRATION.md).
-They are outside the generic Diary V1 implementation.
-
-- [ ] **HOST-001:** Decide when the host creates and closes diary instances.
-- [ ] **HOST-002:** Map source dates to milestones and save returned Diary keys against the correct host records.
-- [ ] **HOST-003:** Supply authenticated identity, current memberships, configured groups, and permitted diary scope.
-- [ ] **HOST-004:** Connect the host dashboard's compact Late, Ready, and Blocked counts to the personal task filters.
-
-The dashboard must omit Diary imports and content when the app is disabled.
-Its counts must exclude whole-team tasks and completed tasks.
-Late has priority over Blocked or Ready, so each task contributes to one count.
-Zero counts remain links, and an absent host Diary key has an explicit empty state.
-Reference: [D6] and the host integration design.
 
 ## Outside V1
 
