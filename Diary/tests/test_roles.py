@@ -1,5 +1,9 @@
 """Verify configured access groups and ownership-role startup validation."""
+from io import StringIO
 from unittest.mock import Mock, patch
+
+from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -62,6 +66,10 @@ class RoleConfigurationTests(SimpleTestCase):
         access_patch = patch('Diary.roles.validate_access_groups')
         access_patch.start()
         self.addCleanup(access_patch.stop)
+        command_access_patch = patch(
+            'Diary.management.commands.validate_diary_configuration.validate_access_groups')
+        command_access_patch.start()
+        self.addCleanup(command_access_patch.stop)
 
     def test_configured_roles_validate_without_project_specific_names(self):
         """Accept a populated fake directory without requiring host-specific role names."""
@@ -93,18 +101,26 @@ class RoleConfigurationTests(SimpleTestCase):
         with self.assertRaisesMessage(ImproperlyConfigured, 'Check the database connection'):
             validate_task_owner_roles()
 
-    def test_startup_checks_roles_but_allows_database_bootstrap(self):
-        """Check ownership roles during normal startup and preserve existing setup commands."""
+    @override_settings(DIARY_MANAGER='Managers', DIARY_USER='Users')
+    def test_startup_never_queries_groups(self):
+        """App loading must work before tables and configured groups exist."""
         config = apps.get_app_config('Diary')
-        with patch('sys.argv', ['manage.py', 'runserver']):
-            with self.settings(DIARY_TASK_OWNER_ROLES=('MissingRole',)):
-                with self.assertRaisesMessage(ImproperlyConfigured, 'MissingRole'):
+        with self.settings(DIARY_TASK_OWNER_ROLES=('MissingRole',)):
+            for argv in (['manage.py', 'runserver'], ['server'], ['manage.py', 'migrate']):
+                with self.subTest(argv=argv), patch('sys.argv', argv):
                     config.ready()
-        for command in ('migrate', 'sync_access_policy'):
-            with patch('sys.argv', ['manage.py', command]):
-                with patch('Diary.roles.validate_task_owner_roles') as validate:
-                    config.ready()
-                    validate.assert_not_called()
+        self.group_query.assert_not_called()
+
+    def test_validation_command_reports_group_errors(self):
+        """Preserve actionable configuration failures as command failures."""
+        with self.settings(DIARY_TASK_OWNER_ROLES=('MissingRole',)):
+            with self.assertRaisesMessage(CommandError, 'MissingRole'):
+                call_command('validate_diary_configuration', stdout=StringIO())
+
+    def test_validation_command_accepts_valid_groups(self):
+        output = StringIO()
+        call_command('validate_diary_configuration', stdout=output)
+        self.assertIn('Diary configuration is valid.', output.getvalue())
 
 
 # Verifies DV1-009: Configured ownership role names and existence checks.
@@ -226,23 +242,17 @@ class AccessGroupDatabaseTests(TestCase):
                 validate_access_groups()
         self.assertEqual(Group.objects.count(), group_count)
 
-    def test_normal_management_and_web_startup_check_access_groups(self):
-        """Validate access groups for management commands and WSGI or ASGI startup."""
-        arguments = (['manage.py', 'runserver'], ['manage.py', 'check'], ['manage.py', 'collectstatic'], ['server'])
-        for argv in arguments:
-            with self.subTest(argv=argv), patch('sys.argv', argv):
-                with self.assertRaisesMessage(ImproperlyConfigured, 'empty group'):
-                    self.config.ready()
-        self.add_member(self.managers, self.users)
-        for argv in arguments:
-            with self.subTest(argv=argv), patch('sys.argv', argv), self.assertNumQueries(1):
+    def test_management_and_web_startup_do_not_query_groups(self):
+        """Even empty groups must not cause database access during app loading."""
+        for argv in (['manage.py', 'runserver'], ['manage.py', 'check'],
+                     ['manage.py', 'collectstatic'], ['server']):
+            with self.subTest(argv=argv), patch('sys.argv', argv), self.assertNumQueries(0):
                 self.config.ready()
 
-    def test_invalid_access_groups_stop_startup_before_ownership_validation(self):
-        """Reject invalid access configuration before evaluating independent ownership roles."""
-        with patch('sys.argv', ['manage.py', 'runserver']), patch('Diary.roles.validate_task_owner_roles') as owners:
-            with self.assertRaisesMessage(ImproperlyConfigured, 'empty group'):
-                self.config.ready()
+    def test_validation_command_rejects_invalid_access_groups(self):
+        with patch('Diary.management.commands.validate_diary_configuration.validate_task_owner_roles') as owners:
+            with self.assertRaisesMessage(CommandError, 'empty group'):
+                call_command('validate_diary_configuration', stdout=StringIO())
         owners.assert_not_called()
 
     def test_setup_repair_and_test_commands_do_not_query_application_tables(self):
@@ -301,9 +311,8 @@ class OwnershipGroupMembershipTests(TestCase):
     def test_populated_access_groups_do_not_satisfy_ownership_membership(self):
         """Reject empty ownership groups even when both access groups have members."""
         validate_access_groups()
-        with patch('sys.argv', ['manage.py', 'runserver']):
-            with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles with no members: FirstOwner, SecondOwner'):
-                self.config.ready()
+        with self.assertRaisesMessage(CommandError, 'Empty roles with no members: FirstOwner, SecondOwner'):
+            call_command('validate_diary_configuration', stdout=StringIO())
 
     def test_membership_removal_and_user_deletion_are_detected(self):
         """Read current ownership memberships on each validation call."""
@@ -330,15 +339,13 @@ class OwnershipGroupMembershipTests(TestCase):
         with self.settings(DIARY_TASK_OWNER_ROLES=()), self.assertNumQueries(0):
             validate_task_owner_roles()
 
-    def test_normal_startup_accepts_only_populated_roles(self):
-        """Apply ownership membership checks to management, WSGI, and ASGI startup."""
-        for argv in (['manage.py', 'runserver'], ['manage.py', 'check'], ['server']):
-            with self.subTest(argv=argv), patch('sys.argv', argv):
-                with self.assertRaisesMessage(ImproperlyConfigured, 'Empty roles'):
-                    self.config.ready()
+    def test_validation_command_accepts_only_populated_roles(self):
+        """Validate current ownership membership after application initialization."""
+        with self.assertRaisesMessage(CommandError, 'Empty roles'):
+            call_command('validate_diary_configuration', stdout=StringIO())
         self.member.groups.add(self.first, self.second)
-        with patch('sys.argv', ['server']), self.assertNumQueries(2):
-            self.config.ready()
+        with self.assertNumQueries(2):
+            call_command('validate_diary_configuration', stdout=StringIO())
 
     def test_setup_commands_remain_available_with_empty_ownership_groups(self):
         """Defer ownership database checks only for the existing setup and test commands."""

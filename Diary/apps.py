@@ -1,11 +1,9 @@
-"""Diary application startup validation and administrative setup exceptions."""
-import sys
-
+"""Diary application registration and database-free settings validation."""
 from django.apps import AppConfig
 
 
 class DiaryConfig(AppConfig):
-    """Register Diary and validate configured access and ownership groups at startup."""
+    """Register Diary and validate access and ownership setting values."""
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'Diary'
@@ -16,18 +14,13 @@ class DiaryConfig(AppConfig):
     # DV1-014: Startup access-group validation.
     # DV1-015: Startup ownership-group membership validation.
     def ready(self):
-        """Validate settings and populated access and ownership groups before ordinary startup.
-        Leave database setup, repair, and test-database creation available to administrators.
+        """Validate setting values without accessing the database during app loading.
+
+        Run validate_diary_configuration after database and group setup to check
+        that configured groups exist and contain members.
         """
-        from .roles import access_groups, task_owner_roles, validate_access_groups, validate_task_owner_roles
+        from .roles import access_groups, task_owner_roles
 
         access_groups()
         task_owner_roles()
 
-        # Setup and repair commands must work before groups exist. Tests create their database after app loading.
-        if len(sys.argv) > 1 and sys.argv[1] in {
-            'migrate', 'sync_access_policy', 'shell', 'createsuperuser', 'loaddata', 'test',
-        }:
-            return
-        validate_access_groups()
-        validate_task_owner_roles()

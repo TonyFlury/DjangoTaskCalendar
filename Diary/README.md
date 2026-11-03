@@ -518,75 +518,86 @@ The Diary app does not check this assumption.
 The host application must maintain this membership relationship.
 Ownership-group membership alone does not grant DiaryUser access.
 
-Startup checks that every configured ownership group exists and contains at least one user.
-`Diary.roles.validate_task_owner_roles()` uses the configured Django user model for membership checks.
-Missing groups and empty groups raise `ImproperlyConfigured` with separate explanations and the `DIARY_TASK_OWNER_ROLES` setting name.
-One error identifies all missing and empty configured ownership groups.
-Invalid settings and database access failures also produce configuration errors.
-The check does not create roles or change existing task ownership.
+### Configuration validation
 
-Database setup and repair commands defer the database checks described below.
-They still validate access-setting values and the form of `DIARY_TASK_OWNER_ROLES`.
-After setup, restart the application to perform normal startup validation.
-Normal startup checks ownership-group existence and membership when the configured collection is not empty.
+`DiaryConfig.ready()` validates only setting values. It does not access the database.
+`DIARY_MANAGER` and `DIARY_USER` must each name one group, and
+`DIARY_TASK_OWNER_ROLES` must be a collection of nonempty group names.
+Invalid setting values raise `ImproperlyConfigured` during startup.
 
-### Startup and ownership validation requirements
+After applying migrations and populating the configured groups, run:
 
-**Deferred requirement DFUT-002:** `DIARY_USER` will support multiple groups, with access through membership in any configured group.
-This will support ownership groups with no common members or shared access group.
-The current implementation still requires one group name and rejects collections.
-See [Multiple Diary user groups](../docs/design/diary-user-groups.md) for validation impacts, proposals, and open decisions.
+```bash
+python manage.py validate_diary_configuration
+```
 
-At startup, `DIARY_MANAGER` and `DIARY_USER` must be specified in Django settings.
-Every referenced group must exist and contain at least one user.
-Every role in `DIARY_TASK_OWNER_ROLES` must also exist and have at least one member.
-Invalid startup configuration must raise `ImproperlyConfigured` with the relevant settings and group names.
-The error must distinguish missing groups from empty groups.
-
-Diary creation must repeat the ownership-role checks against current database values.
-An absent or empty configured role must prevent creation without leaving partial data.
-Template editing must show an on-screen warning for a selected ownership group with no members.
-The warning must identify the group and affected task.
-
-<!-- DV1-012: Document the limit on automatic runtime warnings. -->
-
-**Warning:** Diary does not continuously monitor task-owning groups after startup.
-If a group becomes empty or is deleted, Diary gives no automatic runtime warning.
-The next server restart, diary creation, or template edit is the next validation or warning point.
-
-The current implementation validates both access-setting values and checks that each configured access group exists and has a member.
-`Diary.roles.validate_access_groups()` uses `get_user_model()` for the membership query.
-`DiaryConfig.ready()` calls it during normal management-command, WSGI, and ASGI startup.
-Errors distinguish a missing group, an empty group, and an unavailable database.
-They identify the relevant settings and group names.
-Validation does not create groups or assign users.
-The startup path also checks configured ownership-group existence and membership.
-Ownership validation also runs during diary creation under DV1-016.
-The template editor now warns about selected ownership groups without members.
-See [startup validation](../docs/design/event-calendar.md#9-startup-validation) for the confirmed requirements.
-
-### Startup setup and repair commands
-
-DV1-014 requires populated access groups for ordinary application startup.
-Administrators must still be able to prepare or repair those groups.
-The following management commands validate setting values but defer access and ownership database checks:
-
-| Command | Reason |
-| --- | --- |
-| `migrate` | Create or update the database tables. |
-| `sync_access_policy` | Preserve the existing host command for group setup. |
-| `shell` | Create groups or repair membership through Django. |
-| `createsuperuser` | Create an administrative account before group setup. |
-| `loaddata` | Load approved user and group setup data. |
-| `test` | Create the separate test database before tests inspect its groups. |
-
+Run this command as a deployment check before starting the server.
+It checks that every configured access and ownership group exists and contains
+at least one user, using the configured Django user model. Missing groups, empty
+groups, and database failures produce an actionable command error and a nonzero
+exit status. Validation does not create groups or change memberships.
+All other management commands and WSGI/ASGI initialization avoid these database
+checks; no command-name exceptions are required.
 Creating a superuser does not assign Diary group membership automatically.
-Assign at least one user to each configured access group before ordinary startup.
-The exception applies to the named command, not later server startup.
-Commands such as `runserver`, `check`, and `collectstatic` perform normal database validation.
-The test suite explicitly calls the normal startup path against its separate PostgreSQL database.
-It verifies the command exceptions without querying application data.
-Projects can use Django's standard setup commands without providing `sync_access_policy`.
+
+Diary creation repeats ownership-role validation against current database values.
+The template editor warns about selected ownership groups without members.
+Diary does not continuously monitor group membership. Without the optional
+middleware below, a server restart alone does not recheck database contents;
+rerun the validation command after group changes.
+
+### Optional validation middleware
+
+The middleware is included in the Diary package but is disabled unless the host
+adds it to `MIDDLEWARE`. No extra dependency or `pyproject.toml` change is required.
+After upgrading an installed Diary package, restart the host workers to load it.
+
+If the host cannot run a deployment check, add this middleware near the start
+of the host project's `MIDDLEWARE` setting, before middleware that can return a
+response without calling the rest of the chain:
+
+```python
+MIDDLEWARE = [
+    "Diary.middleware.DiaryConfigurationMiddleware",
+    # The host project's other middleware...
+]
+```
+
+Keep the host's existing middleware entries in their existing order after this
+entry. This requires only a host `settings.py` change; it requires no deployment
+startup script or `wsgi.py` change. Remove the entry to disable the middleware.
+The validation command remains available whether or not middleware is enabled.
+
+The middleware is optional. It checks access-group and ownership-group existence
+and membership before passing the first request to the rest of the application.
+It does not query the database during Django initialization or middleware
+construction. Each worker's middleware instance validates independently after a
+restart. Workers that receive no requests do not validate. Concurrent first
+requests wait for the same validation to finish.
+
+If either check fails, the request does not reach the rest of the middleware
+chain. The configuration exception goes through Django's normal error handling
+(normally HTTP 500 and server-side error logging). Validation is retried on the
+next request, so an administrator can repair groups without restarting the worker.
+Once both checks succeed, subsequent requests skip validation until the
+middleware chain is recreated, normally on restart. Changes to groups or settings
+after success do not reset that state. Run the management command to recheck them.
+
+This applies to every request reaching this middleware, including host pages and
+health checks, rather than only Diary URLs. Apply migrations and populate the
+configured groups before sending traffic. No authentication middleware is needed
+for these checks. The middleware is synchronous; Django adapts it for ASGI hosts.
+
+Without the middleware or deployment command, Diary still validates setting
+values on startup and enforces permissions during use. Missing access groups can
+leave users unable to access Diary, and diary creation still rejects invalid
+ownership groups. These runtime checks are not a replacement for comprehensive
+configuration validation: a missing or empty group does not necessarily produce
+an immediate error on every operation.
+
+**Deferred requirement DFUT-002:** `DIARY_USER` will support multiple groups.
+The current implementation requires one group name and rejects collections.
+See [Multiple Diary user groups](../docs/design/diary-user-groups.md).
 
 ### Future independent diary creation UI
 

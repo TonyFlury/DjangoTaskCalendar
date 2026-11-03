@@ -1,13 +1,12 @@
 {# DV1-021, DV1-041, DV1-042, DV1-049: Personal filters and permitted diary groups. #}
 {% include "Diary/partials/selection_forms.html" %}
 <section class="diary diary-personal" aria-label="My Diary">
-    <h1 class="diary-heading diary-personal-heading">My Diary</h1>
+    <h1 class="diary-heading diary-personal-heading">My Diary{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
     <p class="diary-personal-description">Tasks assigned to you or your current groups.</p>
     {# DV1-029, DV1-030, DV1-033: The host can supply a task_create_url with its trusted creation scope. #}
     {% url 'Diary:task-create' as default_task_create_url %}
     <nav class="diary-create-navigation" aria-label="Task creation"><a class="diary-button diary-create-link" href="{{ task_create_url|default:default_task_create_url }}{% if diary_data %}{% if not diary_ui.trusted_scope %}?diary_key={{ diary_data.key }}{% endif %}{% endif %}">Add task</a></nav>
     {% if diary_data %}
-        <p class="diary-personal-selection">Diary: {{ diary_data.name }}</p>
         {% if diary_data.closed %}<p class="diary-personal-closed" role="status">Closed diary. It has no active tasks.</p>{% endif %}
     {% endif %}
     {% if personal_error %}

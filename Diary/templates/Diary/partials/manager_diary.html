@@ -1,7 +1,7 @@
 {# DV1-022, DV1-042, DV1-052: Manager filters, empty selections, and diary records. #}
 {% include "Diary/partials/selection_forms.html" %}
 <section class="diary diary-manager" aria-label="Manager diary">
-    <h1 class="diary-heading diary-manager-heading">{{ diary_data.name|default:"Manager diary" }}</h1>
+    <h1 class="diary-heading diary-manager-heading">Manager diary{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
     {% if manager_error %}
         <p class="diary-manager-error" role="alert">{{ manager_error }}</p>
     {% elif diary_data %}
