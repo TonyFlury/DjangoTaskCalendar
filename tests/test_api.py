@@ -174,9 +174,12 @@ class DiaryTests(TestCase):
         key = self.calendar(dates={})
         first = CalendarEntry.objects.get(calendar_id=key, entry_key=self.first.entry_key)
         self.assertIsNone(first.due_date)
-        api.DiaryInstance.from_key(actor=self.officer, key=key).set_milestone_dates(
-            milestone_dates={'add_board_bookings_open': date(2027, 5, 8)})
-        self.assertEqual(first.due_date, date(2027, 6, 19))
+
+        # DV1-043: Missing dates remain unchanged after the creation transaction.
+        with self.assertRaisesMessage(ValidationError, 'V1 does not allow milestone changes'):
+            api.DiaryInstance.from_key(actor=self.officer, key=key).set_milestone_dates(
+                milestone_dates={'add_board_bookings_open': date(2027, 5, 8)})
+        self.assertIsNone(first.due_date)
         annual = CalendarEntry.objects.get(calendar_id=key, entry_key=self.annual.entry_key)
         self.assertEqual(annual.due_date, date(2027, 3, 1))
 
@@ -402,8 +405,11 @@ class DiaryTests(TestCase):
         entry.completed_at = timezone.now()
         entry.completed_by_ref = self.officer.reference
         entry.save()
-        api.DiaryInstance.from_key(actor=self.officer, key=key).set_milestone_dates(
-            milestone_dates={'add_board_bookings_open': date(2027, 5, 15)})
+
+        # DV1-043: Rejected milestone edits preserve completion dates.
+        with self.assertRaisesMessage(ValidationError, 'V1 does not allow milestone changes'):
+            api.DiaryInstance.from_key(actor=self.officer, key=key).set_milestone_dates(
+                milestone_dates={'add_board_bookings_open': date(2027, 5, 15)})
         entry.refresh_from_db()
         self.assertEqual(entry.due_date, date(2027, 6, 12))
         entry.name = 'Changed completed task'

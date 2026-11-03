@@ -178,11 +178,31 @@ class EventCalendar(ValidatedModel):
 
 
 class CalendarMilestone(ValidatedModel):
+    """Store milestone dates only during initial diary creation under DV1-043."""
     calendar = models.ForeignKey(EventCalendar, on_delete=models.CASCADE, related_name='milestone_dates')
     milestone = models.ForeignKey(Milestone, on_delete=models.PROTECT, related_name='calendar_dates')
     date = models.DateField(null=True, blank=True)
 
+    def clean(self):
+        """Reject changes after initialization with ValidationError."""
+        super().clean()
+
+        # Field validation handles a missing calendar before its initialization state can be inspected.
+        if self.calendar_id and EventCalendar.objects.get(pk=self.calendar_id).dependencies_locked:
+            raise ValidationError('V1 does not allow milestone changes in an existing diary.')
+
+    def save(self, *args, **kwargs):
+        """Lock the parent diary before validating and saving an initial milestone value."""
+        with transaction.atomic():
+            EventCalendar.objects.select_for_update().get(pk=self.calendar_id)
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Reject milestone deletion from existing diaries with ValidationError."""
+        raise ValidationError('V1 does not allow milestone changes in an existing diary.')
+
     class Meta:
+        """Keep each named milestone unique within its diary."""
         constraints = [models.UniqueConstraint(fields=('calendar', 'milestone'), name='diary_calendar_milestone_unique')]
 
 
@@ -346,6 +366,10 @@ class CalendarEntry(EntryFields):
         if old and old.calendar_id != self.calendar_id:
             raise ValidationError('An entry cannot move to another event calendar.')
 
+        # DV1-053: Stored provenance must not turn a diary addition into an eligible predecessor.
+        if old and old.source_entry_id != self.source_entry_id:
+            raise ValidationError('A task cannot change its template source.')
+
         # Completed tasks must preserve all task and completion fields.
         if old and old.completed_at is not None:
 
@@ -448,17 +472,21 @@ class TemplateDependency(DependencyFields):
 
 
 class EntryDependency(DependencyFields):
-    """Store persisted diary dependency links."""
+    """Store diary dependencies whose predecessor tasks came from a template."""
     scope_field = 'calendar_id'
     scope_model = EventCalendar
     entry = models.ForeignKey(CalendarEntry, on_delete=models.CASCADE, related_name='predecessor_links')
     predecessor = models.ForeignKey(CalendarEntry, on_delete=models.PROTECT, related_name='successor_links')
 
-    # DV1-028: Normal model validation freezes live graphs after their initial creation.
+    # DV1-028, DV1-053: Normal model validation freezes live graphs and checks initial predecessor provenance.
     def clean(self):
         """Reject live dependency writes and validate the initial predecessor graph."""
         self._require_initialization()
         super().clean()
+
+        # Diary additions cannot become predecessors even when a manager created them.
+        if self.predecessor_id and self.predecessor.source_entry_id is None:
+            raise ValidationError('Only template-sourced diary tasks can be predecessors.')
 
     # DV1-028: Normal model operations cannot change a graph after diary creation.
     def _require_initialization(self):

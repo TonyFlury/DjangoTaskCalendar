@@ -1,5 +1,5 @@
 """Class-based callable API. Callers supply trusted identities, groups and dates."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -20,6 +20,7 @@ from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
 from .roles import validate_task_owner_roles as _validate_task_owner_roles
 from .template_graph import validate_template_graph
+from .ownership import orphaned_entry_keys
 
 API_VERSION = 1
 __all__ = [
@@ -290,6 +291,10 @@ class _DependencyAPI(_BoundObject):
             choices = choices.filter(Q(source_entry__isnull=False) | ~Q(owner_kind=OwnerKind.PERSON)
                                      | Q(person_ref=actor.reference))
         entry = choices.get(entry_key=entry_key)
+
+        # DV1-053: Diary additions can depend on template tasks but cannot become predecessors themselves.
+        if not template:
+            choices = choices.filter(source_entry__isnull=False)
         successors = {}
         for item, predecessor in links.objects.filter(**{f'entry__{field_name}': scope}).values_list('entry_id',
                                                                                                      'predecessor_id'):
@@ -332,6 +337,10 @@ class _DependencyAPI(_BoundObject):
         # Reject unknown or cross-scope predecessors before replacing any existing links.
         if len(predecessors) != len(keys):
             raise ValidationError('All predecessors must belong to this scope.')
+
+        # DV1-053: Reject arbitrary diary tasks before replacing any saved links.
+        if not template and any(item.source_entry_id is None for item in predecessors):
+            raise ValidationError('Only template-sourced diary tasks can be predecessors.')
         links.objects.filter(entry=entry).delete()
         for predecessor in predecessors:
             links.objects.create(entry=entry, predecessor=predecessor)
@@ -685,6 +694,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         _require(actor, 'edit')
         TemplateVersion.objects.select_for_update().get(pk=template_version_key)
         validate_entry_owner(spec, directory)
+
         existing = TemplateEntry.objects.filter(version_id=template_version_key, entry_key=spec.entry_key).first()
 
         # A repeated entry key must reuse its original template entry.
@@ -825,14 +835,82 @@ class DiaryInstance(_DependencyAPI):
 
     @transaction.atomic
     def set_milestone_dates(self, *, milestone_dates):
-        """Save supplied milestone values for an open diary.
-        Preserve unspecified milestone values.
-        This existing mutation remains outside the approved V1 change workflow.
+        """Reject post-creation milestone changes with ValidationError under DV1-043.
+        Preserve the current role, diary scope, and closure checks before rejecting the request.
         """
-        actor, calendar_key = self.actor, self.key
-        calendar = _open_calendar(actor, calendar_key, 'edit')
+        _open_calendar(self.actor, self.key, 'edit')
+        raise ValidationError('V1 does not allow milestone changes in an existing diary.')
 
-        _set_dates(calendar, milestone_dates)
+    # DV1-040: Recover orphaned ownership without changing task identity or the live dependency graph.
+    @transaction.atomic
+    def reassign_task(self, *, entry_key, owner_kind, person_ref='', role_ref='', expected_revision,
+                      update_template=False, expected_version_key=None, directory=None):
+        """Assign an open orphaned task to an eligible person, role, or the whole team.
+        Require a scoped manager and the inspected revision. Reject stale or ineligible requests with ValidationError.
+        Optionally approve a matching template ownership revision in the same transaction.
+        Preserve other diaries, task dates, dependencies, and completion records.
+        """
+        calendar = _open_calendar(self.actor, self.key, 'edit')
+        entry = self._task_entry(calendar, entry_key)
+
+        # An explicit boolean prevents nonempty strings from requesting a template revision.
+        if type(update_template) is not bool:
+            raise ValidationError('Supply a boolean template update option.')
+
+        # Completed and concurrently changed tasks cannot accept an ownership edit.
+        if entry.completed_at is not None or type(expected_revision) is not int or entry.revision != expected_revision:
+            raise ValidationError('This task changed or completed. Reload it before reassignment.')
+        saved = {'entry_key': entry.entry_key, 'owner_kind': entry.owner_kind, 'person_ref': entry.person_ref,
+                 'role_ref': entry.role_ref, 'completed_at': entry.completed_at}
+
+        # A restored membership can make a previously inspected recovery action unnecessary.
+        if entry.entry_key not in orphaned_entry_keys((saved,), directory=directory):
+            raise ValidationError('This task is no longer orphaned. Reload it before reassignment.')
+        values = EntryMapper.snapshot_fields(entry)
+        values.pop('milestone_id')
+
+        # Fixed-date tasks have no milestone name to preserve in the replacement specification.
+        values['milestone_name'] = entry.milestone.name if entry.milestone_id else ''
+        spec = replace(EntrySpec(**values), owner_kind=owner_kind, person_ref=person_ref, role_ref=role_ref)
+        validate_entry_owner(spec, directory)
+
+        # Recovery must not replace one unavailable owner with another unavailable owner.
+        if orphaned_entry_keys(({'entry_key': entry.entry_key, 'owner_kind': owner_kind,
+                                'person_ref': person_ref, 'role_ref': role_ref, 'completed_at': None},),
+                               directory=directory):
+            raise ValidationError('Select an active eligible person, a role with eligible members, or Whole team.')
+
+        # Model validation also rejects incompatible person, role, and whole-team reference combinations.
+        entry.owner_kind, entry.person_ref, entry.role_ref = owner_kind, person_ref, role_ref
+        entry.revision += 1
+        entry.save()
+
+        # A template update requires separate consent and keeps every other template field unchanged.
+        if update_template:
+            template = DiaryTemplate(actor=self.actor, key=calendar.template_version.template_id)
+            CalendarTemplate.objects.select_for_update().get(pk=template.key)
+            data = template.editor_data()
+            specs, graph = [], {}
+            found = False
+            for item in data['entries']:
+
+                # Serialized dependency fields are not task specification inputs.
+                fields = {name: item[name] for name in EntrySpec.__dataclass_fields__ if name in item}
+                proposed = EntrySpec(**fields)
+
+                # Only the matching stable task key receives the replacement owner in the latest template.
+                if proposed.entry_key == entry.entry_key:
+                    proposed = replace(proposed, owner_kind=owner_kind, person_ref=person_ref, role_ref=role_ref)
+                    found = True
+                specs.append(proposed)
+                graph[item['entry_key']] = item['predecessors']
+
+            # Removed tasks must not be silently added back to the latest template version.
+            if not found:
+                raise ValidationError('This task is absent from the latest template. Save the diary assignment only.')
+            template.save_version(entries=specs, predecessors=graph, expected_version_key=expected_version_key,
+                                  directory=directory)
+        return self.task(entry_key=entry.entry_key)
 
     # DV1-005: Ownership data and assignment checks.
     @transaction.atomic

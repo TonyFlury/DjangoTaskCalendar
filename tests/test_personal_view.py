@@ -333,3 +333,29 @@ class PersonalDiaryTests(PersonalDiaryFixtures, TestCase):
             self.assertEqual(len(self.names(selected)), link['count'])
         self.assertEqual({link['category']: link['count'] for link in response.context['status_links']},
                          {'late': 2, 'ready': 4, 'blocked': 1})
+
+    # DV1-053: Predecessor eligibility depends on template provenance, not the creator's role.
+    def test_non_template_predecessors_are_excluded_and_rejected_atomically(self):
+        """Reject user and manager diary additions through API and normal model saves."""
+        user_diary = DiaryAPI(actor=self.user_actor).diary(key=self.keys[0])
+        user_key = user_diary.add_entry(spec=EntrySpec('User addition', DateKind.ONCE,
+            fixed_date=date(2027, 6, 20), owner_kind=OwnerKind.PERSON, person_ref=self.user_ref))
+        choices = {entry['entry_key'] for entry in self.first.available_predecessors(entry_key=self.ready)}
+        self.assertNotIn(user_key, choices)
+        self.assertNotIn(self.late, choices)
+        self.assertIn(self.blocker_spec.entry_key, choices)
+        before = tuple(EntryDependency.objects.filter(entry__calendar_id=self.keys[0]).values_list('entry_id', 'predecessor_id'))
+        for key in (user_key, self.late):
+            with self.subTest(key=key):
+                with self.assertRaisesMessage(ValidationError, 'V1 does not allow dependency changes'):
+                    self.first.set_predecessors(entry_key=self.blocked,
+                        predecessor_keys=[self.blocker_spec.entry_key, key])
+                with self.assertRaisesMessage(ValidationError, 'V1 does not allow dependency changes'):
+                    EntryDependency.objects.create(
+                        entry=CalendarEntry.objects.get(calendar_id=self.keys[0], entry_key=self.ready),
+                        predecessor=CalendarEntry.objects.get(calendar_id=self.keys[0], entry_key=key))
+        self.assertEqual(tuple(EntryDependency.objects.filter(entry__calendar_id=self.keys[0]).values_list('entry_id', 'predecessor_id')), before)
+        copied = CalendarEntry.objects.get(calendar_id=self.keys[0], entry_key=self.blocker_spec.entry_key)
+        copied.source_entry = None
+        with self.assertRaisesMessage(ValidationError, 'cannot change its template source'):
+            copied.save()

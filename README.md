@@ -1159,17 +1159,28 @@ The configured `DIARY_TASK_OWNER_ROLES` must include the selected role.
 The Django group must exist in the database.
 Person assignments still use `OwnerDirectory.person_in_groups` to check caller-supplied person references.
 
-The current API retains milestone mutation outside the approved V1 change workflow:
+V1 rejects `DiaryInstance.set_milestone_dates()` after diary creation with `ValidationError` under DV1-043.
+The API checks manager permission, diary scope, and closure before it rejects the change.
+Migration `0007_freeze_live_milestones` also protects milestone rows against direct database changes.
+Supply milestone dates during creation. Milestone editing and impact review belong in V2.
 
-```python
-diary.set_milestone_dates(
-    milestone_dates={'add_board_bookings_open': date(2027, 5, 8)},
-)
-```
+### Callable ownership recovery
 
-This changes open task dates that use the milestone.
-It preserves fixed annual dates and completed due dates.
-The supported change workflow and impact review belong in V2.
+The technical method `DiaryInstance.reassign_task()` supports explicit manager recovery for an open task without an eligible owner.
+It requires `entry_key`, `owner_kind`, and the inspected `expected_revision`.
+Supply `person_ref` for person ownership or `role_ref` for role ownership.
+Supply `directory` when the current or replacement owner is a person.
+The directory must check active status and current Diary access.
+The method returns the updated task data and increments its revision.
+It preserves dates, dependency links, and completion records.
+It raises `ValidationError` for stale revisions, completed tasks, closed diaries, eligible current owners, or ineligible replacement owners.
+Permission and scope failures raise `PermissionDenied`.
+
+The optional `update_template=True` requires `expected_version_key` for the latest template version.
+It changes only the matching task's ownership in a new approved version.
+Both changes use one transaction. Failure preserves the diary assignment and template versions.
+Other existing diaries retain their assignments.
+No recovery page exists. DV1-040 remains partial while the manager review workflow and concurrent membership verification remain outstanding.
 
 V1 dependency editing targets a draft template version:
 
@@ -2359,3 +2370,8 @@ The surrounding host shell uses `dashboard-preview-` classes.
 | `diary-dashboard-panel` | Panel. |
 | `diary-dashboard-title` | Title. |
 | `diary-dashboard-user` | User. |
+
+The compact dashboard preview removes `diary-dashboard-counter-arrow`, `diary-dashboard-counter-description`, and `diary-dashboard-eyebrow`.
+It also removes `diary-dashboard-footer` and `diary-dashboard-heading`.
+Host overrides for these preview classes no longer affect the panel.
+The remaining documented classes retain their names.

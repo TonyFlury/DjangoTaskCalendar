@@ -72,16 +72,22 @@ class ManagerDiaryTests(TestCase):
         self.api = DiaryAPI(actor=self.actor)
         self.version = self.api.create_template(name='Manager template').create_version(number=1)
         self.version.add_entry(spec=EntrySpec('Template task', DateKind.ANNUAL, month=12, day=1))
+        self.api.define_milestones(definitions={'manager_late': 'Late task', 'manager_future': 'Future task'})
+        late_spec = EntrySpec('Late ready', DateKind.SOURCE, milestone_name='manager_late')
+        future_spec = EntrySpec('Future ready', DateKind.SOURCE, milestone_name='manager_future')
+        self.version.add_entry(spec=late_spec)
+        self.version.add_entry(spec=future_spec)
         self.version.approve()
-        self.diary = self.api.create_diary(name='<Selected diary>', milestone_dates={}, event_ref='manager:1',
+        dates = {'manager_late': date(2027, 6, 11), 'manager_future': date(2027, 6, 20)}
+        self.diary = self.api.create_diary(name='<Selected diary>', milestone_dates=dates, event_ref='manager:1',
                                            template_version_key=self.version.key)
         self.other = self.api.create_diary(name='Other diary', milestone_dates={}, event_ref='manager:2',
                                            template_version_key=self.version.key)
         self.actor = replace(self.actor, calendar_keys=frozenset({self.diary.key}))
         self.bound = DiaryAPI(actor=self.actor).diary(key=self.diary.key)
-        self.late = self.add_task('Late ready', date(2027, 6, 11))
+        self.late = late_spec.entry_key
         self.blocked_late = self.add_task('Late blocked', date(2027, 6, 12))
-        self.future = self.add_task('Future ready', date(2027, 6, 20))
+        self.future = future_spec.entry_key
         self.blocked = self.add_task('Future blocked by late', date(2027, 6, 21))
         self.ordinary_blocked = self.add_task('Future blocked', date(2027, 6, 22))
         self.undated = self.add_task('Undated', None)

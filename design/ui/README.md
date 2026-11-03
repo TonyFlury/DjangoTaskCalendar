@@ -12,7 +12,7 @@ The default status filter shows open tasks.
 **Calendar** remains an explicit navigation choice for the full event list.
 Changing the preview user or resetting the sample also opens **My tasks**.
 
-The [dashboard mock-up](../dashboard/index.html) shows clickable personal Late and Ready counts within the existing dashboard design.
+The [dashboard mock-up](../dashboard/index.html) shows compact personal Late, Ready, and Blocked counts within the existing dashboard design.
 It shares this preview's sample data.
 Its links select the same user and the corresponding task filter.
 
@@ -32,6 +32,9 @@ The navigation opens these pages within one standalone browser document:
 The preview date is 12 June 2027.
 An incomplete task is late when its due date is today or earlier.
 A blocked task can also be late.
+The summary and status filters put that task in Late only.
+Ready and Blocked counts exclude late tasks, so each open task contributes to one count.
+The task details still show its predecessor state.
 
 ## Task highlights
 

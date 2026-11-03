@@ -11,20 +11,22 @@ Saved images show the [desktop layout](previews/desktop.png) and the [phone layo
 
 ## Diary panel
 
-**My Diary** shows two clickable counts for the selected user:
+**My Diary** uses a compact row with three clickable counts for the selected user:
 
 - **Late** counts incomplete tasks whose due date is today or earlier.
-- **Ready** counts incomplete tasks with no unfinished predecessors.
+- **Ready** counts tasks that are not late and have no unfinished predecessors.
+- **Blocked** counts tasks that are not late and have unfinished predecessors.
 
-A task can contribute to both counts.
-The counts are not totals that the user should add together.
+A task contributes to one count only.
+Late has priority, including when the task also has unfinished predecessors.
+The three counts together give the number of open tasks owned by this user or their roles.
 Completed tasks and whole-team tasks are excluded.
 The owner must be the user or a role that includes the user.
 
 The panel does not show a task list.
-Each count opens **My tasks** in the Diary preview with the matching status filter.
+Each count opens **My tasks** in the Diary preview with the same exclusive status filter.
 The link keeps the selected preview user.
-The **Open My tasks** link opens the personal list with its normal open-task filter.
+The **Open Diary** link opens the personal list with its normal open-task filter.
 
 ## Review steps
 
@@ -34,7 +36,7 @@ The **Open My tasks** link opens the personal list with its normal open-task fil
 4. Open **Confirm sponsor list**.
 5. Complete that sample task.
 6. Return to the dashboard preview.
-7. Check that the late count decreases.
+7. Check that the late count decreases and the blocked count decreases.
 8. Select **Ready** to inspect the task that the completed predecessor enabled.
 
 Select Sam Patel to inspect a user with no late tasks.
@@ -69,6 +71,6 @@ This mock-up does not change that renderer or its stylesheet.
 
 ## Browser checks
 
-Chrome checks cover both count links, personal ownership, role membership, completion updates, empty results, and the disabled Diary state.
+Chrome checks cover the count links, personal ownership, role membership, completion updates, empty results, and the disabled Diary state.
 They also cover chart controls and desktop and phone widths.
 The checked paths reported no browser script errors.

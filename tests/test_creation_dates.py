@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone as datetime_timezone
 from importlib import import_module
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -107,7 +108,10 @@ class DiaryCreationDateTests(TestCase):
                                             template_version_key=self.version.key, event_ref='stable-date')
             self.assertEqual(retried.key, diary.key)
             self.assertEqual(diary.read()['entries'], original)
-            diary.set_milestone_dates(milestone_dates={'target': date(2030, 5, 1)})
+
+            # DV1-043: Rejected milestone changes preserve the annual snapshot.
+            with self.assertRaises(ValidationError):
+                diary.set_milestone_dates(milestone_dates={'target': date(2030, 5, 1)})
             added = EntrySpec('Later addition', DateKind.ANNUAL, month=4, day=1)
             self.assertEqual(diary.add_entry(spec=added), added.entry_key)
             self.assertEqual(diary.add_entry(spec=added), added.entry_key)

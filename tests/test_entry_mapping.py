@@ -40,6 +40,7 @@ class EntryMappingTests(TestCase):
         version.save()
         calendar = EventCalendar.objects.create(
             event_ref='mapping:1', name='Mapping diary', template_version=version, created_by_ref='manager',
+            dependencies_locked=False,
         )
         CalendarMilestone.objects.create(calendar=calendar, milestone=self.milestone, date=date(2027, 6, 27))
         entry = CalendarEntry.objects.create(
@@ -47,6 +48,8 @@ class EntryMappingTests(TestCase):
             date_kind=DateKind.RELATIVE, milestone=self.milestone, day_offset=-2,
             created_by_ref='manager', completed_at=timezone.now(), completed_by_ref='manager',
         )
+        calendar.dependencies_locked = True
+        calendar.save(update_fields=('dependencies_locked',))
         self.template_entry = TemplateEntry.objects.get(pk=source.pk)
         self.diary_entry = CalendarEntry.objects.get(pk=entry.pk)
         self.actor = api.Actor('manager', frozenset({'Managers'}), frozenset({calendar.pk}))

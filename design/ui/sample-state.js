@@ -40,6 +40,20 @@
         value.setUTCDate(value.getUTCDate() + (task.type === 'relative' ? Number(task.offset || 0) : 0));
         return value.toISOString().slice(0,10);
     }
+
+    /** Return one status category for a sample task under DV1-020 and DV1-049. */
+    function taskBucket(task, state) {
+
+        // Completed tasks cannot contribute to open-task counts.
+        if(task.completed) return 'completed';
+        const due = dueDate(task, state);
+
+        // Late has priority even when an unfinished predecessor also blocks the task.
+        if(due && due <= TODAY) return 'late';
+
+        // An unfinished or missing predecessor prevents the remaining task from being ready.
+        return task.pred.some(id => !state.tasks.find(item => item.id === id)?.completed) ? 'blocked' : 'ready';
+    }
     function taskHighlight(task, state) {
         if(task.completed) return '';
         const due = dueDate(task, state);
@@ -52,5 +66,5 @@
     }
     function load() { try { return JSON.parse(sessionStorage.getItem(STORE)) || initial(); } catch { return initial(); } }
     function persist(state) { try { sessionStorage.setItem(STORE, JSON.stringify(state)); } catch { /* Use memory when storage is unavailable. */ } }
-    window.DiaryPreviewData = Object.freeze({TODAY, people, roles, milestoneLabels, initial, dueDate, taskHighlight, load, persist});
+    window.DiaryPreviewData = Object.freeze({TODAY, people, roles, milestoneLabels, initial, dueDate, taskBucket, taskHighlight, load, persist});
 })();

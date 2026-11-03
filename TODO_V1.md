@@ -164,6 +164,13 @@ The final sections separate unresolved decisions, host integration, and deferred
 
 ## Access and validation work
 
+- [x] **DV1-053: Template-sourced predecessor choices.**
+  Exclude diary additions from predecessor choices, including tasks added by managers.
+  Preserve the V1 restriction against changes to existing diary dependencies.
+  Implementation: [api.py](api.py): `_DependencyAPI.available_predecessors`, `_DependencyAPI.set_predecessors`. [models.py](models.py): `CalendarEntry.clean`, `EntryDependency.clean`.
+  Verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests.test_non_template_predecessors_are_excluded_and_rejected_atomically`.
+  Requirement: [D6] template dependency rules and [D8] personal-entry privacy.
+
 - [x] **DV1-013: Generic identity and role adapters.**
   Use the `DIARY_MANAGER` and `DIARY_USER` group names throughout Diary.
   Retrieve the configured user model through `get_user_model()` when model access is necessary.
@@ -523,7 +530,10 @@ The final sections separate unresolved decisions, host integration, and deferred
   Personal verification: [tests/test_personal_view.py](tests/test_personal_view.py): `PersonalDiaryTests`. [tests/browser_personal_diary.py](tests/browser_personal_diary.py): `PersonalDiaryBrowserTests.test_personal_filters_keyboard_and_layout`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Resolve membership-loss handling under DEC-005. Owner display is implemented in the personal, manager, and task detail views.
+  Partial API implementation: [ownership.py](ownership.py): `orphaned_entry_keys`. [api.py](api.py): `DiaryInstance.reassign_task`.
+  API verification: [tests/test_ownership_recovery.py](tests/test_ownership_recovery.py): `OwnershipRecoveryTests`.
+  Remaining: Resolve DEC-005 for the manager review page. Verify concurrent membership changes and the proposed page.
+  Recovery design: [Ownership recovery API and proposed page](../docs/design/diary-v1-remaining-work.md#dv1-040-ownership-recovery-api-and-proposed-page).
   Design: [Manager diary implementation](../docs/design/diary-v1-remaining-work.md#dv1-052-manager-filters-for-one-diary).
   Requirement: [D6] and [D9].
 
@@ -564,11 +574,15 @@ The final sections separate unresolved decisions, host integration, and deferred
   Design: [Implemented empty and error states](../docs/design/diary-v1-remaining-work.md#dv1-042-empty-and-error-states).
   Requirement: [D4], [D6], and [D8].
 
-- [ ] **DV1-043: Enforce the V1 milestone-change boundary.**
+- [x] **DV1-043: Enforce the V1 milestone-change boundary.**
   Keep post-creation milestone editing outside supported V1 workflows.
   Do not expose the preview milestone editor as an approved V1 page.
-  Review the existing callable mutation when defining the supported V1 interface.
+  Reject the callable mutation after permission, scope, and closure checks.
   Milestone changes and their impact review belong in V2.
+  Implementation: [api.py](api.py): `DiaryInstance.set_milestone_dates`. [models.py](models.py): `CalendarMilestone.clean`, `CalendarMilestone.save`, `CalendarMilestone.delete`.
+  Database implementation: [migrations/0007_freeze_live_milestones.py](migrations/0007_freeze_live_milestones.py): `Migration`, `FORWARD_SQL`.
+  Verification: [tests/test_live_milestones.py](tests/test_live_milestones.py): `LiveMilestoneTests`.
+  Design: [Implemented milestone boundary](../docs/design/diary-v1-remaining-work.md#dv1-043-implemented-milestone-boundary).
   Requirement: [D7].
 
 - [ ] **DV1-044: Regression and concurrency verification.**
@@ -584,7 +598,7 @@ The final sections separate unresolved decisions, host integration, and deferred
   Task creation verification: [tests/test_task_creation.py](tests/test_task_creation.py): `TaskCreationTests`, `TaskCreationConcurrencyTests`. [tests/browser_task_creation.py](tests/browser_task_creation.py): `TaskCreationBrowserTests.test_personal_and_manager_creation_keyboard_mobile_and_overrides`.
   Task detail implementation: [views.py](views.py): `TaskDetailView`. [templates/Diary/partials/task_detail.html](templates/Diary/partials/task_detail.html): `.diary-detail`, `.diary-detail-history`, `.diary-detail-late`, `.diary-detail-blocked-late`, `.diary-detail-blocked`.
   Task detail verification: [tests/test_task_editing.py](tests/test_task_editing.py): `TaskEditingTests`, `TaskEditingConcurrencyTests`, `TaskCompletionMigrationTests`. [tests/browser_task_editing.py](tests/browser_task_editing.py): `TaskEditingBrowserTests.test_personal_dates_manager_template_dates_completion_and_layout`.
-  Remaining: Verify membership-loss handling under DEC-005 and the remaining milestone API boundary.
+  Remaining: Verify concurrent membership changes and the proposed manager recovery page under DEC-005.
   Design: [Remaining work for DV1-044](../docs/design/diary-v1-remaining-work.md#dv1-044-remaining-verification).
   Requirement: [D4], [D6], [D8], and [D9].
 
@@ -700,6 +714,14 @@ These requirements have no assigned release and are not V1 completion conditions
   Documentation only. This backlog record adds no executable editing interface.
 
 ## Review limits
+
+The resumed edits implement the DV1-043 milestone boundary and template-only predecessor choices.
+The standalone configuration passed 208 tests against a separate PostgreSQL database.
+The host configuration passed 209 tests, including the Garage Sale diary-key integration test.
+The Chrome preview check passed count links, completion updates, empty lists, disabled Diary, and desktop and phone layouts.
+The ownership recovery API is partial work under DV1-040. Its manager page remains proposed.
+The dashboard preview uses three exclusive counts. Production dashboard integration remains outstanding.
+Issue 9 was available locally. A full dictionary and technical-name review remains incomplete.
 
 The staged DV1-031 implementation passed 200 tests with each supported user model.
 Both runs used separate PostgreSQL test databases.
