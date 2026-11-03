@@ -1190,7 +1190,8 @@ The callable API continues to return owned ready and blocked tasks.
 An explicit status filter takes precedence over the checkbox, as described under personal page integration.
 See DV1-049 in [the V1 checklist](TODO_V1.md).
 
-The full diary list remains an explicit view choice.
+DiaryManagers use the manager diary for the full task list in a permitted diary.
+DiaryUsers use the personal assigned-task view. V1 requires no additional full diary list for ordinary users.
 Personal task selection excludes whole-team tasks unless `include_whole_team=True`.
 The list returns each task once.
 Membership changes take effect when the host supplies a new Actor.

@@ -439,7 +439,7 @@ The current web pages have these limits:
 - Milestone date editing is unavailable in these pages.
 - Creating or closing a diary depends on your website's separate process.
 - Copying an existing template task into an existing diary is unavailable in these pages.
-- The ordinary-user full diary list remains unavailable as a separate page.
+- **My Diary** lists assigned tasks. The full diary list is a manager page.
 - Reminders, exports, a calendar month view, and future date-window filters are unavailable.
 
 Annual-date selection has a further limit for diaries that last more than 12 months.
