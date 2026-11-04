@@ -128,3 +128,14 @@ Verification is in `Diary/tests/test_host_embedding.py`, class `HostEmbeddingTes
 The host must also test its selection endpoint, authorization checks, and signed state validation.
 
 Language review limit: The full ASD-STE100 Issue 9 dictionary review is not complete.
+
+## Template save navigation
+
+`TemplateEditorView` owns all template form and task formset processing.
+Hosts must delegate POST requests to that view.
+Override `get_success_url(template_name=...)` to change navigation after a successful save.
+The hook receives the saved template name. It can retain the host selection and return a fixed URL.
+The package calls the hook after it saves the approved version.
+The default hook returns the existing named template editor URL.
+The hook does not receive forms or change template validation.
+Verification: `Diary/tests/test_template_editor.py`: `TemplateEditorTests.test_host_success_hook_delegates_all_form_processing`.

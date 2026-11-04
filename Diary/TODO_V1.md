@@ -557,6 +557,8 @@ The final sections record confirmed decisions and deferred Diary features.
   Requirement: [D6] and [D9].
 
 - [x] **DV1-041: Complete pages, fragments, and styling interface.**
+  Save navigation: [views.py](views.py): `TemplateEditorView.get_success_url` preserves package form handling for host views.
+  Verification: [test_template_editor.py](tests/test_template_editor.py): `TemplateEditorTests.test_host_success_hook_delegates_all_form_processing`.
   Compact manager filters: [manager_diary.html](templates/Diary/partials/manager_diary.html): `.diary-manager-filter-controls` and `.diary-manager-filter-actions`.
   Styling: [diary.css](static/Diary/styles/diary.css): `.diary-manager-filter-group`, `.diary-manager-filter-label`, and `.diary-manager-filter-help`.
   Verification: [test_host_embedding.py](tests/test_host_embedding.py): `HostEmbeddingTests.test_manager_filter_actions_stay_inside_panel`.

@@ -176,13 +176,18 @@ class TemplateEditorView(LoginRequiredMixin, View):
                         description=header.cleaned_data['description'],
                         milestone_names=header.cleaned_data['milestone_names'], directory=DjangoOwnerDirectory(),
                     )
-                return redirect('Diary:template-edit', template_name=header.cleaned_data['name'])
+                return redirect(self.get_success_url(template_name=header.cleaned_data['name']))
             except ValidationError as error:
                 for message in error.messages:
                     header.add_error(None, message)
             except IntegrityError:
                 header.add_error(None, 'The template changed during this save. Reopen it before trying again.')
         return self.render_editor(header, tasks, status=400)
+
+    # DV1-025, DV1-041: Hosts can adapt navigation without replacing package form processing.
+    def get_success_url(self, *, template_name):
+        """Return the saved template location. Hosts can override navigation using the saved template name."""
+        return reverse('Diary:template-edit', kwargs={'template_name': template_name})
 
     # DV1-017: Empty-group warnings during template editing.
     def render_editor(self, header, tasks, status=200):

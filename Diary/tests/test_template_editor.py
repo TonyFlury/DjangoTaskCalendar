@@ -39,6 +39,29 @@ class TemplateEditorTests(TestCase):
         self.spec = EntrySpec('Prepare', DateKind.RELATIVE, milestone_name='target', day_offset=-3)
         self.other = EntrySpec('Review', DateKind.ANNUAL, month=2, day=29)
 
+    def test_host_success_hook_delegates_all_form_processing(self):
+        """Use host navigation after the package saves declared milestones, tasks, and dependencies."""
+        class HostTemplateView(TemplateEditorView):
+            """Change only the saved template destination."""
+
+            creating = True
+
+            def get_success_url(self, *, template_name):
+                """Record the saved selection and return the fixed host location."""
+                self.request.session['saved_template'] = template_name
+                return '/host/template/'
+
+        request = RequestFactory().post('/host/template/new/', self.payload())
+        request.user = self.manager
+        request.session = {}
+        response = HostTemplateView.as_view()(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/host/template/')
+        self.assertEqual(request.session['saved_template'], 'Reusable plan')
+        data = self.api.template(name='Reusable plan').editor_data()
+        self.assertEqual(len(data['entries']), 2)
+        self.assertEqual([item['name'] for item in data['milestones']], ['target'])
+
     def create_template(self, name='Reusable plan'):
         """Create a template with two reusable tasks and an approved predecessor link."""
         template = self.api.create_template(name=name)

@@ -2592,3 +2592,10 @@ The new class `diary-manager-filter-controls` identifies the wrapping control ro
 The existing `diary-manager-filter-actions` class now identifies actions inside that row.
 Existing label, button, and help classes remain unchanged. No CSS variables are added.
 Verification: `Diary/tests/test_host_embedding.py`: `HostEmbeddingTests.test_manager_filter_actions_stay_inside_panel`.
+
+## Host template save navigation
+
+`TemplateEditorView.get_success_url(template_name=...)` lets the host change the destination after a successful template save.
+Override this hook to retain a host selection or return a fixed URL.
+Delegate template form construction, validation, task rows, and version saves to the package POST handler.
+See [Host page integration](HOST_EMBEDDING.md#template-save-navigation).
