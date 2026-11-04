@@ -117,13 +117,16 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         call_command('manage_diary_templates', 'list', '--details', actor=self.manager.get_username(), stdout=output)
         text = output.getvalue()
         for value in ('Creation template', 'Description:   Reusable event tasks', 'In use:        Yes (2 diaries)',
-                      'Version 1 (approved)', 'Target (target)', 'In use:      Yes (2 diaries)',
-                      'Version 2 (draft)', 'Unused required date (unused_requirement)', 'In use:      No',
+                      'Version 1 (approved)', 'Target (target)', 'Used by:\n      - Other diary\n      - Selected diary',
+                      'Version 2 (draft)', 'Unused required date (unused_requirement)', 'Used by:     None',
                       'Empty definition', 'Versions:      None', 'Description:   (none)'):
             self.assertIn(value, text)
         self.assertNotIn('Unrelated catalogue date', text)
         version_two = text.split('Version 2 (draft)', 1)[1].split('Empty definition', 1)[0]
         self.assertNotIn('Target (target)', version_two)
+        self.assertNotIn('Selected diary', version_two)
+        self.assertNotIn('Other diary', version_two)
+        self.assertEqual(text.count('In use:'), 2)
         alias_output = StringIO()
         call_command('manage_diary_templates', 'list', '--full', actor=self.manager.get_username(), stdout=alias_output)
         self.assertEqual(alias_output.getvalue(), text)
@@ -131,6 +134,28 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
             self.templates('list', details=True)
         with self.assertRaises(CommandError):
             self.templates('versions', template='Creation template', details=True)
+
+    def test_uuid_lists_show_identity_with_name_and_support_details(self):
+        for command_name, key, name, selector in (
+            ('manage_diaries', self.diary.key, 'Selected diary', {'event_ref': 'creation:selected'}),
+            ('manage_diary_templates', self.template.key, 'Creation template', {'template': 'Creation template'}),
+        ):
+            for details in (False, True):
+                with self.subTest(command=command_name, details=details):
+                    output = StringIO()
+                    call_command(command_name, 'list', '--uuid', details=details,
+                                 actor=self.manager.get_username(), stdout=output, **selector)
+                    text = output.getvalue()
+                    self.assertEqual(text.splitlines()[0], f'{key}  {name}')
+                    self.assertEqual(text.count(str(key)), 1)
+                    if not details:
+                        self.assertEqual(text, f'{key}  {name}\n')
+            output = StringIO()
+            call_command(command_name, 'list', '--uuid', '--json', actor=self.manager.get_username(),
+                         stdout=output, **selector)
+            self.assertEqual(json.loads(output.getvalue())[0]['id'], str(key))
+            with self.assertRaises(CommandError):
+                call_command(command_name, 'show', uuid=True, actor=self.manager.get_username(), **selector)
 
     def test_create_copy_and_approve_template_version(self):
         self.templates('create', template='New definition', description='Example')

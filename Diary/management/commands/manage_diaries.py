@@ -17,6 +17,7 @@ class Command(OperatorCommand):
     def add_arguments(self, parser):
         parser.add_argument('operation', choices=('list', 'show', 'create', 'close', 'delete'))
         self.add_operator_arguments(parser)
+        parser.add_argument('--uuid', action='store_true', help='Show each item UUID alongside its name when listing.')
         output = parser.add_mutually_exclusive_group()
         output.add_argument('--details', '--full', action='store_true', help='Show formatted dates, task counts, and identifiers when listing.')
         output.add_argument('--json', action='store_true', help='Return full list records as JSON for scripts.')
@@ -31,11 +32,11 @@ class Command(OperatorCommand):
 
     def execute_operation(self, options):
         operation = options['operation']
-        allowed = {'list': {'state', 'template', 'event_ref', 'details', 'json'},
+        allowed = {'list': {'state', 'template', 'event_ref', 'details', 'json', 'uuid'},
                    'create': {'template', 'template_version', 'name', 'event_ref', 'milestone'},
                    'show': {'diary'}, 'close': {'diary'}, 'delete': {'diary'}}[operation]
         self.reject_unused(options, allowed, {'diary': None, 'state': 'all', 'template': None,
-            'template_version': None, 'name': None, 'event_ref': None, 'milestone': [], 'details': False, 'json': False})
+            'template_version': None, 'name': None, 'event_ref': None, 'milestone': [], 'details': False, 'json': False, 'uuid': False})
         if options['details'] and options['json']:
             raise ValueError('--details and --json cannot be combined.')
         if operation == 'list':
@@ -47,7 +48,7 @@ class Command(OperatorCommand):
             if options['event_ref']:
                 diaries = diaries.filter(event_ref=options['event_ref'])
             if not (options['details'] or options['json']):
-                return list(diaries.order_by('name', 'pk').values('name'))
+                return list(diaries.order_by('name', 'pk').values('id', 'name'))
             diaries = diaries.annotate(
                 task_count=Count('entries'), completed_count=Count('entries', filter=Q(entries__completed_at__isnull=False)))
             return list(diaries.order_by('name', 'pk').values(
@@ -83,7 +84,7 @@ class Command(OperatorCommand):
         for index, diary in enumerate(result):
             if options['details'] and index:
                 self.stdout.write('')
-            self.stdout.write(diary['name'])
+            self.stdout.write(f"{diary['id']}  {diary['name']}" if options['uuid'] else diary['name'])
             if options['details']:
                 fields = [('ID', diary['id']),
                           ('Status', 'Closed' if diary['closed_at'] else 'Open'),
@@ -94,6 +95,8 @@ class Command(OperatorCommand):
                           ('Host reference', diary['event_ref'])]
                 if diary['closed_at']:
                     fields.append(('Closed', self.format_timestamp(diary['closed_at'])))
+                if options['uuid']:
+                    fields = [(label, value) for label, value in fields if label != 'ID']
                 for label, value in fields:
                     self.stdout.write(f'  {label + ":":15} {value}')
 

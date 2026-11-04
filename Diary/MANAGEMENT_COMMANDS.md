@@ -24,7 +24,9 @@ derive scope from HTTP requests, sessions, or the host's event access policy.
 They do not grant broader access through the web views.
 
 Diary and template lists print one name per line by default. Use `--details` (alias `--full`)
-for readable metadata, or `--json` for the full structured list. Other operations
+for readable metadata, or `--json` for the full structured list. Add `--uuid` to
+show each UUID alongside its name, as `UUID  Name`. It also works with `--details`
+or `--full`; JSON already contains UUIDs. This option applies only to `list`. Other operations
 write indented JSON, with UUIDs and dates encoded as strings.
 JSON lists return arrays; individual records and deletion plans return objects.
 Failures use Django's `CommandError` and a nonzero process exit status.
@@ -38,6 +40,7 @@ version numbers within the selected template, not version UUIDs.
 
 ```sh
 python manage.py manage_diary_templates list --actor operator
+python manage.py manage_diary_templates list --uuid --actor operator
 python manage.py manage_diary_templates list --details --actor operator
 python manage.py manage_diary_templates list --json --actor operator
 python manage.py manage_diary_templates versions --template "Event preparation" --actor operator
@@ -49,8 +52,10 @@ python manage.py manage_diary_templates show --template "Event preparation" --te
 `--template` filters it to one exact name. An empty selection prints nothing.
 Use `--details` (alias `--full`) to display descriptions and all version numbers
 and statuses, each version's declared milestones (display label and stable name),
-and whether the template and each version are in use. Usage counts include both
-open and closed diary instances, even when only an older version is referenced.
+a template-level usage summary, and the names of diaries using each version.
+Usage includes both open and closed diary instances, even when only an older version
+is referenced. Diary names are listed alphabetically beneath their version;
+versions without diaries display `Used by: None`.
 Milestone lists include unused required declarations and exclude unrelated catalogue
 milestones. Templates without versions and versions without milestones are marked
 explicitly. For example:
@@ -61,10 +66,12 @@ Event preparation
   In use:        Yes (2 diaries)
   Version 1 (approved)
     Milestones:  Event date (event_date), Bookings close (bookings_close)
-    In use:      Yes (2 diaries)
+    Used by:
+      - Spring event
+      - Summer event
   Version 2 (draft)
     Milestones:  Event date (event_date)
-    In use:      No
+    Used by:     None
 ```
 
 `--json` retains the original list records: template UUID, name, description, and
@@ -102,6 +109,7 @@ diaries remain unchanged by these operations.
 
 ```sh
 python manage.py manage_diaries list --actor operator
+python manage.py manage_diaries list --uuid --actor operator
 python manage.py manage_diaries list --details --actor operator
 python manage.py manage_diaries list --json --actor operator
 python manage.py manage_diaries list --state open --template "Event preparation" --actor operator

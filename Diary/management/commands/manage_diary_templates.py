@@ -4,7 +4,7 @@ from django.db.models import Count, Prefetch
 
 from Diary.api import DiaryAPI, EntrySpec
 from Diary.management.administration import OperatorCommand, delete_template
-from Diary.models import CalendarTemplate, TemplateVersion
+from Diary.models import CalendarTemplate, EventCalendar, TemplateVersion
 
 
 class Command(OperatorCommand):
@@ -14,6 +14,7 @@ class Command(OperatorCommand):
         parser.add_argument('operation', choices=('list', 'show', 'versions', 'create', 'create-version',
                                                 'approve', 'delete-version', 'delete'))
         self.add_operator_arguments(parser)
+        parser.add_argument('--uuid', action='store_true', help='Show each item UUID alongside its name when listing.')
         output = parser.add_mutually_exclusive_group()
         output.add_argument('--details', '--full', action='store_true', help='List descriptions, versions, declared milestones, and diary usage.')
         output.add_argument('--json', action='store_true', help='Return full list records as JSON for scripts.')
@@ -28,7 +29,7 @@ class Command(OperatorCommand):
         operation = options['operation']
         allowed = {'template'}
         if operation == 'list':
-            allowed.update(('details', 'json'))
+            allowed.update(('details', 'json', 'uuid'))
         if operation in {'show', 'approve', 'delete-version'}:
             allowed.add('template_version')
         if operation == 'create-version':
@@ -36,7 +37,7 @@ class Command(OperatorCommand):
         if operation == 'create':
             allowed.add('description')
         self.reject_unused(options, allowed, {'template_version': None, 'copy_version': None, 'milestone': [],
-                                             'description': '', 'details': False, 'json': False})
+                                             'description': '', 'details': False, 'json': False, 'uuid': False})
         if options['details'] and options['json']:
             raise ValueError('--details and --json cannot be combined.')
         api = DiaryAPI(actor=self.actor)
@@ -45,17 +46,20 @@ class Command(OperatorCommand):
             if options['template']:
                 templates = templates.filter(name__iexact=options['template'])
             if options['details']:
-                versions = TemplateVersion.objects.annotate(diary_count=Count('calendars')).order_by('number').prefetch_related('milestones')
+                diaries = EventCalendar.objects.only('id', 'name', 'template_version_id').order_by('name', 'pk')
+                versions = TemplateVersion.objects.order_by('number').prefetch_related(
+                    'milestones', Prefetch('calendars', queryset=diaries))
                 templates = templates.prefetch_related(Prefetch('versions', queryset=versions))
-                return [{'name': item.name, 'description': item.description,
+                return [{'id': item.pk, 'name': item.name, 'description': item.description,
                          'versions': [{'number': version.number, 'status': version.status,
-                                       'diary_count': version.diary_count,
+                                       'diary_count': len(version.calendars.all()),
+                                       'diaries': [diary.name for diary in version.calendars.all()],
                                        'milestones': [(milestone.name, milestone.label) for milestone in version.milestones.all()]}
                                       for version in item.versions.all()]}
                         for item in templates]
             if options['json']:
                 return list(templates.annotate(version_count=Count('versions')).values('id', 'name', 'description', 'version_count'))
-            return list(templates.values('name'))
+            return list(templates.values('id', 'name'))
         self.require(options, 'template')
         if operation == 'create':
             template = api.create_template(name=options['template'], description=options['description'])
@@ -105,7 +109,7 @@ class Command(OperatorCommand):
         for index, template in enumerate(result):
             if options['details'] and index:
                 self.stdout.write('')
-            self.stdout.write(template['name'])
+            self.stdout.write(f"{template['id']}  {template['name']}" if options['uuid'] else template['name'])
             if options['details']:
                 description = '\n                 '.join(template['description'].splitlines()) or '(none)'
                 self.stdout.write(f'  Description:   {description}')
@@ -117,7 +121,12 @@ class Command(OperatorCommand):
                     self.stdout.write(f"  Version {version['number']} ({version['status']})")
                     milestones = ', '.join(f'{label} ({name})' for name, label in version['milestones']) or 'None'
                     self.stdout.write(f'    Milestones:  {milestones}')
-                    self.stdout.write(f"    In use:      {self.usage_label(version['diary_count'])}")
+                    if version['diaries']:
+                        self.stdout.write('    Used by:')
+                        for name in version['diaries']:
+                            self.stdout.write(f'      - {name}')
+                    else:
+                        self.stdout.write('    Used by:     None')
 
     @staticmethod
     def usage_label(count):
