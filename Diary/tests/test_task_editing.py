@@ -27,6 +27,9 @@ from Diary.views import ManagerDiaryView, PersonalDiaryView, TaskDetailView
 class HostTaskDetailView(TaskDetailView):
     """Supply current permitted diary keys through the test host's trusted policy."""
 
+    def get_success_url(self, *, result):
+        return reverse('host-detail-selected', kwargs={'diary_key': result.diary_key, 'entry_key': result.entry_key})
+
     def get_diary_keys(self):
         """Return trusted diary keys independently of URL or POST values."""
         return settings.EDIT_TEST_KEYS
@@ -56,6 +59,7 @@ def handler403(request, exception):
 
 
 urlpatterns = [path('host/tasks/<uuid:entry_key>/', HostTaskDetailView.as_view(), name='host-detail'),
+               path('host/diaries/<uuid:diary_key>/tasks/<uuid:entry_key>/', HostTaskDetailView.as_view(), name='host-detail-selected'),
                path('host/personal/', HostPersonalTaskView.as_view(), name='host-edit-personal'),
                path('host/manager/', HostManagerTaskView.as_view(), name='host-edit-manager'),
                path('diary/', include('Diary.urls'))]
@@ -363,7 +367,7 @@ class TaskEditingTests(TaskEditingFixtures, TestCase):
         """Keep selected diary links and calculate fresh list states after each task action."""
         url = reverse('host-edit-personal')
         page = self.client.get(url)
-        self.assertContains(page, self.task_url())
+        self.assertContains(page, reverse('host-detail', kwargs={'entry_key': self.personal}))
         self.user_diary.update_due_date(entry_key=self.personal, due_date=date(2020, 1, 1), expected_revision=0)
         self.assertContains(self.client.get(url), 'diary-task-late')
         self.user_diary.complete(entry_key=self.personal, expected_revision=1)

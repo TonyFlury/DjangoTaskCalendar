@@ -11,8 +11,6 @@
         <p class="diary-create-error diary-create-state" role="alert">{{ creation_error }}</p>
     {% elif creation_form %}
 
-        {# The view shows success only after it finds the visible task in the selected diary. #}
-        {% if created_task %}<p class="diary-create-success diary-create-state" role="status">Task added.</p>{% endif %}
         <p class="diary-create-guidance">Select a date rule for this diary task. Complete only the fields for that rule.</p>
 
         {# Managers choose an owner. Ordinary users receive a self-owned task. #}
@@ -21,7 +19,7 @@
         {% else %}
             <p class="diary-create-guidance">This personal task belongs to you.</p>
         {% endif %}
-        <form class="diary-create-form" method="post">
+        <form class="diary-create-form" method="post" action="{{ diary_form_url }}">
             {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
 
             {# Form errors must remain visible when the save cannot proceed. #}
@@ -56,7 +54,7 @@
         <p class="diary-create-guidance">Select a permitted open diary for the new task.</p>
         {% if not diary_ui.trusted_scope %}<ul class="diary-create-diary-list">
             {% for diary in creation_diaries %}
-                <li class="diary-create-diary"><a class="diary-create-diary-link" href="?diary_key={{ diary.pk }}">{{ diary.name }}</a></li>
+                <li class="diary-create-diary"><a class="diary-create-diary-link" href="{% url 'Diary:diary-task-create' diary_key=diary.pk %}">{{ diary.name }}</a></li>
 
             {# An empty permitted scope must not select another diary or create one. #}
             {% empty %}

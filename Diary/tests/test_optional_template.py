@@ -183,7 +183,16 @@ class OptionalTemplateTests(OptionalTemplateFixtures, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIsNone(self.empty.read()['template_version_key'])
         data = {'template_version_key': str(self.version.key), 'milestone_target': '2027-06-20'}
-        response, renderer = self.response(TemplateApplyView, self.manager, method='post', data=data)
+        with patch.object(TemplateApplyView, 'on_success') as notify:
+            response, renderer = self.response(TemplateApplyView, self.manager, method='post', data=data)
+        notify.assert_called_once()
+        result = notify.call_args.kwargs['result']
+        self.assertEqual(result.operation, 'template_applied')
+        self.assertEqual(result.diary_key, self.empty.key)
+        self.assertEqual(result.template_version_key, self.version.key)
+        self.assertEqual(result.template_name, 'Creation template')
+        self.assertIsNone(result.entry_key)
+        self.assertNotIn('?', response['Location'])
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(self.empty.read()['entries']), 3)
         response, renderer = self.response(TemplateApplyView, self.manager, method='post', data=data)

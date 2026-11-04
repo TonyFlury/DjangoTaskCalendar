@@ -6,7 +6,7 @@
     {% if detail_error %}<p class="diary-detail-error" role="alert">{{ detail_error }}</p>{% endif %}
     {% if task %}
         <p class="diary-detail-diary">Diary: {{ task.diary_name }}</p>
-        <a class="diary-button diary-detail-reload" href="{% if diary_ui.trusted_scope %}{{ diary_ui.task_detail_url }}{% else %}?diary_key={{ task.diary_key }}{% endif %}">Reload task</a>
+        <a class="diary-button diary-detail-reload" href="{{ diary_form_url }}">Reload task</a>
 
         {# Completed tasks have a history state. Open tasks use red, amber, dashed, or ready highlights in that order. #}
         <article class="diary-card diary-detail-task{% if task.completed_at %} diary-detail-completed{% elif task.late %} diary-detail-late{% elif task.blocked_late %} diary-detail-blocked-late{% elif not task.ready %} diary-detail-blocked{% else %} diary-detail-ready{% endif %}">
@@ -53,7 +53,7 @@
                 {% if task.orphaned %}
                     <p class="diary-detail-orphaned">Orphaned template task. You can leave this task unresolved.</p>
                     {% if not task.closed %}
-                        <form class="diary-recovery-form" method="post">
+                        <form class="diary-recovery-form" method="post" action="{{ diary_form_url }}">
                             {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
                             <fieldset class="diary-recovery-fields">
                                 <legend class="diary-recovery-legend">Assign a new owner</legend>
@@ -86,7 +86,7 @@
 
                 {# Ordinary users edit only their personal additions. Managers can also edit copied template-task dates. #}
                 {% if task.can_edit_date %}
-                    <form class="diary-detail-date-form" method="post">
+                    <form class="diary-detail-date-form" method="post" action="{{ diary_form_url }}">
                         {% csrf_token %}{% include "Diary/partials/form_fields.html" %}{{ due_form.revision }}
                         <label class="diary-detail-label" for="{{ due_form.due_date.id_for_label }}">{{ due_form.due_date.label }}</label>{{ due_form.due_date }}
                         <p class="diary-detail-date-help">A date edit changes this diary only. The original date rule stays unchanged.</p>
@@ -100,7 +100,7 @@
 
                 {# Only open diaries offer completion controls. The server still rejects forged or stale requests. #}
                 {% if not task.closed %}
-                    <form class="diary-detail-completion-form" method="post">
+                    <form class="diary-detail-completion-form" method="post" action="{{ diary_form_url }}">
                         {% csrf_token %}{% include "Diary/partials/form_fields.html" %}{{ completion_form.revision }}{{ completion_form.blocker_token }}
                         {% include 'Diary/partials/task_detail_errors.html' with form=completion_form %}
                         <div class="diary-actions diary-detail-actions"><button class="diary-button diary-button-primary diary-detail-complete" type="submit" name="action" value="complete">Complete</button>

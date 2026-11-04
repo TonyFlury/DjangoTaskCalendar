@@ -7,7 +7,7 @@
     <p class="diary-template-version">{% if template_data.number %}Version {{ template_data.number }} · {{ template_data.status }}.{% else %}No saved version.{% endif %} Save creates and approves a new version.</p>
     <p class="diary-template-guidance">Existing diaries keep their tasks and dependencies. Template names stay fixed after creation.</p>
     {% if ownership_warnings %}<aside class="diary-template-warnings" aria-label="Ownership warnings" role="status"><ul class="diary-warning-list">{% for warning in ownership_warnings %}<li class="diary-warning">{{ warning }}</li>{% endfor %}</ul></aside>{% endif %}
-    <form class="diary-template-form" method="post">
+    <form class="diary-template-form" method="post" action="{{ diary_form_url }}">
         {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
         {{ header_form.expected_version_key }}
         {% if header_form.expected_version_key.errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.expected_version_key.errors %}<li class="diary-form-error">Version: {{ error }}</li>{% endfor %}</ul>{% endif %}

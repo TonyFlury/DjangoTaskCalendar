@@ -41,7 +41,9 @@ class HostApply(HostScope, TemplateApplyView):
     pass
 
 
-replacements = {'personal-diary': HostPersonal, 'manager-diary': HostManager, 'task-create': HostCreate,
+replacements = {'diary-personal': HostPersonal, 'diary-manager': HostManager,
+                'diary-task-create': HostCreate, 'diary-task-detail': HostDetail, 'diary-template-apply': HostApply,
+                'personal-diary': HostPersonal, 'manager-diary': HostManager, 'task-create': HostCreate,
                 'task-detail': HostDetail, 'template-apply': HostApply}
 host_patterns = [path(item.pattern._route, replacements[item.name].as_view(), name=item.name)
                  if item.name in replacements else item for item in package_patterns]
@@ -82,7 +84,7 @@ class OptionalTemplateBrowserTests(OptionalTemplateFixtures, StaticLiveServerTes
             self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
             driver.execute_script("document.querySelector('[name=milestone_target]').value = '2027-06-20'")
             driver.find_element(By.CSS_SELECTOR, '.diary-apply-form button').click()
-            wait.until(lambda browser: '/diary/manager/' in browser.current_url)
+            wait.until(lambda browser: '/manager/' in browser.current_url)
             self.assertIn('Prepare (template)', driver.find_element(By.TAG_NAME, 'body').text)
             self.assertEqual(CalendarEntry.objects.filter(calendar_id=self.empty.key).count(), 3)
             self.assertEqual(list(CalendarEntry.objects.filter(calendar_id=self.empty.key, source_entry=None).values()), before)

@@ -4,14 +4,14 @@
         <p class="diary-form-error" role="alert">{{ application_error }}</p>
     {% else %}
         <p class="diary-template-guidance">Existing tasks and completion history stay unchanged. A template can be applied once. Every declared milestone requires a date, even if no task uses it.</p>
-        <form class="diary-apply-selection" method="get">
+        <form class="diary-apply-selection" method="post" action="{{ diary_form_url }}">
+            {% csrf_token %}
             {% include "Diary/partials/form_fields.html" %}
-            {% if not diary_ui.trusted_scope %}<input type="hidden" name="diary_key" value="{{ diary_data.key }}">{% endif %}
             {% for field in application_picker %}{% include "Diary/partials/template_field.html" %}{% endfor %}
-            <button class="diary-button" type="submit">Choose template</button>
+            <button class="diary-button" type="submit" name="action" value="choose_template">Choose template</button>
         </form>
         {% if application_dates %}
-            <form class="diary-apply-form" method="post">
+            <form class="diary-apply-form" method="post" action="{{ diary_form_url }}">
                 {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
                 <input type="hidden" name="template_version_key" value="{{ application_version_key }}">
                 {% if application_dates.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in application_dates.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}

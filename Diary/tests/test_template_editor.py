@@ -42,15 +42,18 @@ class TemplateEditorTests(TestCase):
 
     def test_host_success_hook_delegates_all_form_processing(self):
         """Use host navigation after the package saves declared milestones, tasks, and dependencies."""
+        results = []
         class HostTemplateView(TemplateEditorView):
             """Change only the saved template destination."""
 
             creating = True
 
-            def get_success_url(self, *, template_name):
+            def on_success(self, *, result):
                 """Record the saved selection and return the fixed host location."""
-                self.request.session['saved_template'] = template_name
-                return '/host/template/'
+                self.request.session['saved_template'] = result.template_name
+                results.append(result)
+
+            success_url = '/host/template/'
 
         request = RequestFactory().post('/host/template/new/', self.payload())
         request.user = self.manager
@@ -60,6 +63,11 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(response['Location'], '/host/template/')
         self.assertEqual(request.session['saved_template'], 'Reusable plan')
         data = self.api.template(name='Reusable plan').editor_data()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].operation, 'template_created')
+        self.assertEqual(results[0].template_version_key, data['version_key'])
+        self.assertIsNone(results[0].diary_key)
+        self.assertIsNone(results[0].entry_key)
         self.assertEqual(len(data['entries']), 2)
         self.assertEqual([item['name'] for item in data['milestones']], ['target'])
 

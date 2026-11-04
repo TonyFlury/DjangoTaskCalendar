@@ -9,11 +9,12 @@ from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core import signing
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 from django.urls import reverse
 from django.views import View
 from django.views.generic.base import ContextMixin
@@ -21,11 +22,12 @@ from django.utils import timezone
 from django.utils.cache import patch_cache_control, patch_vary_headers
 
 from .api import Actor, DiaryAPI
+from .view_api import DiarySuccessMixin, DiaryViewResult, form_target, submitted_target
 from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
                     TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm,
                     TemplateForm, TemplateApplicationChoiceForm, TemplateApplicationDatesForm, editor_task_limit)
-from .models import EventCalendar, Milestone
+from .models import CalendarTemplate, EventCalendar, Milestone, TemplateVersion
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
 
@@ -50,7 +52,7 @@ class DjangoOwnerDirectory:
 
 
 # Partial DV1-018: Authenticated routed views.
-class TemplateEditorView(LoginRequiredMixin, ContextMixin, View):
+class TemplateEditorView(DiarySuccessMixin, LoginRequiredMixin, ContextMixin, View):
     """Show the chooser or edit a template selected by URL or trusted view configuration."""
 
     template_name = None
@@ -75,8 +77,12 @@ class TemplateEditorView(LoginRequiredMixin, ContextMixin, View):
             raise PermissionDenied('DiaryManager membership is required for template editing.')
         self.api = DiaryAPI(actor=Actor(reference=f'user:{request.user.pk}', groups=groups))
         self.view_context = self.get_context_data(**kwargs)
+        try:
+            self.posted_target = submitted_target(request)
+        except signing.BadSignature:
+            return HttpResponseBadRequest('Invalid form selection. Reload the page before submitting.')
         selectors = [kwargs.get('template_name'), request.GET.get('template_name'), self.template_name,
-                     self.view_context.get('template_name')]
+                     self.view_context.get('template_name'), self.posted_target.get('template_name')]
 
         # Empty selectors request the chooser. Conflicting values must not select an unintended template.
         names = [value.strip() for value in selectors if value is not None and value.strip()]
@@ -172,30 +178,30 @@ class TemplateEditorView(LoginRequiredMixin, ContextMixin, View):
                     # New templates and their first approved version must be saved together.
                     if self.creating:
                         template = self.api.create_template(name=header.cleaned_data['name'])
-                    template.save_version(
+                    saved_version = template.save_version(
                         entries=tasks.specs, predecessors=tasks.graph,
                         expected_version_key=header.cleaned_data['expected_version_key'],
                         description=header.cleaned_data['description'],
                         milestone_names=header.cleaned_data['milestone_names'], directory=DjangoOwnerDirectory(),
                     )
-                return redirect(self.get_success_url(template_name=header.cleaned_data['name']))
             except ValidationError as error:
                 for message in error.messages:
                     header.add_error(None, message)
             except IntegrityError:
                 header.add_error(None, 'The template changed during this save. Reopen it before trying again.')
+            else:
+                return self.success_response(result=DiaryViewResult(
+                    operation='template_created' if self.creating else 'template_saved',
+                    template_name=header.cleaned_data['name'], template_version_key=saved_version.key))
         return self.render_editor(header, tasks, status=400)
-
-    # DV1-025, DV1-041: Hosts can adapt navigation without replacing package form processing.
-    def get_success_url(self, *, template_name):
-        """Return the saved template location. Hosts can override navigation using the saved template name."""
-        return reverse('Diary:template-edit', kwargs={'template_name': template_name})
 
     # DV1-017: Empty-group warnings during template editing.
     def render_editor(self, header, tasks, status=200):
         """Render the complete editor document with task-specific ownership warnings."""
         return render(self.request, self.page_template, {
             **self.view_context,
+            'diary_target': form_target(self.request, template_name=self.data['name'] if not self.creating else None),
+            'diary_form_url': self.request.path,
             'header_form': header, 'task_forms': tasks, 'creating': self.creating,
             'template_data': self.data, 'ownership_warnings': tasks.ownership_warnings(),
             'empty_owner_roles': tasks.empty_roles,
@@ -240,6 +246,10 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
         self.view_context = self.get_context_data(**kwargs)
         self.actor = Actor(reference=f'user:{request.user.pk}', groups=groups,
                            calendar_keys=frozenset(UUID(str(key)) for key in self.get_diary_keys()))
+        try:
+            self.posted_target = submitted_target(request)
+        except signing.BadSignature:
+            return HttpResponseBadRequest('Invalid form selection. Reload the page before submitting.')
         return super().dispatch(request, *args, **kwargs)
 
     def get_diary_keys(self):
@@ -253,7 +263,7 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
         Raise ValueError for malformed, blank, or conflicting selectors.
         """
         values = self.request.GET.getlist('diary_key')
-        for value in (self.diary_key, self.view_context.get('diary_key')):
+        for value in (self.diary_key, self.view_context.get('diary_key'), getattr(self, 'posted_target', {}).get('diary_key')):
 
             # Unset trusted selectors must not turn an omitted query into an invalid key.
             if value is not None:
@@ -275,8 +285,10 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
         # DV1-041: Host POST selection supplies record scope outside the browser URL.
         if ui.get('selection_url'):
             return ui.get('task_detail_url', self.request.path)
-        name = self.view_context.get('task_detail_url_name', 'Diary:task-detail')
-        return reverse(name, kwargs={'entry_key': entry_key}) + '?' + urlencode({'diary_key': diary_key})
+        name = self.view_context.get('task_detail_url_name')
+        if name:
+            return reverse(name, kwargs={'entry_key': entry_key})
+        return reverse('Diary:diary-task-detail', kwargs={'diary_key': diary_key, 'entry_key': entry_key})
 
 
 # DV1-031: HTTP data reads use the same identity, scope, and privacy checks as the callable API.
@@ -385,7 +397,7 @@ class DiaryOwnerLabelsMixin:
         return labels, {role: tuple(sorted(names, key=str.casefold)) for role, names in members.items()}
 
 
-class TemplateApplyView(DiaryScopeMixin, View):
+class TemplateApplyView(DiarySuccessMixin, DiaryScopeMixin, View):
     """Let a manager apply one approved template to an existing permitted diary."""
 
     http_method_names = ['get', 'post', 'head', 'options']
@@ -395,12 +407,10 @@ class TemplateApplyView(DiaryScopeMixin, View):
         return self.respond()
 
     def post(self, request, *args, **kwargs):
-        return self.respond(submitted=True)
+        choosing = request.POST.get('action') == 'choose_template'
+        return self.respond(submitted=not choosing, choosing=choosing)
 
-    def get_success_url(self, *, diary_key):
-        return reverse('Diary:manager-diary') + '?' + urlencode({'diary_key': diary_key})
-
-    def respond(self, *, submitted=False):
+    def respond(self, *, submitted=False, choosing=False):
         context = {**self.view_context, 'application_error': '', 'diary_data': None}
         try:
             key = self.selected_key()
@@ -414,14 +424,15 @@ class TemplateApplyView(DiaryScopeMixin, View):
             context['diary_data'] = diary.read()
         except ObjectDoesNotExist:
             raise Http404('The selected diary is unavailable.')
+        context.update(diary_target=form_target(self.request, diary_key=key), diary_form_url=self.request.path)
         if context['diary_data']['closed']:
             context['application_error'] = 'This diary is closed. A template cannot be applied.'
             return render(self.request, self.template_name, context, status=400)
         if context['diary_data']['template_version_key'] and not submitted:
             context['application_error'] = 'A template is already applied to this diary.'
             return render(self.request, self.template_name, context)
-        data = self.request.POST if submitted else self.request.GET
-        picker = TemplateApplicationChoiceForm(data if submitted or data.get('template_version_key') else None)
+        data = self.request.POST if submitted or choosing else self.request.GET
+        picker = TemplateApplicationChoiceForm(data if submitted or choosing or data.get('template_version_key') else None)
         context['application_picker'] = picker
         status = 200
         if picker.is_bound and picker.is_valid():
@@ -434,20 +445,24 @@ class TemplateApplyView(DiaryScopeMixin, View):
                 if dates.is_valid():
                     try:
                         diary.apply_template(template_version_key=version.key, milestone_dates=dates.milestone_dates())
-                        return redirect(self.get_success_url(diary_key=key))
                     except (ValidationError, IntegrityError) as error:
                         if isinstance(error, ValidationError):
                             for message in error.messages:
                                 dates.add_error(None, message)
                         else:
                             dates.add_error(None, 'The diary or template changed. Reload before applying the template.')
+                    else:
+                        version_data = version.read()
+                        template_name = CalendarTemplate.objects.get(pk=version_data['template_key']).name
+                        return self.success_response(result=DiaryViewResult(operation='template_applied',
+                            diary_key=key, template_name=template_name, template_version_key=version.key))
         elif picker.is_bound:
             status = 400
         return render(self.request, self.template_name, context, status=status)
 
 
 # DV1-029, DV1-030, DV1-033: Authenticated creation within a selected permitted diary.
-class TaskCreateView(DiaryScopeMixin, View):
+class TaskCreateView(DiarySuccessMixin, DiaryScopeMixin, View):
     """Create self-owned or manager-assigned tasks with an optional atomic template revision."""
 
     access_roles = ('manager', 'user')
@@ -464,7 +479,7 @@ class TaskCreateView(DiaryScopeMixin, View):
 
     def respond(self, *, submitted=False):
         """Resolve trusted scope and render kept input after validation or storage errors."""
-        context = {**self.view_context, 'diary_data': None, 'creation_error': '', 'created_task': False}
+        context = {**self.view_context, 'diary_data': None, 'creation_error': ''}
         try:
             key = self.selected_key()
         except (ValueError, TypeError, AttributeError):
@@ -522,10 +537,8 @@ class TaskCreateView(DiaryScopeMixin, View):
                 form.fields[name].widget = forms.HiddenInput(attrs=form.fields[name].widget.attrs)
         context.update(creation_form=form, future_form=future, creation_manager=manager)
 
-        # Success appears only for a task visible in this selected diary after the redirect.
+        context.update(diary_target=form_target(self.request, diary_key=key), diary_form_url=self.request.path)
         if not submitted:
-            context['created_task'] = any(str(entry['entry_key']) == self.request.GET.get('added')
-                                          for entry in context['diary_data']['entries'])
             return render(self.request, self.template_name, context)
         valid = form.is_valid()
         if not context['diary_data']['template_version_key'] and self.request.POST.get('add_to_template'):
@@ -544,10 +557,14 @@ class TaskCreateView(DiaryScopeMixin, View):
 
                 # A separate rule prevents silent conversion of an exact date into an annual date.
                 template_spec = future.entry_spec(spec) if add_to_template else None
-                diary.create_task(spec=spec, template_spec=template_spec,
-                                  expected_version_key=form.cleaned_data.get('expected_version_key'),
-                                  directory=DjangoOwnerDirectory())
-                return redirect(self.request.path + '?' + urlencode({'diary_key': key, 'added': spec.entry_key}))
+                with transaction.atomic():
+                    diary.create_task(spec=spec, template_spec=template_spec,
+                                      expected_version_key=form.cleaned_data.get('expected_version_key'),
+                                      directory=DjangoOwnerDirectory())
+                    saved_version_key = None
+                    if template_spec is not None:
+                        saved_version_key = TemplateVersion.objects.filter(
+                            template_id=calendar.template_version.template_id).order_by('-number').values_list('pk', flat=True).first()
             except ValidationError as error:
                 for message in error.messages:
                     form.add_error(None, message)
@@ -555,32 +572,48 @@ class TaskCreateView(DiaryScopeMixin, View):
                 form.add_error(None, 'The task or template changed. Check the task name and open a new form.')
             except ObjectDoesNotExist:
                 form.add_error(None, 'The selected diary, milestone, or template is no longer available.')
+            else:
+                return self.success_response(result=DiaryViewResult(operation='task_created', diary_key=key,
+                    entry_key=spec.entry_key, template_name=template_data['name'] if template_spec is not None else None,
+                    template_version_key=saved_version_key))
         return render(self.request, self.template_name, context, status=400)
 
 
 # DV1-023, DV1-032, DV1-035, DV1-036, DV1-037, DV1-038: Task details, due-date edits, and completion.
-class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
+class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
     """Show an accessible task and apply date edits or completion within trusted host scope."""
 
     access_roles = ('manager', 'user')
     http_method_names = ['get', 'post', 'head', 'options']
     template_name = 'Diary/task_detail.html'
+    entry_key = None
 
-    def get(self, request, entry_key, *args, **kwargs):
+    def get(self, request, entry_key=None, *args, **kwargs):
         """Show task details and open predecessors without changing records."""
         return self.respond(entry_key)
 
-    def post(self, request, entry_key, *args, **kwargs):
+    def post(self, request, entry_key=None, *args, **kwargs):
         """Apply one explicit task action after validating its submitted state."""
         return self.respond(entry_key, submitted=True)
+
+    def selected_entry_key(self, route_key):
+        values = [value for value in (route_key, self.entry_key, self.view_context.get('entry_key'),
+                                      self.posted_target.get('entry_key')) if value is not None]
+        keys = {UUID(str(value)) for value in values}
+        if len(keys) != 1:
+            raise ValueError('Supply one task selection.')
+        if self.request.method == 'POST' and route_key is None and not self.posted_target.get('entry_key'):
+            raise ValueError('Reload the task before submitting its form.')
+        return next(iter(keys))
 
     def respond(self, entry_key, *, submitted=False):
         """Resolve task scope, apply an action, and retain input when a save fails."""
         context = {**self.view_context, 'task': None, 'detail_error': ''}
         try:
+            entry_key = self.selected_entry_key(entry_key)
             key = self.selected_key()
         except (ValueError, TypeError, AttributeError):
-            context['detail_error'] = 'Supply one valid diary key.'
+            context['detail_error'] = 'Select one valid diary and task. Reload the page before submitting.'
             return render(self.request, self.template_name, context, status=400)
 
         # A task key cannot select a diary or expand the host's permitted scope.
@@ -603,6 +636,8 @@ class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         # Human-readable source labels explain provenance without exposing model field names.
         task['source_label'] = 'Template task' if task['source'] == 'template' else 'Diary addition'
         context['task'] = task
+        context.update(diary_target=form_target(self.request, diary_key=key, entry_key=entry_key),
+                       diary_form_url=self.request.path)
         initial = {'revision': task['revision'], 'due_date': task['date'], 'blocker_token': task['blocker_token']}
 
         # Only the requested action binds a form, so unrelated required fields cannot prevent completion.
@@ -633,6 +668,7 @@ class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         if action not in {'save_date', 'save_owner', 'complete', 'close_all'} or len(self.request.POST.getlist('action')) != 1:
             context['detail_error'] = 'Select one supported task action.'
             return render(self.request, self.template_name, context, status=400)
+        result = None
         try:
 
             # DV1-040: Ownership changes recheck manager scope, template provenance, and current eligibility in the API.
@@ -644,7 +680,7 @@ class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
                         owner_kind=recovery_form.cleaned_data['owner_kind'],
                         person_ref=recovery_form.cleaned_data['person_ref'], role_ref=recovery_form.cleaned_data['role_ref'],
                         directory=DjangoOwnerDirectory())
-                    return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+                    result = DiaryViewResult(operation='task_owner_updated', diary_key=key, entry_key=entry_key)
 
             # Date changes have separate ownership permissions from task completion.
             elif action == 'save_date':
@@ -653,19 +689,23 @@ class TaskDetailView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
                 if due_form.is_valid():
                     diary.update_due_date(entry_key=entry_key, due_date=due_form.cleaned_data['due_date'],
                                           expected_revision=due_form.cleaned_data['revision'])
-                    return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+                    result = DiaryViewResult(operation='task_date_updated', diary_key=key, entry_key=entry_key)
 
             # Completion always rechecks the live predecessor chain inside the database transaction.
             elif completion_form.is_valid():
                 diary.complete(entry_key=entry_key, expected_revision=completion_form.cleaned_data['revision'],
                                close_all=action == 'close_all',
                                expected_blockers=completion_form.cleaned_data['blocker_token'])
-                return redirect(self.request.path + '?' + urlencode({'diary_key': key}))
+                result = DiaryViewResult(operation='task_chain_completed' if action == 'close_all' else 'task_completed',
+                                         diary_key=key, entry_key=entry_key)
         except ValidationError as error:
             context['detail_error'] = ' '.join(error.messages)
         except ObjectDoesNotExist:
             context['detail_error'] = 'The selected task is unavailable.'
             return render(self.request, self.template_name, context, status=404)
+        else:
+            if result is not None:
+                return self.success_response(result=result)
         return render(self.request, self.template_name, context, status=400)
 
     def owner_label(self, task, labels):
@@ -708,9 +748,9 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
             return render(request, self.template_name, context, status=404)
         context.update(diary_data=data, tasks=self.get_tasks(data, filters.cleaned_data))
         if data['template_version_key'] is None and not data['closed']:
+            name = self.view_context.get('template_apply_url_name')
             context['template_apply_url'] = self.view_context.get('template_apply_url') or (
-                reverse(self.view_context.get('template_apply_url_name', 'Diary:template-apply'))
-                + '?' + urlencode({'diary_key': data['key']}))
+                reverse(name) if name else reverse('Diary:diary-template-apply', kwargs={'diary_key': data['key']}))
         return render(request, self.template_name, context)
 
     def get_tasks(self, data, filters):

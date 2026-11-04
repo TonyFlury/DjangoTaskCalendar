@@ -106,7 +106,7 @@ The personal, manager, task creation, and template list partials include their s
 For a low-level `task_list.html` or `manager_tasks.html` include, add `Diary/partials/selection_forms.html` once outside other forms.
 
 Use `form_fields` for additional host state only.
-Do not use reserved Diary field names or `csrfmiddlewaretoken` as host field names.
+Do not use reserved Diary field names, `diary_target`, or `csrfmiddlewaretoken` as host field names.
 Field names and values remain HTML-escaped.
 The package does not interpret these additional values.
 Task recovery, date changes, completion, task creation, and template saves all retain these fields.
@@ -133,8 +133,8 @@ Language review limit: The full ASD-STE100 Issue 9 dictionary review is not comp
 
 `TemplateEditorView` owns all template form and task formset processing.
 Hosts must delegate POST requests to that view.
-Override `get_success_url(template_name=...)` to change navigation after a successful save.
-The hook receives the saved template name. It can retain the host selection and return a fixed URL.
+Override `get_success_url(*, result)` to change navigation after a successful save.
+The hook receives a `DiaryViewResult`; `result.template_name` identifies the saved template. Use `on_success(*, result)` to retain host selection and `get_success_url(*, result)` to return a fixed URL.
 The package calls the hook after it saves the approved version.
 The default hook returns the existing named template editor URL.
 The hook does not receive forms or change template validation.
@@ -188,7 +188,159 @@ For managers, register `TemplateApplyView` with the same trusted scope policy as
 selector. Configure the manager context's `template_apply_url` (full URL) or
 `template_apply_url_name` (route name) for host navigation. The application page
 can extend `diary_base_template`, or a host template can include
-`Diary/partials/template_apply.html` with its prepared context. The view uses GET
-to choose an approved version and a CSRF-protected POST to apply it; it requires
+`Diary/partials/template_apply.html` with its prepared context. The view uses CSRF-protected POST requests
+to choose an approved version and apply it; it requires
 all declared dates and preserves personal work. Override
-`get_success_url(diary_key=...)` to return a fixed host page after success.
+`get_success_url(*, result)` to return a fixed host page after success.
+
+## Consistent write-view API
+
+`TemplateCreateView`, `TemplateEditorView`, `TemplateApplyView`, `TaskCreateView`,
+and `TaskDetailView` share the public `DiarySuccessMixin` contract from
+`Diary.view_api`. Read pages and write pages support cooperative
+`get_context_data(**kwargs)`. No host override of `dispatch`, `get`, or `post` is
+needed to supply trusted context or receive save results.
+
+| Hook | Purpose |
+| --- | --- |
+| `get_context_data(**kwargs)` | Call `super()` and add host context and trusted selections. |
+| `on_success(*, result)` | Record a successful Diary operation in the host. |
+| `get_success_url(*, result)` | Return the redirect destination; default honors `success_url`. |
+| `success_response(*, result)` | Return the complete response; default calls `on_success` once, then redirects to `get_success_url`. |
+
+`success_url` accepts a URL path or a named URL that needs no arguments. For
+variable destinations, override `get_success_url`. Keep selection updates in
+`on_success`, so computing a destination has no side effects.
+
+```python
+from Diary.views import TaskCreateView, TaskDetailView
+
+class HostDiaryPolicy:
+    success_url = '/work/diary/'
+
+    def get_diary_keys(self):
+        return permitted_diary_keys(self.request.user)  # Host authorization policy.
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        selection = current_host_selection(self.request)  # Trusted host records/state.
+        context['diary_key'] = selection.diary_key
+        if selection.entry_key is not None:
+            context['entry_key'] = selection.entry_key
+        context['diary_base_template'] = 'host/diary_base.html'
+        return context
+
+    def on_success(self, *, result):
+        remember_host_selection(self.request, result)  # Host chooses storage/lifetime.
+        super().on_success(result=result)
+
+class HostTaskCreate(HostDiaryPolicy, TaskCreateView):
+    pass
+
+class HostTaskDetail(HostDiaryPolicy, TaskDetailView):
+    pass
+```
+
+The three example functions are host code. Register these subclasses at the host's
+fixed creation/detail paths. `TaskDetailView` accepts `entry_key` from a path
+argument, view attribute, or trusted context. Diary keys use the normal trusted
+context/path/attribute selectors. Conflicting selections return HTTP 400. Selecting
+a record never grants access: current membership, permitted diary keys, ownership,
+and concurrency checks still apply. Register all destination views with the host's
+scope policy too; a redirect does not carry authorization forward.
+
+### Save results
+
+`Diary.view_api.DiaryViewResult` is an immutable dataclass. Its fields are
+`operation`, `diary_key`, `entry_key`, `template_name`, and `template_version_key`.
+Keys are `uuid.UUID` objects; identifiers unrelated to the operation are `None`.
+
+| Operation | Identifiers supplied |
+| --- | --- |
+| `template_created`, `template_saved` | Template name and newly saved version key. |
+| `template_applied` | Diary key, template name, and applied version key. |
+| `task_created` | Diary and task entry keys. If also saved to a template, template name and newly saved version key. |
+| `task_date_updated`, `task_owner_updated` | Diary and task entry keys. |
+| `task_completed`, `task_chain_completed` | Diary and selected task entry keys. |
+
+For chain completion, `entry_key` identifies the selected task, not a list of all
+completed predecessors. Query the callable API if the host needs the resulting
+state. A result describes a successful operation, including a successful idempotent
+retry; it is not an exactly-once event delivery mechanism.
+
+Hooks run after Diary's save block succeeds, before the response is returned. GET,
+chooser/refresh actions, invalid forms, denied access, and failed saves do not call
+them. Host hook exceptions propagate rather than being presented as Diary form
+validation failures. The Diary save may already have succeeded at that point.
+When a host uses an outer transaction or `ATOMIC_REQUESTS`, final commit still
+belongs to that outer transaction. Schedule external side effects with
+`transaction.on_commit()` and handle retries appropriately.
+
+To return JSON instead of redirecting:
+
+```python
+from dataclasses import asdict
+from django.http import JsonResponse
+
+class HostTaskJSON(HostDiaryPolicy, TaskCreateView):
+    def success_response(self, *, result):
+        self.on_success(result=result)
+        return JsonResponse(asdict(result))
+```
+
+An overridden `success_response` owns notification and response construction;
+call `on_success` exactly once if that behavior is required. This changes successful
+responses only; ordinary validation errors still render the package form.
+
+### Clean URLs and safe form targets
+
+Successful package redirects contain no result query parameters. Defaults use
+named paths scoped by diary/task UUIDs (`diary-personal`, `diary-manager`,
+`diary-task-create`, `diary-task-detail`, and `diary-template-apply` in the `Diary`
+namespace). Template saves use the named template editor path. Hosts wanting
+identifier-free URLs should set `success_url` or override `get_success_url`.
+The package does not persist the host's selected diary/task/template in a session.
+
+Package write forms post to the current path without its query string. They carry
+`diary_target`, a signed, user-bound hidden field containing the displayed target
+identifiers. The signature grants no permission. Diary rechecks scope and current
+permissions on submission and rejects mismatches with current host selection.
+For fixed-path task detail POSTs, this token is mandatory; path-selected legacy
+forms remain supported. This protects against edits crossing targets when two
+browser tabs share host selection state. CSRF and revision/blocker checks remain
+required. Preserve `diary_target` when replacing a package form; the shared
+`Diary/partials/form_fields.html` includes it automatically. Do not override it
+through `diary_ui.form_fields`. Its styling class is `diary-form-target`.
+
+Legacy GET selectors remain accepted, and read-only search/filter controls still
+use query parameters. Hosts can enable POST selection navigation with `diary_ui`
+as described above. Write results are passed directly to hooks, so wrappers need
+no redirect inspection or query-parameter interception.
+
+The default `on_success` adds a standard Django **Task added.** message after task
+creation. For that notice, enable `django.contrib.messages`, its middleware and
+template context processor, and render messages in the host shell. The package
+base offers a `diary_messages` block. Message storage is optional; lack of message
+middleware does not prevent saves. Hosts may override notification handling. This
+uses Django's configured message storage, independently of host selection state.
+
+### Updating an existing wrapper
+
+Replace `get_success_url(template_name=...)` and
+`get_success_url(diary_key=...)` overrides with the shared keyword-only
+`get_success_url(*, result)` signature. Read identifiers from `result` and move
+selection updates into `on_success`. Remove code that extracts `added` or
+`diary_key` from a redirect's query string. The `added` GET flag no longer produces
+a success notice. Configure the new scoped destinations with your authorization
+policy, or explicitly return your existing fixed host URLs. No database migration
+is required for this interface change.
+
+Verification: `Diary/tests/test_view_host_api.py`, plus the template editor, task
+creation/editing, optional-template, and host embedding suites.
+
+Explicit `task_detail_url_name` routes receive `entry_key` as their only URL
+argument and must supply the diary through trusted host context. Explicit
+`template_apply_url_name` routes receive no URL arguments and likewise supply
+trusted diary selection themselves. Diary does not append selectors to these
+host destinations. Use `selection_url` for POST-based task selection when the
+host also wants to hide task identifiers during navigation.

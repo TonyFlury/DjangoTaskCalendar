@@ -24,6 +24,9 @@ from Diary.views import DjangoOwnerDirectory, TaskCreateView
 class HostTaskCreateView(TaskCreateView):
     """Supply trusted diary scope independently of browser input."""
 
+    def get_success_url(self, *, result):
+        return reverse('host-create-selected', kwargs={'diary_key': result.diary_key})
+
     def get_diary_keys(self):
         """Return the test host's current permitted diary keys."""
         return settings.CREATION_TEST_KEYS
@@ -35,6 +38,7 @@ def handler403(request, exception):
 
 
 urlpatterns = [path('host-create/', HostTaskCreateView.as_view(), name='host-create'),
+               path('host-create/<uuid:diary_key>/', HostTaskCreateView.as_view(), name='host-create-selected'),
                path('diary/', include('Diary.urls'))]
 
 

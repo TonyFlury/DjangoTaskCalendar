@@ -2597,7 +2597,7 @@ Verification: `Diary/tests/test_host_embedding.py`: `HostEmbeddingTests.test_man
 
 ## Host template save navigation
 
-`TemplateEditorView.get_success_url(template_name=...)` lets the host change the destination after a successful template save.
+`TemplateEditorView.get_success_url(*, result)` lets the host change the destination after a successful template save.
 Override this hook to retain a host selection or return a fixed URL.
 Delegate template form construction, validation, task rows, and version saves to the package POST handler.
 See [Host page integration](HOST_EMBEDDING.md#template-save-navigation).
@@ -2669,7 +2669,7 @@ The manager page offers **Apply template** for open, template-free diaries. The
 `TemplateApplyView` / `Diary:template-apply` route uses the normal `DiaryScopeMixin`
 trusted context and current group checks. Hosts must register it with their own
 permitted scope; default package routes grant no diary access. Override
-`get_success_url(diary_key=...)` for host navigation. Supply `template_apply_url` or
+`get_success_url(*, result)` for host navigation. Supply `template_apply_url` or
 `template_apply_url_name` to `ManagerDiaryView` to link to a host route. The complete
 page is `Diary/template_apply.html`; its reusable fragment is
 `Diary/partials/template_apply.html`, compatible with `diary_base_template` and
@@ -2678,3 +2678,17 @@ page is `Diary/template_apply.html`; its reusable fragment is
 See the [manager instructions](USER_GUIDE.md#apply-a-template-to-a-diary) and
 [operator commands](MANAGEMENT_COMMANDS.md#diary-instances). Verification is in
 `Diary/tests/test_optional_template.py`, including concurrent identical applications.
+
+## Shared host response hooks
+
+All Diary write views now expose `on_success(*, result)`,
+`get_success_url(*, result)`, and `success_response(*, result)`. The immutable
+`Diary.view_api.DiaryViewResult` supplies saved identifiers directly to the host.
+Default redirects are query-free, and signed hidden form targets support fixed
+host URLs without implicit session selection. Existing success-URL overrides
+must adopt the new signature. See the [host API and migration guide](HOST_EMBEDDING.md#consistent-write-view-api).
+
+The shared hidden target field uses `diary-form-target`. The package message
+container uses `diary-notice` and reuses `diary-create-success` for task creation.
+These classes add no CSS variables. Hosts rendering fragments should display
+Django messages in their shell or handle `on_success` themselves.

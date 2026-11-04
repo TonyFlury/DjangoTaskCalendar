@@ -15,6 +15,7 @@
 </head>
 <body class="diary-page">
     <main class="diary-shell" aria-label="Diary">
+        {% block diary_messages %}{% for message in messages %}<p class="diary diary-notice{% if 'diary-task-created' in message.tags %} diary-create-success{% endif %}" role="status">{{ message }}</p>{% endfor %}{% endblock %}
         {% block diary_content %}{% endblock %}
     </main>
     {% block diary_scripts %}{% endblock %}
