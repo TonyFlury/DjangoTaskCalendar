@@ -15,7 +15,7 @@ from django.utils.crypto import salted_hmac
 from .choices import DateKind, OwnerKind, VersionStatus
 from .entry_mapping import EntryMapper, validate_entry_owner
 from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
-                     EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion)
+                     EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion, TemplateMilestone)
 from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
 from .roles import validate_task_owner_roles as _validate_task_owner_roles
@@ -512,23 +512,24 @@ class DiaryTemplate(_BoundObject):
         template = CalendarTemplate.objects.get(pk=self.key)
         version = template.versions.order_by('-number').first()
         result = {'key': template.pk, 'name': template.name, 'description': template.description,
-                  'version_key': None, 'number': 0, 'status': '', 'entries': ()}
+                  'version_key': None, 'number': 0, 'status': '', 'entries': (), 'milestones': ()}
 
         # Empty templates must open for editing without creating a draft during a read.
         if version is not None:
             data = DiaryTemplateVersion(actor=self.actor, key=version.pk).read()
             result.update(version_key=data['key'], number=data['number'], status=data['status'],
-                          entries=data['entries'])
+                          entries=data['entries'], milestones=data['milestones'])
         return result
 
     # DV1-026: Versioned template save and approval.
     @transaction.atomic
     def save_version(self, *, entries, predecessors, expected_version_key, description=None,
-                     milestone_definitions=None, directory=None):
+                     milestone_names=None, directory=None):
         """Save and approve a complete new version after checking its predecessor graph.
         Preserve supplied entry keys and existing diaries. Lock the template against concurrent saves.
         Reject a stale expected_version_key with ValidationError. None expects an unversioned template.
-        Define new milestones from name-to-label values without changing existing milestone labels.
+        Declare existing catalogue milestones; never create identifiers from task input.
+        Omitted milestone_names preserve the latest version declarations, or use none for the first version.
         """
         _require(self.actor, 'edit')
         template = CalendarTemplate.objects.select_for_update().get(pk=self.key)
@@ -545,12 +546,12 @@ class DiaryTemplate(_BoundObject):
             raise ValidationError('This template changed. Reopen it before saving your changes.')
         specs = tuple(entries)
         graph = validate_template_graph((spec.entry_key for spec in specs), predecessors)
-        for name, label in (milestone_definitions or {}).items():
-            Milestone.objects.get_or_create(name=name, defaults={'label': label})
+        if milestone_names is None:
+            milestone_names = tuple(latest.milestones.values_list('name', flat=True)) if latest else ()
 
         # A new version follows the highest existing number, including any draft.
         number = latest.number + 1 if latest is not None else 1
-        version = self.create_version(number=number)
+        version = self.create_version(number=number, milestone_names=milestone_names)
         for spec in specs:
             version.add_entry(spec=spec, directory=directory)
         for key, values in graph.items():
@@ -608,9 +609,10 @@ class DiaryTemplate(_BoundObject):
         template = CalendarTemplate.objects.create(name=name, description=description)
         return cls(actor=actor, key=template.pk)
 
-    def create_version(self, *, number):
+    def create_version(self, *, number, milestone_names=()):
         """Create a numbered draft for this template and return its version reference."""
-        return DiaryTemplateVersion.create(actor=self.actor, template_key=self.key, number=number)
+        return DiaryTemplateVersion.create(actor=self.actor, template_key=self.key, number=number,
+                                           milestone_names=milestone_names)
 
     def version(self, *, number):
         """Return this template version by number after checking manager access."""
@@ -665,22 +667,45 @@ class DiaryTemplateVersion(_DependencyAPI):
         return cls(actor=actor, key=_template_version(name=name).pk)
 
     @classmethod
-    def create(cls, *, actor, template_key, number):
+    @transaction.atomic
+    def create(cls, *, actor, template_key, number, milestone_names=()):
         """Create a numbered draft version and return its reference.
         Record the supplied actor as its creator.
         """
         _require(actor, 'edit')
         version = TemplateVersion.objects.create(template_id=template_key, number=number,
                                                  created_by_ref=actor.reference)
-        return cls(actor=actor, key=version.pk)
+        result = cls(actor=actor, key=version.pk)
+        result.set_milestones(names=milestone_names)
+        return result
+
+    @transaction.atomic
+    def set_milestones(self, *, names):
+        """Replace a draft version's required milestones using existing catalogue names."""
+        _require(self.actor, 'edit')
+        version = TemplateVersion.objects.select_for_update().get(pk=self.key)
+        if version.status != VersionStatus.DRAFT:
+            raise ValidationError('Milestones in an approved template version cannot change.')
+        if not isinstance(names, (list, tuple, set, frozenset)) or any(not isinstance(name, str) for name in names):
+            raise ValidationError('Supply a collection of milestone names.')
+        names = set(names)
+        milestones = list(Milestone.objects.filter(name__in=names))
+        if {item.name for item in milestones} != names:
+            raise ValidationError('Select recognised catalogue milestones.')
+        if version.entries.exclude(milestone__isnull=True).exclude(milestone__name__in=names).exists():
+            raise ValidationError('A removed milestone is still used by template tasks.')
+        version.milestone_declarations.exclude(milestone__name__in=names).delete()
+        for milestone in milestones:
+            TemplateMilestone.objects.get_or_create(version=version, milestone=milestone)
+        return self
 
     # DV1-002: Named milestone API.
     def required_milestones(self):
-        """Enumerate distinct milestone definitions used by this version only."""
+        """Return all declared required milestones, including those unused by tasks."""
         actor, template_version_key = self.actor, self.key
         _require(actor, 'view_template')
         version = _template_version(template_version_key)
-        return tuple(Milestone.objects.filter(pk__in=version.entries.values('milestone_id'))
+        return tuple(version.milestones.all()
                      .order_by('name').values('id', 'name', 'label').distinct())
 
     # DV1-005: Ownership data and assignment checks.
@@ -717,6 +742,9 @@ class DiaryTemplateVersion(_DependencyAPI):
         _require(actor, 'edit')
         version = TemplateVersion.objects.select_for_update().get(pk=template_version_key)
 
+        if version.entries.exclude(milestone__isnull=True).exclude(
+                milestone_id__in=version.milestones.values('pk')).exists():
+            raise ValidationError('Every task milestone must be declared by its template version.')
         # Repeated approval preserves the original actor and approval time.
         if version.status != VersionStatus.APPROVED:
             version.status = VersionStatus.APPROVED
@@ -734,6 +762,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         # Only milestone-based rules have a milestone name to include in the result.
         return {'key': version.pk, 'template_key': version.template_id, 'number': version.number,
                 'status': version.status,
+                'milestones': self.required_milestones(),
                 'entries': tuple({**EntryMapper.snapshot_fields(entry),
                                   'milestone_name': entry.milestone.name if entry.milestone_id else None,
                                   'predecessors': tuple(entry.predecessors.values_list('entry_key', flat=True))}
@@ -784,6 +813,18 @@ class DiaryInstance(_DependencyAPI):
             event_ref = f'diary:{uuid4()}'
         selected = _template_version(key=template_version_key, name=template_name)
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
+
+        required = set(version.milestones.values_list('name', flat=True))
+        if not isinstance(milestone_dates, dict):
+            raise ValidationError('Supply milestone dates by name.')
+        missing = required - milestone_dates.keys()
+        if missing:
+            raise ValidationError('Missing required milestone dates: ' + ', '.join(sorted(missing)) + '.')
+        unknown = milestone_dates.keys() - set(Milestone.objects.values_list('name', flat=True))
+        if unknown:
+            raise ValidationError('Unrecognised milestone dates: ' + ', '.join(sorted(unknown)) + '.')
+        if any(type(value) is not date for value in milestone_dates.values()):
+            raise ValidationError('Every supplied milestone value must be a date.')
 
         # All versions of one template share this lock for repeated calendar creation.
         CalendarTemplate.objects.select_for_update().get(pk=version.template_id)
@@ -935,6 +976,9 @@ class DiaryInstance(_DependencyAPI):
         # Managers can select another owner after the normal ownership checks.
         else:
             validate_entry_owner(spec, directory)
+        if spec.milestone_name and not calendar.milestone_dates.filter(
+                milestone__name=spec.milestone_name).exists():
+            raise ValidationError('Select a milestone available in this diary.')
         existing = calendar.entries.filter(entry_key=spec.entry_key).first()
 
         # Repeated entry requests reuse their stable identity within this diary.

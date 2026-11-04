@@ -86,7 +86,7 @@ class OwnershipRecoveryTests(TaskCreationFixtures, TestCase):
             predecessors={self.first.entry_key: (), self.second.entry_key: (self.first.entry_key,)},
             expected_version_key=self.version.key, directory=directory)
         unscoped = replace(self.actor, calendar_keys=frozenset())
-        diary = DiaryAPI(actor=unscoped).create_diary(name='Recovery snapshot', milestone_dates={},
+        diary = DiaryAPI(actor=unscoped).create_diary(name='Recovery snapshot', milestone_dates={'target': date(2027, 6, 20)},
                                                     template_version_key=version.key)
         scoped = replace(self.actor, calendar_keys=frozenset({diary.key}))
         diary = DiaryAPI(actor=scoped).diary(key=diary.key)

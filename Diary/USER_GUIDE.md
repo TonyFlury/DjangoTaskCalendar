@@ -160,8 +160,8 @@ Only the fields for the selected rule are necessary.
 | Date rule | Fields to complete | Result |
 | --- | --- | --- |
 | One-time date | **One-time date**. | One exact due date for this diary task. |
-| Milestone date | **Milestone name**. | The same date as the selected milestone. |
-| Days from a milestone | **Milestone name** and **Day offset**. | A calculated date before or after the milestone. |
+| Milestone date | **Milestone**. | The same date as the selected milestone. |
+| Days from a milestone | **Milestone** and **Day offset**. | A calculated date before or after the milestone. |
 | Annual date | **Month**, **Day of month**, and **Year offset** when necessary. | One date calculated from the diary's creation date. |
 
 A negative **Day offset** means days before the milestone.
@@ -169,10 +169,10 @@ A positive value means days after it.
 Zero means the milestone date itself.
 For example, minus seven means seven days before the milestone.
 
-The task creation form uses existing milestones.
-A missing milestone date can leave the task marked **Date not set**.
-A manager can define a new milestone name in the template editor.
-That does not set the milestone date in an existing diary.
+The task creation form offers milestones available in the selected diary.
+Your website supplies their dates when it creates the diary.
+New diaries require dates for every milestone declared by their template.
+Older diaries may still have missing dates; ask your site administrator for help.
 
 ### Annual dates
 
@@ -332,7 +332,7 @@ There is no separate approval step.
 2. Select **Create template**.
 3. Enter **Template name**.
 4. Enter **Description** if necessary.
-5. Select **Add task** to add a task row.
+5. Select **Required milestones** for the template, then select **Add task** to add a task row.
 6. Complete the task fields in that row.
 7. Add more task rows as required.
 8. Select **Save template**.
@@ -363,10 +363,17 @@ Template tasks use reusable date rules.
 They do not use one-time dates.
 The [date-rule explanation](#select-a-date-rule) also applies to their milestone and annual fields.
 
-**Milestone name** can select an existing milestone or define a new name.
-**New milestone label** gives a readable label for a new name.
-A milestone name uses letters, digits, underscores, or hyphens, without spaces.
-Existing milestone labels stay unchanged.
+Select **Required milestones** near the template name before editing task dates.
+The list contains milestones configured by your site administrator.
+Every selected milestone requires a date from your website when it creates a diary,
+even if no task uses that milestone. Keep declarations that the template needs.
+
+In each task, select **Milestone** from the template's declared requirements.
+You cannot type a new milestone identifier or change its label in a task row.
+Ask your site administrator if the required milestone is unavailable.
+With JavaScript disabled, select requirements and use **Update milestone choices** to refresh task choices.
+To remove a requirement, first change or remove tasks that use it.
+Saving changes creates a new version; previous versions and diaries keep their requirements.
 
 **Predecessors** identifies tasks that must finish first.
 A predecessor must belong to the same template version.

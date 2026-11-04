@@ -97,6 +97,7 @@ class TemplateVersion(ValidatedModel):
     created_at = models.DateTimeField(auto_now_add=True)
     approved_by_ref = models.CharField(max_length=200, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
+    milestones = models.ManyToManyField(Milestone, through='TemplateMilestone', related_name='template_versions')
 
     class Meta:
         ordering = ('template', 'number')
@@ -262,6 +263,34 @@ class EntryFields(ValidatedModel):
                             annual_due_date=getattr(self, 'annual_due_date', None))
 
 
+class TemplateMilestone(ValidatedModel):
+    """Declare a required date input for a particular template version."""
+
+    version = models.ForeignKey(TemplateVersion, on_delete=models.CASCADE, related_name='milestone_declarations')
+    milestone = models.ForeignKey(Milestone, on_delete=models.PROTECT, related_name='+')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=('version', 'milestone'), name='diary_template_milestone_unique')]
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)
+            if version.status != VersionStatus.DRAFT:
+                raise ValidationError('Milestones in an approved template version cannot change.')
+            if not self._state.adding:
+                raise ValidationError('Delete a milestone declaration before replacing it.')
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        with transaction.atomic():
+            version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)
+            if version.status != VersionStatus.DRAFT:
+                raise ValidationError('Milestones in an approved template version cannot change.')
+            if version.entries.filter(milestone_id=self.milestone_id).exists():
+                raise ValidationError('This milestone is still used by template tasks.')
+            return super().delete(*args, **kwargs)
+
+
 class TemplateEntry(EntryFields):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     version = models.ForeignKey(TemplateVersion, on_delete=models.PROTECT, related_name='entries')
@@ -278,6 +307,12 @@ class TemplateEntry(EntryFields):
         ]
 
     # DV1-026: Versioned template save and approval.
+    def clean(self):
+        super().clean()
+        if self.version_id and self.milestone_id and not TemplateMilestone.objects.filter(
+                version_id=self.version_id, milestone_id=self.milestone_id).exists():
+            raise ValidationError({'milestone': 'Select a milestone declared by this template version.'})
+
     def save(self, *args, **kwargs):
         with transaction.atomic():
             version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)

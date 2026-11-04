@@ -15,6 +15,9 @@
         <div class="diary-card diary-template-metadata">
             {% include 'Diary/partials/template_field.html' with field=header_form.name %}
             {% include 'Diary/partials/template_field.html' with field=header_form.description %}
+            {% include 'Diary/partials/template_field.html' with field=header_form.milestone_names %}
+            <p class="diary-template-guidance">Milestones are configured by your site administrator. Select requirements before choosing task milestones.</p>
+            <button class="diary-button diary-template-refresh-milestones" type="submit" name="action" value="refresh_milestones" formnovalidate>Update milestone choices</button>
         </div>
         {{ task_forms.management_form }}
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
@@ -29,7 +32,8 @@
             <button class="diary-button diary-button-primary diary-template-save" type="submit" name="action" value="save">Save template</button>
         </div>
     </form>
-    <datalist class="diary-template-milestone-options" id="diary-milestone-names">{% for milestone in milestones %}<option class="diary-template-milestone-option" value="{{ milestone.name }}">{{ milestone.label }}</option>{% endfor %}</datalist>
+
     <template class="diary-template-empty-task">{% include 'Diary/partials/template_task.html' with form=task_forms.empty_form %}</template>
+    {{ milestone_options|json_script:'diary-template-milestones' }}
     {{ empty_owner_roles|json_script:'diary-template-empty-roles' }}
 </section>

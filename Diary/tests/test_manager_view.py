@@ -73,6 +73,7 @@ class ManagerDiaryTests(TestCase):
         self.version = self.api.create_template(name='Manager template').create_version(number=1)
         self.version.add_entry(spec=EntrySpec('Template task', DateKind.ANNUAL, month=12, day=1))
         self.api.define_milestones(definitions={'manager_late': 'Late task', 'manager_future': 'Future task'})
+        self.version.set_milestones(names=('manager_late', 'manager_future'))
         late_spec = EntrySpec('Late ready', DateKind.SOURCE, milestone_name='manager_late')
         future_spec = EntrySpec('Future ready', DateKind.SOURCE, milestone_name='manager_future')
         self.version.add_entry(spec=late_spec)
@@ -81,7 +82,7 @@ class ManagerDiaryTests(TestCase):
         dates = {'manager_late': date(2027, 6, 11), 'manager_future': date(2027, 6, 20)}
         self.diary = self.api.create_diary(name='<Selected diary>', milestone_dates=dates, event_ref='manager:1',
                                            template_version_key=self.version.key)
-        self.other = self.api.create_diary(name='Other diary', milestone_dates={}, event_ref='manager:2',
+        self.other = self.api.create_diary(name='Other diary', milestone_dates=dates, event_ref='manager:2',
                                            template_version_key=self.version.key)
         self.actor = replace(self.actor, calendar_keys=frozenset({self.diary.key}))
         self.bound = DiaryAPI(actor=self.actor).diary(key=self.diary.key)
@@ -113,8 +114,8 @@ class ManagerDiaryTests(TestCase):
         # An unset source date provides a valid undated task without an invalid one-time rule.
         if due is None:
             self.api.define_milestones(definitions={'unset': 'Unset date'})
-            kind = DateKind.SOURCE
-            values = {'milestone_name': 'unset'}
+            kind = DateKind.ANNUAL
+            values = {'month': 2, 'day': 29, 'year_offset': 1}
         return self.bound.add_entry(spec=EntrySpec(name, kind, **values))
 
     def page(self, **params):

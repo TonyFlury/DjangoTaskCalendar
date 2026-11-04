@@ -35,12 +35,16 @@ class TemplateForm(StyledForm):
 
     name = forms.CharField(max_length=160, label='Template name')
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
+    milestone_names = forms.MultipleChoiceField(required=False, label='Required milestones',
+        help_text='The host must supply a date for every selected milestone, even if no task uses it.',
+        widget=forms.CheckboxSelectMultiple)
     expected_version_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
     def __init__(self, *args, editing=False, **kwargs):
         """Keep an existing template name fixed while accepting description changes."""
         super().__init__(*args, **kwargs)
         self.fields['name'].disabled = editing
+        self.fields['milestone_names'].choices = list(Milestone.objects.order_by('name').values_list('name', 'label'))
 
 
 # DV1-052: Read-only manager filters for one diary.
@@ -85,11 +89,8 @@ class TemplateTaskForm(StyledForm):
     date_kind = forms.ChoiceField(choices=[(DateKind.SOURCE, 'Milestone date'),
                                           (DateKind.RELATIVE, 'Days from a milestone'),
                                           (DateKind.ANNUAL, 'Annual date')], label='Date rule')
-    milestone_name = forms.SlugField(max_length=80, required=False, label='Milestone name',
-                                    help_text='Use a stable name. You can select an existing name or enter a new name.',
-                                    widget=forms.TextInput(attrs={'list': 'diary-milestone-names'}))
-    milestone_label = forms.CharField(max_length=160, required=False, label='New milestone label',
-                                     help_text='Optional. Existing milestone labels stay unchanged.')
+    milestone_name = forms.ChoiceField(required=False, label='Milestone',
+        help_text='Select a milestone declared in Required milestones.', choices=())
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647,
                                    label='Day offset', help_text='Use negative days before the milestone and positive days after it.')
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Month')
@@ -103,9 +104,10 @@ class TemplateTaskForm(StyledForm):
                                              widget=forms.SelectMultiple(attrs={'size': 5}),
                                              help_text='Select tasks that must finish first. Hold Ctrl or Command to select several tasks.')
 
-    def __init__(self, *args, people=(), roles=(), **kwargs):
+    def __init__(self, *args, people=(), roles=(), milestones=(), **kwargs):
         """Use the current configured user model and ownership role choices."""
         super().__init__(*args, **kwargs)
+        self.fields['milestone_name'].choices = [('', 'Select a milestone'), *milestones]
         self.fields['person_ref'].choices = [('', 'Select a person'), *people]
         self.fields['role_ref'].choices = [('', 'Select a group'), *((role, role) for role in roles)]
 
@@ -119,7 +121,7 @@ class TemplateTaskForm(StyledForm):
 
         # Milestone rules require a stable milestone name, rather than a host event date.
         if kind in {DateKind.SOURCE, DateKind.RELATIVE} and not data.get('milestone_name'):
-            self.add_error('milestone_name', 'Enter a milestone name.')
+            self.add_error('milestone_name', 'Select a milestone.')
 
         # Annual dates must be possible in a leap year, including February 29.
         if kind == DateKind.ANNUAL:
@@ -173,10 +175,11 @@ class TemplateTaskFormSet(BaseFormSet):
     # Partial DV1-013: Generic identity and role adapters.
     def __init__(self, *args, **kwargs):
         """Build current person, group, and predecessor choices for all submitted task rows."""
+        milestones = kwargs.pop('milestones', ())
         groups = access_groups()
         users = get_user_model()._default_manager.filter(groups__name__in=groups.values()).distinct()
         people = tuple((f'user:{user.pk}', str(user)) for user in users)
-        kwargs['form_kwargs'] = {'people': people, 'roles': sorted(task_owner_roles())}
+        kwargs['form_kwargs'] = {'people': people, 'roles': sorted(task_owner_roles()), 'milestones': milestones}
         self.max_num = editor_task_limit()
         self.absolute_max = self.max_num + 50
         super().__init__(*args, **kwargs)
@@ -232,21 +235,6 @@ class TemplateTaskFormSet(BaseFormSet):
             {form.cleaned_data['entry_key']: form.cleaned_data['predecessors'] for form in forms_to_save},
         )
         self.specs = tuple(form.entry_spec() for form in forms_to_save)
-        self.milestone_definitions = {}
-        for form in forms_to_save:
-            spec = form.entry_spec()
-
-            # New milestone labels are optional and never replace an existing global label.
-            if spec.milestone_name:
-                label = form.cleaned_data.get('milestone_label')
-
-                # Two tasks cannot define different new labels for the same milestone in one save.
-                if (label and self.milestone_definitions.get(spec.milestone_name)
-                        and self.milestone_definitions[spec.milestone_name] != label):
-                    raise ValidationError('Use the same label for each occurrence of a new milestone name.')
-                self.milestone_definitions[spec.milestone_name] = (
-                    label or self.milestone_definitions.get(spec.milestone_name))
-        self.milestone_definitions = {name: label or name for name, label in self.milestone_definitions.items()}
 
     # DV1-017: Empty-group warnings during template editing.
     @cached_property
@@ -298,9 +286,8 @@ class TaskCreateForm(TemplateTaskForm):
         people = tuple((f'user:{user.pk}', user.get_full_name().strip() or user.get_username()) for user in users)
         super().__init__(*args, people=people, roles=sorted(task_owner_roles()), **kwargs)
         self.fields.pop('predecessors')
-        self.fields.pop('milestone_label')
-        self.fields['milestone_name'].widget = forms.Select(
-            choices=[('', 'Select a milestone'), *Milestone.objects.order_by('name').values_list('name', 'label')])
+        self.fields['milestone_name'].choices = [('', 'Select a milestone'),
+            *Milestone.objects.order_by('name').values_list('name', 'label')]
         self.fields['milestone_name'].help_text = 'Select an existing milestone for a milestone date rule.'
         self.fields['date_kind'].choices = [*self.fields['date_kind'].choices, (DateKind.ONCE, 'One-time date')]
         self.initial.setdefault('date_kind', DateKind.ONCE)

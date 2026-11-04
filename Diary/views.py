@@ -106,13 +106,21 @@ class TemplateEditorView(LoginRequiredMixin, View):
         if self.template is None and not self.creating:
             return render(request, 'Diary/template_list.html', {**(self.extra_context or {}), 'templates': self.api.templates()})
         header = TemplateForm(initial=self.header_initial(), editing=not self.creating)
-        tasks = TaskFormSet(prefix='tasks', initial=list(self.data['entries']))
+        tasks = TaskFormSet(prefix='tasks', initial=list(self.data['entries']),
+                            milestones=self.milestone_choices())
         return self.render_editor(header, tasks)
 
     def header_initial(self):
         """Return metadata and the base version used for stale-save detection."""
         return {'name': self.data['name'], 'description': self.data['description'],
-                'expected_version_key': self.data['version_key']}
+                'expected_version_key': self.data['version_key'],
+                'milestone_names': [item['name'] for item in self.data.get('milestones', ())]}
+
+    def milestone_choices(self):
+        """Offer only catalogue milestones declared in the proposed version."""
+        names = (self.request.POST.getlist('milestone_names') if self.request.method == 'POST'
+                 else [item['name'] for item in self.data.get('milestones', ())])
+        return tuple(Milestone.objects.filter(name__in=names).order_by('name').values_list('name', 'label'))
 
     # DV1-025: Template authoring interface.
     def post(self, request, *args, **kwargs):
@@ -125,6 +133,11 @@ class TemplateEditorView(LoginRequiredMixin, View):
             return HttpResponseBadRequest('Select a template before saving.')
         header = TemplateForm(request.POST, initial=self.header_initial(), editing=not self.creating)
         task_data = request.POST.copy()
+
+        if request.POST.get('action') == 'refresh_milestones':
+            tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']),
+                                milestones=self.milestone_choices())
+            return self.render_editor(header, tasks)
 
         # The server add action also works when JavaScript is unavailable and does not save records.
         if request.POST.get('action') == 'add_task':
@@ -140,9 +153,11 @@ class TemplateEditorView(LoginRequiredMixin, View):
             task_data[f'tasks-{total}-entry_key'] = str(uuid4())
             task_data[f'tasks-{total}-owner_kind'] = 'team'
             task_data[f'tasks-{total}-date_kind'] = 'source'
-            tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']))
+            tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']),
+                                milestones=self.milestone_choices())
             return self.render_editor(header, tasks)
-        tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']))
+        tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']),
+                            milestones=self.milestone_choices())
         header_valid = header.is_valid()
         tasks_valid = tasks.is_valid()
 
@@ -159,7 +174,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
                         entries=tasks.specs, predecessors=tasks.graph,
                         expected_version_key=header.cleaned_data['expected_version_key'],
                         description=header.cleaned_data['description'],
-                        milestone_definitions=tasks.milestone_definitions, directory=DjangoOwnerDirectory(),
+                        milestone_names=header.cleaned_data['milestone_names'], directory=DjangoOwnerDirectory(),
                     )
                 return redirect('Diary:template-edit', template_name=header.cleaned_data['name'])
             except ValidationError as error:
@@ -177,7 +192,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
             'header_form': header, 'task_forms': tasks, 'creating': self.creating,
             'template_data': self.data, 'ownership_warnings': tasks.ownership_warnings(),
             'empty_owner_roles': tasks.empty_roles,
-            'milestones': Milestone.objects.order_by('name'),
+            'milestone_options': list(Milestone.objects.order_by('name').values('name', 'label')),
         }, status=status)
 
 
@@ -421,7 +436,11 @@ class TaskCreateView(DiaryScopeMixin, View):
         # GET initializes an unbound form, while POST keeps the caller's submitted values.
         data = self.request.POST if submitted else None
         form = TaskCreateForm(data, actor=self.actor, initial=initial)
+        form.fields['milestone_name'].choices = [('', 'Select a milestone'),
+            *Milestone.objects.filter(calendar_dates__calendar_id=key).order_by('name').values_list('name', 'label')]
         future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False)
+        future.fields['milestone_name'].choices = [('', 'Select a milestone'),
+            *((item['name'], item['label']) for item in template_data['milestones'])] if manager else [('', 'Select a milestone')]
         context.update(creation_form=form, future_form=future, creation_manager=manager)
 
         # Success appears only for a task visible in this selected diary after the redirect.

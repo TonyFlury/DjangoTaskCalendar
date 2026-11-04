@@ -31,6 +31,7 @@ class DiaryCreationValidationTests(TestCase):
         template = self.api.create_template(name='Creation validation')
         self.version = template.create_version(number=1)
         self.api.define_milestones(definitions={'target': 'Target'})
+        self.version.set_milestones(names=('target',))
         self.first = EntrySpec('Prepare', DateKind.RELATIVE, milestone_name='target', day_offset=-2,
                                owner_kind=OwnerKind.ROLE, role_ref='Owners')
         self.second = EntrySpec('Review', DateKind.SOURCE, milestone_name='target',

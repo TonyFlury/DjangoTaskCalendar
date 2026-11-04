@@ -52,7 +52,7 @@ class DiaryCreationDateTests(TestCase):
         self.actor = Actor('manager', frozenset({'Managers'}))
         self.api = DiaryAPI(actor=self.actor)
         self.api.define_milestones(definitions={'target': 'Target date'})
-        self.version = self.api.create_template(name='Creation dates').create_version(number=1)
+        self.version = self.api.create_template(name='Creation dates').create_version(number=1, milestone_names=('target',))
         self.fixed = EntrySpec('Fixed April date', DateKind.ANNUAL, month=4, day=1)
         self.version.add_entry(spec=self.fixed)
         self.version.add_entry(spec=EntrySpec('Milestone task', DateKind.SOURCE, milestone_name='target'))
@@ -61,7 +61,7 @@ class DiaryCreationDateTests(TestCase):
     def create(self, instant, **kwargs):
         """Create a diary at a fixed instant and return its permitted API reference."""
         with patch('django.utils.timezone.now', return_value=instant):
-            created = self.api.create_diary(name='Year-free diary', milestone_dates={},
+            created = self.api.create_diary(name='Year-free diary', milestone_dates={'target': date(2027, 6, 1)},
                                             template_version_key=self.version.key, **kwargs)
         actor = replace(self.actor, calendar_keys=frozenset({created.key}))
         return DiaryAPI(actor=actor).diary(key=created.key)
@@ -104,7 +104,7 @@ class DiaryCreationDateTests(TestCase):
         diary = self.create(datetime(2026, 11, 3, 12, tzinfo=datetime_timezone.utc), event_ref='stable-date')
         original = diary.read()['entries']
         with patch('django.utils.timezone.now', return_value=datetime(2028, 5, 1, tzinfo=datetime_timezone.utc)):
-            retried = self.api.create_diary(name='Year-free diary', milestone_dates={},
+            retried = self.api.create_diary(name='Year-free diary', milestone_dates={'target': date(2027, 6, 1)},
                                             template_version_key=self.version.key, event_ref='stable-date')
             self.assertEqual(retried.key, diary.key)
             self.assertEqual(diary.read()['entries'], original)

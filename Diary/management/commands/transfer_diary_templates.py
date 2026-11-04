@@ -12,7 +12,7 @@ from django.db import IntegrityError, transaction
 from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import OwnerKind, VersionStatus
 from Diary.entry_mapping import EntryMapper, validate_entry_owner
-from Diary.models import CalendarTemplate, Milestone, TemplateDependency, TemplateEntry, TemplateVersion
+from Diary.models import CalendarTemplate, Milestone, TemplateDependency, TemplateEntry, TemplateVersion, TemplateMilestone
 from Diary.roles import access_groups, validate_task_owner_roles
 from Diary.template_graph import validate_template_graph
 from Diary.views import DjangoOwnerDirectory
@@ -84,6 +84,8 @@ class Command(BaseCommand):
                 raise ValueError(f'Template {template.name!r} has no approved version.')
             entries = list(version.entries.order_by('entry_key'))
             records.extend((template, version, *entries))
+            records.extend(version.milestone_declarations.order_by('pk'))
+            milestone_ids.update(version.milestones.values_list('pk', flat=True))
             records.extend(TemplateDependency.objects.filter(entry__version=version).order_by('pk'))
             for entry in entries:
 
@@ -105,10 +107,10 @@ class Command(BaseCommand):
         self.stdout.write('Exported approved Diary templates. Existing files are not overwritten.')
 
     def read_fixture(self, path):
-        """Deserialize only the five template model types without saving any source objects."""
+        """Deserialize only the six template model types without saving any source objects."""
         payload = json.loads(path.read_text(encoding='utf-8'))
         allowed = {model._meta.label_lower: model for model in
-                   (CalendarTemplate, TemplateVersion, TemplateEntry, TemplateDependency, Milestone)}
+                   (CalendarTemplate, TemplateVersion, TemplateEntry, TemplateDependency, Milestone, TemplateMilestone)}
 
         # Reject other application data before Django constructs any objects from the fixture.
         if not isinstance(payload, list) or not payload:
@@ -191,6 +193,7 @@ class Command(BaseCommand):
         if len({item.name for item in milestones.values()}) != len(milestones):
             raise ValueError('Milestone names must be distinct in the fixture.')
         plans, used_versions, used_entries, used_milestones = [], set(), set(), set()
+        used_declarations = set()
         names = set()
         for template in templates.values():
             name = template.name.strip()
@@ -209,6 +212,17 @@ class Command(BaseCommand):
             version = selected[0]
             used_versions.add(version.pk)
             specs, graph, definitions = [], {}, {}
+            declared = set()
+            for declaration in objects[TemplateMilestone].values():
+                if declaration.version_id != version.pk:
+                    continue
+                if declaration.milestone_id in declared:
+                    raise ValueError('Duplicate milestone declarations are not permitted.')
+                declared.add(declaration.milestone_id)
+                used_declarations.add(declaration.pk)
+                milestone = milestones[declaration.milestone_id]
+                definitions[milestone.name] = (milestone.label, milestone.description)
+                used_milestones.add(milestone.pk)
             for entry in entries.values():
 
                 # Only entries in this source version belong to the current import plan.
@@ -221,6 +235,8 @@ class Command(BaseCommand):
 
                 # Resolve source milestone IDs by logical name, without reusing source database identities.
                 if milestone_id is not None:
+                    if milestone_id not in declared:
+                        raise ValueError('Every task milestone must be explicitly declared by its template version.')
                     milestone = milestones[milestone_id]
                     values['milestone_name'] = milestone.name
                     definitions[milestone.name] = (milestone.label, milestone.description)
@@ -237,7 +253,7 @@ class Command(BaseCommand):
 
         # Reject dangling or unselected definitions rather than silently ignoring parts of the fixture.
         if (not templates or used_versions != versions.keys() or used_entries != entries.keys()
-                or used_milestones != milestones.keys()):
+                or used_milestones != milestones.keys() or used_declarations != objects[TemplateMilestone].keys()):
             raise ValueError('Every fixture record must belong to a selected template definition.')
         for link in objects[TemplateDependency].values():
             entry, predecessor = entries[link.entry_id], entries[link.predecessor_id]
@@ -285,7 +301,8 @@ class Command(BaseCommand):
             data = reference.editor_data()
             expected = data['version_key']
             stored = {entry.entry_key: entry for entry in TemplateEntry.objects.filter(version_id=expected)}
-            same = len(stored) == len(specs)
+            same = (len(stored) == len(specs)
+                    and {item['name'] for item in data['milestones']} == set(definitions))
             for spec in specs:
 
                 # Stable entry keys and every reusable task field must match for a safe repeated import.
@@ -315,4 +332,4 @@ class Command(BaseCommand):
         else:
             reference = client.create_template(name=source.name.strip(), description=source.description)
         reference.save_version(entries=specs, predecessors=graph, expected_version_key=expected,
-                               description=source.description, milestone_definitions={name: value[0] for name, value in definitions.items()}, directory=directory)
+                               description=source.description, milestone_names=tuple(definitions), directory=directory)

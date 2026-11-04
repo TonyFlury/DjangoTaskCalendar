@@ -154,7 +154,7 @@ class LiveDependencyTests(TaskCreationFixtures, TestCase):
                 with self.assertRaises(PermissionDenied):
                     DiaryAPI(actor=actor).diary(key=self.diary.key).set_predecessors(
                         entry_key=self.second.entry_key, predecessor_keys=())
-        draft = self.template.create_version(number=2)
+        draft = self.template.create_version(number=2, milestone_names=('target',))
         draft.add_entry(spec=self.first)
         draft.add_entry(spec=self.second)
         draft.set_predecessors(entry_key=self.second.entry_key, predecessor_keys=(self.first.entry_key,))

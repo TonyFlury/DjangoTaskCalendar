@@ -205,7 +205,7 @@ class TaskEditingTests(TaskEditingFixtures, TestCase):
     def test_completion_does_not_require_a_due_date(self):
         """Complete an undated accessible task independently of the separate required due-date edit field."""
         DiaryAPI(actor=self.actor).define_milestones(definitions={'unset': 'Unset date'})
-        key = self.user_diary.add_entry(spec=EntrySpec('Undated task', DateKind.SOURCE, milestone_name='unset',
+        key = self.user_diary.add_entry(spec=EntrySpec('Undated task', DateKind.ANNUAL, month=2, day=29, year_offset=1,
                                        owner_kind=OwnerKind.PERSON, person_ref=self.user_actor.reference))
         self.assertEqual(self.client.post(self.task_url(key), self.action_data('complete', key)).status_code, 302)
         entry = CalendarEntry.objects.get(entry_key=key)

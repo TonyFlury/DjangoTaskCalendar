@@ -35,6 +35,7 @@ class TemplateEditorTests(TestCase):
         self.actor = Actor(f'user:{self.manager.pk}', frozenset({'Planners'}))
         self.api = DiaryAPI(actor=self.actor)
         self.client.force_login(self.manager)
+        self.api.define_milestones(definitions={'target': 'Target date'})
         self.spec = EntrySpec('Prepare', DateKind.RELATIVE, milestone_name='target', day_offset=-3)
         self.other = EntrySpec('Review', DateKind.ANNUAL, month=2, day=29)
 
@@ -43,7 +44,7 @@ class TemplateEditorTests(TestCase):
         template = self.api.create_template(name=name)
         version = template.save_version(entries=[self.spec, self.other],
                                         predecessors={self.other.entry_key: [self.spec.entry_key]},
-                                        expected_version_key=None, milestone_definitions={'target': 'Target date'})
+                                        expected_version_key=None, milestone_names=('target',))
         return template, version
 
     def payload(self, specs=None, version=None, name='Reusable plan'):
@@ -52,7 +53,7 @@ class TemplateEditorTests(TestCase):
         # Default tasks let each test change only the fields relevant to its scenario.
         if specs is None:
             specs = [self.spec, self.other]
-        data = {'name': name, 'description': 'Reusable tasks', 'expected_version_key': version or '',
+        data = {'name': name, 'milestone_names': ['target'], 'description': 'Reusable tasks', 'expected_version_key': version or '',
                 'tasks-TOTAL_FORMS': str(len(specs)), 'tasks-INITIAL_FORMS': str(len(specs)),
                 'tasks-MIN_NUM_FORMS': '0', 'tasks-MAX_NUM_FORMS': '200', 'action': 'save'}
         for index, spec in enumerate(specs):
@@ -88,14 +89,39 @@ class TemplateEditorTests(TestCase):
         with self.settings(DATA_UPLOAD_MAX_NUMBER_FIELDS=None):
             self.assertEqual(TaskFormSet(prefix='tasks').max_num, 200)
 
-    def test_repeated_new_milestone_uses_one_optional_label(self):
-        """Permit a label on one task and no label on another task using the same milestone."""
-        second = replace(self.spec, entry_key=uuid4(), name='Second task')
-        data = self.payload([self.spec, second])
-        data['tasks-0-milestone_label'] = 'Target date'
+    def test_declared_milestones_control_choices_and_reject_forged_names(self):
+        self.api.define_milestones(definitions={'unused': 'Unused requirement'})
+        data = self.payload()
+        data['milestone_names'] = ['target', 'unused']
+        self.assertEqual(self.client.post(reverse('Diary:template-create'), data).status_code, 302)
+        template = self.api.template(name='Reusable plan')
+        version = template.latest_version()
+        self.assertEqual([item['name'] for item in version.required_milestones()], ['target', 'unused'])
+        page = self.client.get(reverse('Diary:template-edit', args=['Reusable plan']))
+        self.assertContains(page, 'Required milestones')
+        self.assertNotContains(page, 'New milestone label')
+        choices = dict(page.context['task_forms'].forms[0].fields['milestone_name'].choices)
+        self.assertEqual(choices, {'': 'Select a milestone', 'target': 'Target date', 'unused': 'Unused requirement'})
+        for names, task_name in ((['target'], 'unused'), (['traget'], 'traget')):
+            data = self.payload(version=version.key)
+            data['milestone_names'] = names
+            data['tasks-0-milestone_name'] = task_name
+            response = self.client.post(reverse('Diary:template-edit', args=['Reusable plan']), data)
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(TemplateVersion.objects.count(), 1)
+        self.assertFalse(Milestone.objects.filter(name='traget').exists())
+
+    def test_milestone_refresh_without_javascript_does_not_save_or_add_rows(self):
+        self.api.define_milestones(definitions={'unused': 'Unused requirement'})
+        data = self.payload()
+        data['milestone_names'] = ['target', 'unused']
+        data['action'] = 'refresh_milestones'
         response = self.client.post(reverse('Diary:template-create'), data)
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(Milestone.objects.get(name='target').label, 'Target date')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['task_forms'].forms), 2)
+        self.assertIn('unused', dict(response.context['task_forms'].forms[0].fields['milestone_name'].choices))
+        self.assertFalse(TemplateVersion.objects.exists())
+        self.assertFalse(CalendarTemplate.objects.exists())
 
     # Verifies DV1-026: Versioned template save and approval.
     def test_create_and_edit_approve_versions_and_preserve_existing_diaries(self):
@@ -130,7 +156,7 @@ class TemplateEditorTests(TestCase):
     def test_named_view_selects_latest_draft_and_supports_url_or_trusted_context(self):
         """Use highest numbered versions and reject conflicting template selectors."""
         template, _ = self.create_template()
-        draft = template.create_version(number=2)
+        draft = template.create_version(number=2, milestone_names=('target',))
         draft.add_entry(spec=replace(self.spec, name='Draft task'))
         response = self.client.get(reverse('Diary:template-list'), {'template_name': 'Reusable plan'})
         self.assertContains(response, 'Draft task')
@@ -224,7 +250,7 @@ class TemplateEditorTests(TestCase):
         response = self.client.post(reverse('Diary:template-create'), data)
         self.assertContains(response, 'valid month and day', status_code=400)
         self.assertFalse(CalendarTemplate.objects.exists())
-        self.assertFalse(Milestone.objects.exists())
+        self.assertEqual(list(Milestone.objects.values_list('name', flat=True)), ['target'])
         data = self.payload([self.spec, replace(self.other, name='prepare')])
         response = self.client.post(reverse('Diary:template-create'), data)
         self.assertContains(response, 'different name', status_code=400)
@@ -248,7 +274,7 @@ class TemplateEditorTests(TestCase):
         invalid = replace(self.other, month=13)
         with self.assertRaises(ValidationError):
             template.save_version(entries=[self.spec, invalid], predecessors={}, expected_version_key=version.key,
-                                  description='Must roll back', milestone_definitions={'unused': 'Unused'})
+                                  description='Must roll back', milestone_names=('target', 'unused'))
         self.assertEqual(TemplateVersion.objects.count(), 1)
         self.assertFalse(Milestone.objects.filter(name='unused').exists())
         self.assertEqual(template.editor_data()['description'], '')
@@ -278,7 +304,7 @@ class TemplateEditorTests(TestCase):
         data = self.payload([self.spec, self.other, third])
         data['tasks-1-predecessors'] = [str(self.spec.entry_key)]
         data['tasks-2-predecessors'] = [str(self.other.entry_key)]
-        formset = TaskFormSet(data, prefix='tasks')
+        formset = TaskFormSet(data, prefix='tasks', milestones=(('target', 'Target date'),))
         self.assertTrue(formset.is_valid(), formset.errors)
         self.assertEqual(list(formset.forms[0].fields['predecessors'].choices), [])
         self.assertEqual(dict(formset.forms[1].fields['predecessors'].choices), {str(self.spec.entry_key): 'Prepare'})

@@ -75,6 +75,37 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         """Return the original source version key without assuming source and destination database keys match."""
         return self.version.key
 
+    def test_transfer_preserves_unused_requirements_and_detects_declaration_changes(self):
+        client = DiaryAPI(actor=self.actor)
+        client.define_milestones(definitions={'unused': 'Unused requirement'})
+        self.template.save_version(entries=(self.first, self.second),
+            predecessors={self.second.entry_key: (self.first.entry_key,)},
+            expected_version_key=self.version.key, milestone_names=('target', 'unused'))
+        self.export()
+        self.command('import')
+        imported = self.imported_version()
+        self.assertEqual(set(imported.milestones.values_list('name', flat=True)), {'target', 'unused'})
+        count = TemplateVersion.objects.count()
+        self.command('import')
+        self.assertEqual(TemplateVersion.objects.count(), count)
+        # Removing only an unused requirement is a real version change.
+        reference = client.template(key=imported.template_id)
+        reference.save_version(entries=(self.first, self.second),
+            predecessors={self.second.entry_key: (self.first.entry_key,)},
+            expected_version_key=imported.pk, milestone_names=('target',))
+        with self.assertRaises(CommandError):
+            self.command('import')
+        self.command('import', new_version=True)
+        self.assertEqual(set(self.imported_version().milestones.values_list('name', flat=True)), {'target', 'unused'})
+
+    def test_transfer_rejects_tasks_without_explicit_declarations(self):
+        payload = self.export()
+        payload = [item for item in payload if item['model'] != 'Diary.templatemilestone']
+        self.fixture.write_text(json.dumps(payload))
+        with self.assertRaises(CommandError):
+            self.command('import')
+        self.assertIsNone(self.imported_version())
+
     def test_dry_run_rolls_back_and_existing_export_files_are_not_overwritten(self):
         """Exercise normal validation without retaining imported records or replacing an existing fixture file."""
         self.export()
@@ -171,7 +202,7 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         """Keep the whole fixture atomic when a later template fails model validation."""
         api = DiaryAPI(actor=self.actor)
         second = api.create_template(name='Second source')
-        second.save_version(entries=(self.first,), predecessors={self.first.entry_key: ()}, expected_version_key=None)
+        second.save_version(entries=(self.first,), predecessors={self.first.entry_key: ()}, expected_version_key=None, milestone_names=('target',))
         self.command('export')
         payload = json.loads(self.fixture.read_text())
         versions = {}

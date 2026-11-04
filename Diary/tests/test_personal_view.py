@@ -66,7 +66,7 @@ class PersonalDiaryFixtures:
         self.user_ref = f'user:{self.user.pk}'
         client = DiaryAPI(actor=self.manager_actor)
         client.define_milestones(definitions={'target': 'Target', 'unset': 'Unset', 'blocker': 'Template blocker'})
-        self.version = client.create_template(name='Personal template').create_version(number=1)
+        self.version = client.create_template(name='Personal template').create_version(number=1, milestone_names=('target', 'blocker'))
         self.role_spec = EntrySpec('Shared group task', DateKind.SOURCE, milestone_name='target',
                                   owner_kind=OwnerKind.ROLE, role_ref='Helpers')
         self.version.add_entry(spec=self.role_spec)
@@ -116,8 +116,8 @@ class PersonalDiaryFixtures:
 
         # An unset milestone supplies an undated task without an invalid one-time rule.
         if due is None:
-            kind = DateKind.SOURCE
-            values = {'milestone_name': 'unset'}
+            kind = DateKind.ANNUAL
+            values = {'month': 2, 'day': 29, 'year_offset': 1}
         return self.first.add_entry(spec=EntrySpec(name, kind, owner_kind=OwnerKind.PERSON,
                                                    person_ref=person or self.user_ref, **values),
                                     directory=DjangoOwnerDirectory())

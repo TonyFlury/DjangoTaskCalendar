@@ -58,7 +58,7 @@ class TaskCreationFixtures:
         api = DiaryAPI(actor=actor)
         api.define_milestones(definitions={'target': 'Target'})
         self.template = api.create_template(name='Creation template')
-        self.version = self.template.create_version(number=1)
+        self.version = self.template.create_version(number=1, milestone_names=('target',))
         self.first = EntrySpec('Prepare', DateKind.SOURCE, milestone_name='target')
         self.second = EntrySpec('Review', DateKind.RELATIVE, milestone_name='target', day_offset=1)
         self.version.add_entry(spec=self.first)

@@ -42,7 +42,7 @@ class DiaryTests(TestCase):
             definitions={'event_date': 'Event date', 'add_board_bookings_open': 'Advertising board bookings open',
                          'unused_date': 'Unused date'})
         self.template = api.DiaryTemplate.create(actor=self.officer, name='Standard calendar').key
-        self.version = api.DiaryTemplate.from_key(actor=self.officer, key=self.template).create_version(number=1).key
+        self.version = api.DiaryTemplate.from_key(actor=self.officer, key=self.template).create_version(number=1, milestone_names=('event_date', 'add_board_bookings_open')).key
         self.first = api.EntrySpec('Prepare boards', DateKind.RELATIVE, milestone_name='add_board_bookings_open',
                                    day_offset=42)
         self.second = api.EntrySpec('Inspect boards', DateKind.SOURCE, milestone_name='event_date')
@@ -170,18 +170,10 @@ class DiaryTests(TestCase):
         self.assertFalse(successor.is_ready)
         self.assertTrue(entry.is_ready)
 
-    def test_missing_milestone_has_no_due_date_and_fixed_date_does_not_move(self):
-        key = self.calendar(dates={})
-        first = CalendarEntry.objects.get(calendar_id=key, entry_key=self.first.entry_key)
-        self.assertIsNone(first.due_date)
-
-        # DV1-043: Missing dates remain unchanged after the creation transaction.
-        with self.assertRaisesMessage(ValidationError, 'V1 does not allow milestone changes'):
-            api.DiaryInstance.from_key(actor=self.officer, key=key).set_milestone_dates(
-                milestone_dates={'add_board_bookings_open': date(2027, 5, 8)})
-        self.assertIsNone(first.due_date)
-        annual = CalendarEntry.objects.get(calendar_id=key, entry_key=self.annual.entry_key)
-        self.assertEqual(annual.due_date, date(2027, 3, 1))
+    def test_missing_required_milestone_rejects_creation(self):
+        with self.assertRaisesMessage(ValidationError, 'Missing required milestone dates'):
+            self.calendar(dates={})
+        self.assertFalse(EventCalendar.objects.exists())
 
     # Verifies DV1-003: Date calculation.
     def test_leap_day_and_previous_year(self):
@@ -345,7 +337,7 @@ class DiaryTests(TestCase):
 
     def test_failed_calendar_creation_is_atomic(self):
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).approve()
-        with self.assertRaises(Milestone.DoesNotExist):
+        with self.assertRaises(ValidationError):
             api.DiaryInstance.create(actor=self.officer, template_version_key=self.version, event_ref='bad',
                                      name='Bad calendar', milestone_dates={'unknown': date(2027, 1, 1)}).key
         self.assertFalse(EventCalendar.objects.exists())
@@ -369,11 +361,14 @@ class DiaryTests(TestCase):
         self.assertTrue(entries[self.second.entry_key]['late'])
 
     def test_task_list_marks_missing_dates_and_has_constant_query_count(self):
-        key = self.calendar(dates={})
+        undated = replace(self.annual, name='Undated leap occurrence', entry_key=uuid4(),
+                          month=2, day=29, year_offset=1)
+        api.DiaryTemplateVersion.from_key(actor=self.officer, key=self.version).add_entry(spec=undated)
+        key = self.calendar()
         diary = api.DiaryInstance.from_key(actor=self.exec_member, key=key)
         with self.assertNumQueries(4):
             result = diary.active_tasks(today=date(2027, 1, 1))
-        entry = next(item for item in result if item['entry_key'] == self.first.entry_key)
+        entry = next(item for item in result if item['entry_key'] == undated.entry_key)
         self.assertTrue(entry['date_not_set'])
         self.assertFalse(entry['late'])
         for index in range(5):
@@ -425,7 +420,8 @@ class DiaryTests(TestCase):
     def test_default_template_name_selects_latest_approved_version(self):
         self.calendar()
         self.assertEqual(len(api.DiaryAPI(actor=self.officer).template_version().required_milestones()), 2)
-        second = api.DiaryTemplate.from_key(actor=self.officer, key=self.template).create_version(number=2).key
+        second = api.DiaryTemplate.from_key(actor=self.officer, key=self.template).create_version(
+            number=2, milestone_names=('unused_date',)).key
         self.assertEqual(api.DiaryAPI(actor=self.officer).template_version().read()['key'], self.version)
         api.DiaryTemplateVersion.from_key(actor=self.officer, key=second).add_entry(
             spec=api.EntrySpec('Other date', DateKind.SOURCE, milestone_name='unused_date'))

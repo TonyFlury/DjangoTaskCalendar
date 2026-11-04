@@ -13,7 +13,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
-from Diary.models import CalendarTemplate, TemplateEntry, TemplateVersion
+from Diary.models import CalendarTemplate, Milestone, TemplateEntry, TemplateVersion
 
 
 @override_settings(DIARY_MANAGER='Planners', DIARY_USER='Participants', DIARY_TASK_OWNER_ROLES=('Helpers',))
@@ -32,6 +32,8 @@ class EditorBrowserTests(StaticLiveServerTestCase):
         manager.groups.add(Group.objects.create(name='Planners'))
         Group.objects.create(name='Participants')
         Group.objects.create(name='Helpers')
+        Milestone.objects.create(name='target', label='Target date')
+        Milestone.objects.create(name='unused', label='Unused required date')
         self.client.force_login(manager)
         options = webdriver.ChromeOptions()
         for argument in ('--headless', '--no-sandbox', '--disable-dev-shm-usage'):
@@ -46,12 +48,16 @@ class EditorBrowserTests(StaticLiveServerTestCase):
                                'value': self.client.cookies[settings.SESSION_COOKIE_NAME].value, 'path': '/'})
             driver.get(self.live_server_url + '/diary/templates/new/')
             driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata .diary-template-field-name').send_keys('Browser template')
+            driver.find_element(By.CSS_SELECTOR, '[name="milestone_names"][value="target"]').click()
+            driver.find_element(By.CSS_SELECTOR, '[name="milestone_names"][value="unused"]').click()
             driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
             rows = driver.find_elements(By.CSS_SELECTOR, '.diary-template-task-list .diary-template-task')
             self.assertEqual(len(rows), 1)
             first = rows[0]
             first.find_element(By.CSS_SELECTOR, '.diary-template-field-name').send_keys('Prepare')
-            first.find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name').send_keys('target')
+            Select(first.find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('target')
+            self.assertEqual([option.get_attribute('value') for option in
+                Select(first.find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).options], ['', 'target', 'unused'])
             Select(first.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('relative')
             first.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset').send_keys('-7')
             driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
@@ -73,9 +79,13 @@ class EditorBrowserTests(StaticLiveServerTestCase):
             search.send_keys('Prepare')
             driver.set_window_size(390, 900)
             self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
+            invalid = driver.execute_script("return Array.from(document.querySelectorAll('input:invalid, select:invalid, textarea:invalid'), el => [el.name, el.validationMessage])")
+            self.assertEqual(invalid, [])
             driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
-            wait.until(lambda browser: '/templates/edit/' in browser.current_url)
+            wait.until(lambda browser: '/templates/edit/' in browser.current_url or browser.find_elements(By.CSS_SELECTOR, '.diary-form-error, .diary-field-error'))
+            self.assertIn('/templates/edit/', driver.current_url, driver.find_element(By.TAG_NAME, 'body').text)
             self.assertEqual(TemplateVersion.objects.get().status, 'approved')
+            self.assertEqual(set(TemplateVersion.objects.get().milestones.values_list('name', flat=True)), {'target', 'unused'})
             self.assertEqual(TemplateEntry.objects.count(), 2)
             self.assertEqual(TemplateEntry.objects.get(name='Review').predecessors.get().name, 'Prepare')
             rows = driver.find_elements(By.CSS_SELECTOR, '.diary-template-task-list .diary-template-task')

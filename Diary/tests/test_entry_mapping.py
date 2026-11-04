@@ -14,7 +14,7 @@ from Diary import api
 from Diary.choices import DateKind, OwnerKind, VersionStatus
 from Diary.entry_mapping import EntryMapper, validate_entry_owner
 from Diary.models import CalendarEntry, CalendarMilestone, CalendarTemplate, EventCalendar, Milestone, TemplateEntry, \
-    TemplateVersion
+    TemplateVersion, TemplateMilestone
 
 
 # Verifies DV1-005: Ownership data and assignment checks.
@@ -27,6 +27,7 @@ class EntryMappingTests(TestCase):
         self.milestone = Milestone.objects.create(name='mapping_target', label='Mapping target')
         template = CalendarTemplate.objects.create(name='Mapping template')
         version = TemplateVersion.objects.create(template=template, number=1, created_by_ref='manager')
+        TemplateMilestone.objects.create(version=version, milestone=self.milestone)
         self.spec = api.EntrySpec(
             'Preparation', DateKind.RELATIVE, milestone_name='mapping_target', day_offset=-2,
         )

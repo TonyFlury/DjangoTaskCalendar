@@ -24,7 +24,7 @@ class ClassAPITests(TestCase):
         self.client = api.DiaryAPI(actor=self.actor)
         self.client.define_milestones(definitions={'target': 'Target date'})
         self.template = self.client.create_template()
-        self.version = self.template.create_version(number=1)
+        self.version = self.template.create_version(number=1, milestone_names=('target',))
         self.entry = api.EntrySpec('Prepare', DateKind.SOURCE, milestone_name='target')
         self.version.add_entry(spec=self.entry)
         self.version.approve()
@@ -51,7 +51,7 @@ class ClassAPITests(TestCase):
         self.assertEqual(self.client.template(key=self.template.key).key, self.template.key)
         self.assertEqual(self.client.template(name=' class API template ').key, self.template.key)
         self.assertEqual(api.DiaryTemplate.from_name(actor=self.actor).key, self.template.key)
-        draft = self.template.create_version(number=2)
+        draft = self.template.create_version(number=2, milestone_names=('target',))
         self.assertEqual(self.template.latest_version().key, draft.key)
         self.assertEqual(self.template.latest_version(approved_only=True).key, self.version.key)
         self.assertEqual(self.template.version(number=2).key, draft.key)
@@ -111,7 +111,7 @@ class ClassAPITests(TestCase):
                 api.DiaryTemplate.create(actor=user, name='Legacy grant ignored')
 
     def test_existing_template_version_handle_observes_approval(self):
-        draft = self.template.create_version(number=2)
+        draft = self.template.create_version(number=2, milestone_names=('target',))
         draft.add_entry(spec=self.entry)
         other = self.client.template_version(key=draft.key)
         self.assertIs(other.approve(), other)
@@ -136,7 +136,7 @@ class ClassAPITests(TestCase):
         with self.settings(DIARY_TEMPLATE_NAME=None):
             del settings.DIARY_TEMPLATE_NAME
             template = self.client.create_template(name='Caller chosen template')
-            version = template.create_version(number=1)
+            version = template.create_version(number=1, milestone_names=('target',))
             version.add_entry(spec=self.entry)
             version.approve()
             template.create_version(number=2)
@@ -172,7 +172,7 @@ class ClassAPITests(TestCase):
         with self.settings(DIARY_TEMPLATE_NAME='Unused default'):
             self.assertEqual(self.client.template_version(name='Class API template').key, self.version.key)
             diary = self.client.create_diary(
-                event_ref='named-selection', name='Named diary', milestone_dates={}, template_name='Class API template',
+                event_ref='named-selection', name='Named diary', milestone_dates={'target': date(2027, 6, 27)}, template_name='Class API template',
             )
             self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, self.version.key)
         with self.assertRaisesMessage(ValidationError, 'not both'):

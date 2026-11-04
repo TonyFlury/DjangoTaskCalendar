@@ -666,10 +666,10 @@ Existing template names stay fixed in this editor.
 The description can change.
 Date rules support a milestone date, signed days from a milestone, or an annual date with a year offset.
 One-time dates are unavailable because template tasks must be reusable.
-A new milestone name defines a stable milestone when Save succeeds.
-Its optional label defaults to its name.
-Existing milestone labels stay unchanged.
-The template's required milestone set consists of the milestones referenced by its tasks.
+Select **Required milestones** at template level from the catalogue configured by the host.
+Each task selects its **Milestone** from those declarations. Tasks cannot create identifiers or labels.
+Every declaration requires a host-supplied date, even when no task uses it.
+Without JavaScript, select requirements and use **Update milestone choices** to refresh task choices before saving.
 
 Ownership can identify a person, a configured ownership group, or the whole team.
 Person choices use `get_user_model()` and current DiaryUser or DiaryManager group membership.
@@ -720,9 +720,9 @@ They require DiaryManager access and do not grant calendar access.
 | --- | --- | --- |
 | `DiaryAPI.templates()` | None. | Tuple of dictionaries with `id`, `name`, and `description`. |
 | `DiaryTemplate.editor_data()` | None. | Template metadata and its highest numbered version, including a draft. |
-| `DiaryTemplate.save_version()` | `entries`, `predecessors`, `expected_version_key`, optional `description`, `milestone_definitions`, and `directory`. | New approved `DiaryTemplateVersion`. |
+| `DiaryTemplate.save_version()` | `entries`, `predecessors`, `expected_version_key`, optional `description`, `milestone_names`, and `directory`. | New approved `DiaryTemplateVersion`. |
 
-`editor_data()` returns `key`, `name`, `description`, `version_key`, `number`, `status`, and `entries`.
+`editor_data()` returns `key`, `name`, `description`, `version_key`, `number`, `status`, `milestones`, and `entries`.
 An unversioned template returns `version_key=None`, `number=0`, an empty status, and no entries.
 Each entry has the fields returned by `DiaryTemplateVersion.read()`.
 
@@ -734,18 +734,21 @@ All dependency endpoints must occur in `entries`.
 `expected_version_key` must match the latest version, including a draft.
 Use `None` only when the template has no version.
 
-`milestone_definitions` maps new milestone names to labels.
-Existing names retain their labels.
+`milestone_names` is a collection of existing catalogue names declared by the new version.
+Omitting it preserves the latest version declarations; on a first version it means no declarations.
+Use an explicit empty collection to remove all declarations, which is valid only when no task uses a milestone.
+Unknown names and undeclared task references are rejected. Catalogue setup is separate through `define_milestones()`.
 The optional `directory` checks person ownership through the existing `OwnerDirectory` contract.
 An omitted `description` preserves the template description.
 The operation rejects duplicate task names, duplicate entry keys, invalid rules, invalid owners, and invalid dependency graphs.
-Failed saves roll back new versions, entries, links, milestone definitions, and description changes.
+Failed saves roll back new versions, entries, links, milestone declarations, and description changes.
 
 ```python
 from Diary.api import DiaryAPI, EntrySpec
 from Diary.choices import DateKind
 
 client = DiaryAPI(actor=actor)
+client.define_milestones(definitions={'target': 'Target date'})
 template = client.create_template(name='Preparation')
 prepare = EntrySpec('Prepare materials', DateKind.RELATIVE,
                     milestone_name='target', day_offset=-7)
@@ -754,7 +757,7 @@ version = template.save_version(
     entries=[prepare, review],
     predecessors={review.entry_key: [prepare.entry_key]},
     expected_version_key=None,
-    milestone_definitions={'target': 'Target date'},
+    milestone_names=('target',),
 )
 assert version.read()['status'] == 'approved'
 ```
@@ -832,7 +835,7 @@ The editor adds no CSS variables.
 | `diary-field-error` | One field error. |
 | `diary-form-errors` | Whole-form error list. |
 | `diary-form-error` | One whole-form error. |
-| `diary-template-milestone-fields` | Milestone name and label fields. |
+| `diary-template-milestone-fields` | Declared milestone selection. |
 | `diary-template-relative-fields` | Day offset fields. |
 | `diary-template-annual-fields` | Annual date fields. |
 | `diary-template-grid` | Responsive field grid. |
@@ -844,8 +847,7 @@ The editor adds no CSS variables.
 | `diary-template-live-message` | Screen reader announcement of task changes. |
 | `diary-template-add` | Add task button. |
 | `diary-template-save` | Save and approve button. |
-| `diary-template-milestone-options` | Existing milestone name suggestions. |
-| `diary-template-milestone-option` | One milestone suggestion. |
+| `diary-template-refresh-milestones` | Refresh task milestone choices without saving, when JavaScript is unavailable. |
 | `diary-template-empty-task` | Inert task form used for browser additions. |
 | `diary-template-hidden` | Hidden rule panel or fallback control. |
 
@@ -858,8 +860,8 @@ Each form control also has the corresponding technical field class:
 | `diary-template-field-expected-version-key` | Hidden base version key. |
 | `diary-template-field-entry-key` | Hidden stable task key. |
 | `diary-template-field-date-kind` | Reusable date rule. |
-| `diary-template-field-milestone-name` | Stable milestone name. |
-| `diary-template-field-milestone-label` | Label for a new milestone. |
+| `diary-template-field-milestone-name` | Select a declared milestone by display label. |
+| `diary-template-field-milestone-names` | Template-level required milestone selections. |
 | `diary-template-field-day-offset` | Signed offset from a milestone. |
 | `diary-template-field-month` | Annual month. |
 | `diary-template-field-day` | Annual day. |
@@ -914,10 +916,10 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryTemplate.create` | Optional `name`, optional `description` | New `DiaryTemplate`. |
 | `DiaryTemplate.from_key` | `key` | Existing `DiaryTemplate`. |
 | `DiaryTemplate.from_name` | Optional `name` | Existing `DiaryTemplate`. An absent name uses `DIARY_TEMPLATE_NAME`. |
-| `DiaryTemplate.create_version` | `number` | New draft `DiaryTemplateVersion` for this template. |
+| `DiaryTemplate.create_version` | `number`, optional `milestone_names=()` | New draft `DiaryTemplateVersion` for this template. |
 | `DiaryTemplate.version` | `number` | Existing `DiaryTemplateVersion` for this template. |
 | `DiaryTemplate.latest_version` | Optional `approved_only=False` | Highest numbered version, including a draft unless `approved_only=True`. |
-| `DiaryTemplateVersion.create` | `template_key`, `number` | New draft `DiaryTemplateVersion`. |
+| `DiaryTemplateVersion.create` | `template_key`, `number`, optional `milestone_names=()` | New draft `DiaryTemplateVersion`. |
 | `DiaryTemplateVersion.from_key` | `key` | Existing `DiaryTemplateVersion`. |
 | `DiaryTemplateVersion.from_name` | `name` | The named template's latest approved version. |
 | `DiaryTemplateVersion.from_default` | None. | The configured template's latest approved version. |
@@ -945,7 +947,8 @@ The static configuration methods do not need an actor.
 | `DiaryAPI.task_owner_roles` | None. | A `frozenset` of permitted task-owner role names. |
 | `DiaryAPI.define_milestones` | `definitions` | Milestone UUIDs by name. |
 | `DiaryAPI.personal_tasks` | Optional `diary_key`, `today`, `include_whole_team=False` | Owned open tasks from one or all permitted open diaries. |
-| `DiaryTemplateVersion.required_milestones` | None. | Distinct milestone definitions used by this version. |
+| `DiaryTemplateVersion.required_milestones` | None. | All declared required milestones, including unused declarations. |
+| `DiaryTemplateVersion.set_milestones` | `names` | Replace draft requirements with existing catalogue names; returns the same version object. Rejects removal of milestones used by tasks and changes to approved versions. |
 | `DiaryTemplateVersion.read` | None. | Version rules, entry keys, and predecessor keys. |
 | `DiaryTemplateVersion.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
 | `DiaryTemplateVersion.approve` | None. | The same version object after approval. |
@@ -1005,14 +1008,30 @@ No migration is required for this interface refactor.
 Changed labels preserve milestone identity.
 Template entries refer to names through `EntrySpec.milestone_name`.
 
-`DiaryTemplateVersion.required_milestones()` returns each used milestone once with `id`, `name`, and `label`.
-It excludes milestones used only by other versions.
-This lookup is an optional safety check before creation.
-The caller can supply the expected named dates without this lookup.
+`DiaryTemplateVersion.required_milestones()` returns the explicit declarations with `id`, `name`, and `label`, ordered by name. It includes milestones unused by tasks and does not scan task entries.
+Declare catalogue names when calling `create_version(milestone_names=(...))`, or use
+`set_milestones(names=(...))` while the version is draft. An omitted collection on a
+new draft means no requirements. Task references must belong to that version's declarations.
+Approval freezes the declaration list. Complete version saves preserve declarations
+when `milestone_names` is omitted; supply it explicitly to change requirements.
 
-The caller supplies each required milestone date when creating the diary.
-The current API also accepts missing milestone values.
-An entry without a resolvable date has `date_not_set=True` in its task result.
+The host must supply a `datetime.date` for every declared milestone during diary
+creation. Missing values, `None`, strings, and timestamps are rejected with
+`ValidationError`, including when a declaration is unused by tasks. Extra catalogue
+dates remain accepted; unknown identifiers are rejected. There are no optional
+milestones in V1. A task can still have no calculated date for an invalid annual occurrence.
+
+Apply migration `0008_template_milestones` before using these interfaces. It derives
+initial declarations for existing template versions from their task references.
+Existing diaries, dates, and completion records remain unchanged; legacy diaries
+with missing dates are not repaired automatically. Review the declarations of
+existing versions and create a new version for any additional required milestone.
+`save_version(milestone_definitions=...)` is replaced by `save_version(milestone_names=(...))`.
+Define the catalogue separately through `DiaryAPI.define_milestones()` during host setup.
+Deploy the updated package and apply migrations with the host project's normal migration command before using the updated editor.
+Re-export old transfer fixtures after migrating: imports now require explicit
+`Diary.templatemilestone` records and reject task references without declarations.
+
 
 ## Template and diary creation
 
@@ -1034,7 +1053,7 @@ client.define_milestones(definitions={
 })
 template_name = 'Garage Sale calendar'
 template = client.create_template(name=template_name)
-version = template.create_version(number=1)
+version = template.create_version(number=1, milestone_names=('add_board_bookings_open', 'event_date'))
 entry = api.EntrySpec(
     name='Inspect advertising boards',
     date_kind=DateKind.RELATIVE,
@@ -1045,7 +1064,7 @@ entry_key = version.add_entry(spec=entry)
 version.approve()
 
 required = client.template_version(name=template_name).required_milestones()
-assert [item['name'] for item in required] == ['add_board_bookings_open']
+assert [item['name'] for item in required] == ['add_board_bookings_open', 'event_date']
 
 created = client.create_diary(
     template_name=template_name,
@@ -1246,7 +1265,7 @@ The page changes this diary only. It does not offer the optional callable templa
 V1 dependency editing targets a draft template version:
 
 ```python
-draft = template.create_version(number=2)
+draft = template.create_version(number=2, milestone_names=('add_board_bookings_open', 'event_date'))
 draft.add_entry(spec=entry)
 draft.add_entry(spec=role_task)
 choices = draft.available_predecessors(entry_key=role_task.entry_key)
@@ -2339,6 +2358,8 @@ Follow the project's deployment instructions for its static mapping and cache ch
 ```mermaid
 erDiagram
     CalendarTemplate ||--o{ TemplateVersion : has
+    TemplateVersion ||--o{ TemplateMilestone : requires
+    Milestone ||--o{ TemplateMilestone : declares
     TemplateVersion ||--o{ TemplateEntry : defines
     Milestone ||--o{ TemplateEntry : dates
     TemplateVersion ||--o{ EventCalendar : supplies
