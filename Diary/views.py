@@ -517,6 +517,9 @@ class TaskCreateView(DiaryScopeMixin, View):
             form.initial['add_to_template'] = False
             form.fields['date_kind'].choices = [(value, label) for value, label in form.fields['date_kind'].choices
                                                 if value in {'annual', 'once'}]
+            for name in ('milestone_name', 'day_offset'):
+                form.fields[name].disabled = True
+                form.fields[name].widget = forms.HiddenInput(attrs=form.fields[name].widget.attrs)
         context.update(creation_form=form, future_form=future, creation_manager=manager)
 
         # Success appears only for a task visible in this selected diary after the redirect.

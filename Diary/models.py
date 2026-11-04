@@ -129,7 +129,7 @@ class TemplateVersion(ValidatedModel):
 # DV1-008: Close a diary instance.
 # DV1-051: Diary creation requires no year.
 class EventCalendar(ValidatedModel):
-    """Store a named diary, its creation time, and its template reference."""
+    """Store a named diary, its creation time, and an optional template reference."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_ref = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=160)
@@ -160,7 +160,7 @@ class EventCalendar(ValidatedModel):
         return self.name
 
     def clean(self):
-        """Require a name, a caller reference, and an approved source template."""
+        """Require name/reference and validate an optional, one-time approved template."""
         super().clean()
         self.event_ref = self.event_ref.strip()
         self.name = self.name.strip()
@@ -184,7 +184,7 @@ class EventCalendar(ValidatedModel):
 
 
 class CalendarMilestone(ValidatedModel):
-    """Store milestone dates only during initial diary creation under DV1-043."""
+    """Store milestone dates during creation or the diary's first template application."""
     calendar = models.ForeignKey(EventCalendar, on_delete=models.CASCADE, related_name='milestone_dates')
     milestone = models.ForeignKey(Milestone, on_delete=models.PROTECT, related_name='calendar_dates')
     date = models.DateField(null=True, blank=True)

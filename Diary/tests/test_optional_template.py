@@ -161,6 +161,8 @@ class OptionalTemplateTests(OptionalTemplateFixtures, TestCase):
             self.assertContains(response, 'This personal task' if user == self.user else 'Select a person')
             self.assertNotContains(response, 'Template for future diaries')
             self.assertNotIn('source', dict(renderer.call_args.args[2]['creation_form'].fields['date_kind'].choices))
+            for name in ('milestone_name', 'day_offset'):
+                self.assertTrue(renderer.call_args.args[2]['creation_form'].fields[name].widget.is_hidden)
         spec = self.personal_task('Existing note')
         request = RequestFactory().post('/host/create/?diary_key=' + str(self.empty.key), {
             'entry_key': str(spec.entry_key), 'name': 'Existing note', 'date_kind': 'once', 'fixed_date': '2027-06-01'})
