@@ -190,7 +190,7 @@ selector. Configure the manager context's `template_apply_url` (full URL) or
 can extend `diary_base_template`, or a host template can include
 `Diary/partials/template_apply.html` with its prepared context. The view uses CSRF-protected POST requests
 to choose an approved version and apply it; it requires
-all declared dates and preserves personal work. Override
+dates for milestones used by template tasks and preserves personal work. Override
 `get_success_url(*, result)` to return a fixed host page after success.
 
 ## Consistent write-view API
@@ -344,3 +344,12 @@ argument and must supply the diary through trusted host context. Explicit
 trusted diary selection themselves. Diary does not append selectors to these
 host destinations. Use `selection_url` for POST-based task selection when the
 host also wants to hide task identifiers during navigation.
+
+## Host milestone catalogue
+
+Template tasks choose directly from the catalogue registered by the host. No
+manager declaration step is needed. Hosts can continue passing their entire
+milestone-date mapping when creating a diary or applying a template. Diary
+validates dates used by that version and silently ignores unused keys and values.
+Existing integration signatures remain supported. Apply migration
+`0011_derive_template_milestones`; existing diary snapshots stay unchanged.

@@ -183,7 +183,7 @@ For example, minus seven means seven days before the milestone.
 
 The task creation form offers milestones available in the selected diary.
 Your website supplies their dates when it creates the diary.
-New diaries require dates for every milestone declared by their template.
+New diaries require dates for every milestone used by their template tasks.
 Older diaries may still have missing dates; ask your site administrator for help.
 
 ### Annual dates
@@ -291,8 +291,7 @@ route. There is no separate approval step for applying an already approved versi
 1. Open the manager diary and check the diary name.
 2. Select **Apply template**. This link is available when no template has been applied.
 3. Select the required **Template version** and select **Choose template**.
-4. Enter a date for every displayed milestone. All declarations are required,
-   including milestones not used by a task in that version.
+4. Enter a date for every displayed milestone. Only milestones used by template tasks are requested.
 5. Select **Apply template** to save.
 
 The diary keeps its name and identity. Its existing tasks and completion records
@@ -378,7 +377,7 @@ There is no separate approval step.
 2. Select **Create template**.
 3. Enter **Template name**.
 4. Enter **Description** if necessary.
-5. Select **Required milestones** for the template, then select **Add task** to add a task row.
+5. Select **Add task** to add a task row.
 6. Complete the task fields in that row.
 7. Add more task rows as required.
 8. Select **Save template**.
@@ -409,16 +408,12 @@ Template tasks use reusable date rules.
 They do not use one-time dates.
 The [date-rule explanation](#select-a-date-rule) also applies to their milestone and annual fields.
 
-Select **Required milestones** near the template name before editing task dates.
-The list contains milestones configured by your site administrator.
-Every selected milestone requires a date from your website when it creates a diary,
-even if no task uses that milestone. Keep declarations that the template needs.
-
-In each task, select **Milestone** from the template's declared requirements.
+In each task, select **Milestone** from the catalogue made available by your website.
+There is no separate milestone declaration step. Required dates are determined
+from the tasks you save, including when JavaScript is disabled.
 You cannot type a new milestone identifier or change its label in a task row.
 Ask your site administrator if the required milestone is unavailable.
-With JavaScript disabled, select requirements and use **Update milestone choices** to refresh task choices.
-To remove a requirement, first change or remove tasks that use it.
+Changing or removing tasks automatically changes the new version's requirements.
 Saving changes creates a new version; previous versions and diaries keep their requirements.
 
 **Predecessors** identifies tasks that must finish first.

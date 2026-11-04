@@ -36,7 +36,6 @@
         const emptyRoles = new Set(JSON.parse(editor.querySelector('[id="diary-template-empty-roles"]').textContent));
         const milestones = JSON.parse(editor.querySelector('[id="diary-template-milestones"]').textContent);
         const taskLimit = Number(editor.dataset.taskLimit);
-        show(editor.querySelector('.diary-template-refresh-milestones'), false);
 
         /** Return task rows from this editor, including rows marked for deletion. */
         function tasks() {
@@ -65,8 +64,7 @@
                 const kind = field(task, 'date-kind').value;
                 const milestoneSelect = field(task, 'milestone-name');
                 const previousMilestone = milestoneSelect.value;
-                const declared = new Set(Array.from(form.querySelectorAll('[name="milestone_names"]:checked'), control => control.value));
-                const availableMilestones = milestones.filter(milestone => declared.has(milestone.name));
+                const availableMilestones = milestones;
                 const expectedValues = ['', ...availableMilestones.map(milestone => milestone.name)];
                 const currentValues = Array.from(milestoneSelect.options, option => option.value);
                 // Keep the active option in place during its own change event.

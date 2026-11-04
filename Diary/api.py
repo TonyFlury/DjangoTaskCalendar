@@ -243,17 +243,14 @@ def _creation_template(*, key=None, name=None, without_template=False):
 def _validate_milestone_dates(version, dates):
     if not isinstance(dates, dict) or any(not isinstance(name, str) for name in dates):
         raise ValidationError('Supply milestone dates by name.')
-    if version is None and dates:
-        raise ValidationError('Milestone dates require a template. Supply them when applying one.')
     required = set(version.milestones.values_list('name', flat=True)) if version else set()
     missing = required - dates.keys()
     if missing:
         raise ValidationError('Missing required milestone dates: ' + ', '.join(sorted(missing)) + '.')
-    unknown = dates.keys() - set(Milestone.objects.values_list('name', flat=True))
-    if unknown:
-        raise ValidationError('Unrecognised milestone dates: ' + ', '.join(sorted(unknown)) + '.')
-    if any(type(value) is not date for value in dates.values()):
-        raise ValidationError('Every supplied milestone value must be a date.')
+    selected = {name: dates[name] for name in required}
+    if any(type(value) is not date for value in selected.values()):
+        raise ValidationError('Every required milestone value must be a date.')
+    return selected
 
 
 def _copy_template(calendar, version, actor):
@@ -579,8 +576,8 @@ class DiaryTemplate(_BoundObject):
         """Save and approve a complete new version after checking its predecessor graph.
         Preserve supplied entry keys and existing diaries. Lock the template against concurrent saves.
         Reject a stale expected_version_key with ValidationError. None expects an unversioned template.
-        Declare existing catalogue milestones; never create identifiers from task input.
-        Omitted milestone_names preserve the latest version declarations, or use none for the first version.
+        Derive requirements from task rules using the host milestone catalogue.
+        milestone_names is accepted for compatibility; unused names do not become requirements.
         """
         _require(self.actor, 'edit')
         template = CalendarTemplate.objects.select_for_update().get(pk=self.key)
@@ -597,12 +594,10 @@ class DiaryTemplate(_BoundObject):
             raise ValidationError('This template changed. Reopen it before saving your changes.')
         specs = tuple(entries)
         graph = validate_template_graph((spec.entry_key for spec in specs), predecessors)
-        if milestone_names is None:
-            milestone_names = tuple(latest.milestones.values_list('name', flat=True)) if latest else ()
 
         # A new version follows the highest existing number, including any draft.
         number = latest.number + 1 if latest is not None else 1
-        version = self.create_version(number=number, milestone_names=milestone_names)
+        version = self.create_version(number=number, milestone_names=milestone_names or ())
         for spec in specs:
             version.add_entry(spec=spec, directory=directory)
         for key, values in graph.items():
@@ -752,12 +747,13 @@ class DiaryTemplateVersion(_DependencyAPI):
 
     # DV1-002: Named milestone API.
     def required_milestones(self):
-        """Return all declared required milestones, including those unused by tasks."""
+        """Return the milestones used by this version, cached on approval."""
         actor, template_version_key = self.actor, self.key
         _require(actor, 'view_template')
         version = _template_version(template_version_key)
-        return tuple(version.milestones.all()
-                     .order_by('name').values('id', 'name', 'label').distinct())
+        milestones = version.milestones.all() if version.status == VersionStatus.APPROVED else Milestone.objects.filter(
+            pk__in=version.entries.exclude(milestone_id=None).values('milestone_id'))
+        return tuple(milestones.order_by('name').values('id', 'name', 'label').distinct())
 
     # DV1-005: Ownership data and assignment checks.
     @transaction.atomic
@@ -793,9 +789,11 @@ class DiaryTemplateVersion(_DependencyAPI):
         _require(actor, 'edit')
         version = TemplateVersion.objects.select_for_update().get(pk=template_version_key)
 
-        if version.entries.exclude(milestone__isnull=True).exclude(
-                milestone_id__in=version.milestones.values('pk')).exists():
-            raise ValidationError('Every task milestone must be declared by its template version.')
+        if version.status == VersionStatus.DRAFT:
+            used = set(version.entries.exclude(milestone_id=None).values_list('milestone_id', flat=True))
+            version.milestone_declarations.exclude(milestone_id__in=used).delete()
+            for milestone_id in used:
+                TemplateMilestone.objects.get_or_create(version=version, milestone_id=milestone_id)
         # Repeated approval preserves the original actor and approval time.
         if version.status != VersionStatus.APPROVED:
             version.status = VersionStatus.APPROVED
@@ -873,7 +871,7 @@ class DiaryInstance(_DependencyAPI):
             if version.status != VersionStatus.APPROVED:
                 raise ValidationError('Select an approved template version.')
         milestone_dates = {} if milestone_dates is None else milestone_dates
-        _validate_milestone_dates(version, milestone_dates)
+        milestone_dates = _validate_milestone_dates(version, milestone_dates)
 
         # The parent lock serializes repeated creation across template versions.
         existing = EventCalendar.objects.filter(event_ref=event_ref.strip()).first()
@@ -884,7 +882,7 @@ class DiaryInstance(_DependencyAPI):
 
             # Different inputs for the same reference require an explicit change rather than another creation.
             if (existing.name != name.strip() or (version is not None and
-                    (existing.template_version_id != version.pk or dates != milestone_dates))):
+                    (existing.template_version_id != version.pk or {key: dates.get(key) for key in milestone_dates} != milestone_dates))):
                 raise ValidationError('This event reference already has a calendar with different inputs.')
             return cls(actor=actor, key=existing.pk)
 
@@ -910,10 +908,12 @@ class DiaryInstance(_DependencyAPI):
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
         if version.status != VersionStatus.APPROVED:
             raise ValidationError('Select an approved template version.')
-        _validate_milestone_dates(version, milestone_dates)
+        milestone_dates = _validate_milestone_dates(version, milestone_dates)
         calendar = _open_calendar(self.actor, self.key, 'edit')
         if calendar.template_version_id:
-            if calendar.template_version_id == version.pk and calendar.date_context() == milestone_dates:
+            existing_dates = calendar.date_context()
+            if (calendar.template_version_id == version.pk
+                    and {key: existing_dates.get(key) for key in milestone_dates} == milestone_dates):
                 return self
             raise ValidationError('This diary already has a template. It cannot be replaced.')
         calendar.template_version = version

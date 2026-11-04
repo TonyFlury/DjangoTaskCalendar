@@ -211,13 +211,13 @@ class TemplateEditorTests(TestCase):
         self.assertEqual(self.client.post(reverse('Diary:template-create'), data).status_code, 302)
         template = self.api.template(name='Reusable plan')
         version = template.latest_version()
-        self.assertEqual([item['name'] for item in version.required_milestones()], ['target', 'unused'])
+        self.assertEqual([item['name'] for item in version.required_milestones()], ['target'])
         page = self.client.get(reverse('Diary:template-edit', args=['Reusable plan']))
-        self.assertContains(page, 'Required milestones')
+        self.assertNotContains(page, 'Required milestones')
         self.assertNotContains(page, 'New milestone label')
         choices = dict(page.context['task_forms'].forms[0].fields['milestone_name'].choices)
         self.assertEqual(choices, {'': 'Select a milestone', 'target': 'Target date', 'unused': 'Unused requirement'})
-        for names, task_name in ((['target'], 'unused'), (['traget'], 'traget')):
+        for names, task_name in ((['traget'], 'traget'),):
             data = self.payload(version=version.key)
             data['milestone_names'] = names
             data['tasks-0-milestone_name'] = task_name

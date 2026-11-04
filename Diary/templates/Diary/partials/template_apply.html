@@ -3,7 +3,7 @@
     {% if application_error %}
         <p class="diary-form-error" role="alert">{{ application_error }}</p>
     {% else %}
-        <p class="diary-template-guidance">Existing tasks and completion history stay unchanged. A template can be applied once. Every declared milestone requires a date, even if no task uses it.</p>
+        <p class="diary-template-guidance">Existing tasks and completion history stay unchanged. A template can be applied once. Every milestone used by the template requires a date.</p>
         <form class="diary-apply-selection" method="post" action="{{ diary_form_url }}">
             {% csrf_token %}
             {% include "Diary/partials/form_fields.html" %}

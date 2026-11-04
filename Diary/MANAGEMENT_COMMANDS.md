@@ -80,7 +80,7 @@ a template-level usage summary, and the names of diaries using each version.
 Usage includes both open and closed diary instances, even when only an older version
 is referenced. Diary names are listed alphabetically beneath their version;
 versions without diaries display `Used by: None`.
-Milestone lists include unused required declarations and exclude unrelated catalogue
+Milestone lists show the requirements derived from template tasks and exclude unused catalogue
 milestones. Templates without versions and versions without milestones are marked
 explicitly. For example:
 
@@ -116,12 +116,12 @@ python manage.py manage_diary_templates approve --template "Event preparation" -
 
 `create` creates an unversioned template. `create-version` allocates the next number
 after the current highest version and creates a draft. Without `--copy-version`,
-the draft has no tasks and declares the existing catalogue milestones passed through
+the draft has no tasks and therefore no requirements. Legacy draft metadata accepts
 repeated `--milestone NAME` options. Unknown milestone names are rejected; the
-command does not create catalogue identifiers.
+command does not create catalogue identifiers. Approval derives requirements from task usage.
 
 `--copy-version N` copies that version's tasks, stable task keys, dependencies,
-ownership, and all declarations, including unused required milestones, into a
+ownership, and the milestones used by those tasks, into a
 new draft. It cannot be combined with `--milestone`. Current ownership eligibility
 is checked while copying. A failed copy leaves no partial draft.
 
@@ -182,13 +182,13 @@ python manage.py manage_diaries apply-template --diary DIARY_UUID --template "Ev
 
 Creation with no template selection and no configured `DIARY_TEMPLATE_NAME` also
 creates an empty diary. `--without-template` explicitly ignores that setting and
-cannot be combined with a template selector or milestone dates. Personal tasks can
+cannot be combined with a template selector. Supplied milestone dates are ignored until a template is applied. Personal tasks can
 be added immediately. Detailed list output shows **Template: Not applied**.
 
 `apply-template` requires an open diary without an applied template. It preserves
 all existing tasks, privacy, dates, and completion history. The UUID/name of the
 diary stays unchanged. Copies with conflicting task names receive **(template)**
-suffixes. Every declared milestone date is required. Annual rules use the diary's
+suffixes. Every milestone used by template tasks requires a date. Annual rules use the diary's
 original creation date. The operation is atomic and identical retries do not
 produce duplicate tasks; a different template or different dates are rejected
 once a template is applied. Applying a template needs no deletion confirmation.
@@ -200,8 +200,8 @@ for scripting. Explicitly naming a template during creation still selects its
 latest approved version, as described below.
 
 Creation normally uses the latest approved version. Add `--template-version N` to choose
-a particular approved version. Supply every declared milestone through repeated
-`--milestone NAME=YYYY-MM-DD` arguments, even when no task uses a declaration.
+a particular approved version. Supply dates used by template tasks through repeated
+`--milestone NAME=YYYY-MM-DD` arguments. Extra unused values are ignored.
 Missing dates, invalid dates, duplicate inputs, and unknown names are rejected.
 
 An explicit `--event-ref` supports safe retries: identical inputs reuse the diary;

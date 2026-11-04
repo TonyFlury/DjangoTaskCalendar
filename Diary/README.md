@@ -668,10 +668,9 @@ Existing template names stay fixed in this editor.
 The description can change.
 Date rules support a milestone date, signed days from a milestone, or an annual date with a year offset.
 One-time dates are unavailable because template tasks must be reusable.
-Select **Required milestones** at template level from the catalogue configured by the host.
-Each task selects its **Milestone** from those declarations. Tasks cannot create identifiers or labels.
-Every declaration requires a host-supplied date, even when no task uses it.
-Without JavaScript, select requirements and use **Update milestone choices** to refresh task choices before saving.
+Each task selects its **Milestone** from the catalogue configured by the host.
+Tasks cannot create identifiers or labels. Required milestone dates follow task usage automatically,
+with or without JavaScript.
 
 Ownership can identify a person, a configured ownership group, or the whole team.
 Person choices use `get_user_model()` and current DiaryUser or DiaryManager group membership.
@@ -736,10 +735,9 @@ All dependency endpoints must occur in `entries`.
 `expected_version_key` must match the latest version, including a draft.
 Use `None` only when the template has no version.
 
-`milestone_names` is a collection of existing catalogue names declared by the new version.
-Omitting it preserves the latest version declarations; on a first version it means no declarations.
-Use an explicit empty collection to remove all declarations, which is valid only when no task uses a milestone.
-Unknown names and undeclared task references are rejected. Catalogue setup is separate through `define_milestones()`.
+Requirements are derived from task references on save. Legacy `milestone_names`
+arguments remain accepted, but unused names do not become requirements.
+Unknown task milestone names are rejected. Catalogue setup uses `define_milestones()`.
 The optional `directory` checks person ownership through the existing `OwnerDirectory` contract.
 An omitted `description` preserves the template description.
 The operation rejects duplicate task names, duplicate entry keys, invalid rules, invalid owners, and invalid dependency graphs.
@@ -837,7 +835,7 @@ The editor adds no CSS variables.
 | `diary-field-error` | One field error. |
 | `diary-form-errors` | Whole-form error list. |
 | `diary-form-error` | One whole-form error. |
-| `diary-template-milestone-fields` | Declared milestone selection. |
+| `diary-template-milestone-fields` | Host catalogue milestone selection. |
 | `diary-template-relative-fields` | Day offset fields. |
 | `diary-template-annual-fields` | Annual date fields. |
 | `diary-template-grid` | Responsive field grid. |
@@ -862,7 +860,7 @@ Each form control also has the corresponding technical field class:
 | `diary-template-field-expected-version-key` | Hidden base version key. |
 | `diary-template-field-entry-key` | Hidden stable task key. |
 | `diary-template-field-date-kind` | Reusable date rule. |
-| `diary-template-field-milestone-name` | Select a declared milestone by display label. |
+| `diary-template-field-milestone-name` | Select a host catalogue milestone by display label. |
 | `diary-template-field-milestone-names` | Template-level required milestone selections. |
 | `diary-template-field-day-offset` | Signed offset from a milestone. |
 | `diary-template-field-month` | Annual month. |
@@ -949,7 +947,7 @@ The static configuration methods do not need an actor.
 | `DiaryAPI.task_owner_roles` | None. | A `frozenset` of permitted task-owner role names. |
 | `DiaryAPI.define_milestones` | `definitions` | Milestone UUIDs by name. |
 | `DiaryAPI.personal_tasks` | Optional `diary_key`, `today`, `include_whole_team=False` | Owned open tasks from one or all permitted open diaries. |
-| `DiaryTemplateVersion.required_milestones` | None. | All declared required milestones, including unused declarations. |
+| `DiaryTemplateVersion.required_milestones` | None. | Milestones used by version tasks. |
 | `DiaryTemplateVersion.set_milestones` | `names` | Replace draft requirements with existing catalogue names; returns the same version object. Rejects removal of milestones used by tasks and changes to approved versions. |
 | `DiaryTemplateVersion.read` | None. | Version rules, entry keys, and predecessor keys. |
 | `DiaryTemplateVersion.add_entry` | `spec`, optional `directory` | Stable entry UUID. |
@@ -1010,29 +1008,30 @@ No migration is required for this interface refactor.
 Changed labels preserve milestone identity.
 Template entries refer to names through `EntrySpec.milestone_name`.
 
-`DiaryTemplateVersion.required_milestones()` returns the explicit declarations with `id`, `name`, and `label`, ordered by name. It includes milestones unused by tasks and does not scan task entries.
-Declare catalogue names when calling `create_version(milestone_names=(...))`, or use
-`set_milestones(names=(...))` while the version is draft. An omitted collection on a
-new draft means no requirements. Task references must belong to that version's declarations.
-Approval freezes the declaration list. Complete version saves preserve declarations
-when `milestone_names` is omitted; supply it explicitly to change requirements.
+`DiaryTemplateVersion.required_milestones()` returns milestones referenced by tasks,
+with `id`, `name`, and `label`, ordered by name. Approval records these requirements
+for efficient discovery. Managers select directly from the host catalogue during task
+construction; there is no separate declaration step. Changing task rules in a new
+version automatically adds or removes requirements. Approved versions remain immutable.
 
-The host must supply a `datetime.date` for every declared milestone during diary
-creation. Missing values, `None`, strings, and timestamps are rejected with
-`ValidationError`, including when a declaration is unused by tasks. Extra catalogue
-dates remain accepted; unknown identifiers are rejected. There are no optional
-milestones in V1. A task can still have no calculated date for an invalid annual occurrence.
+Hosts may always pass their full milestone-date mapping to `create_diary()` or
+`apply_template()`. Diary requires a `datetime.date` for every milestone used by
+the selected template. Missing required keys, `None`, strings, and timestamps for
+required keys raise `ValidationError`. Unused supplied keys and values are silently
+ignored and are not stored, including keys outside the catalogue. Differences in
+unused values do not affect identical retries. A template with no milestone-based
+tasks needs no dates. Optional used milestones remain outside V1.
 
-Apply migration `0008_template_milestones` before using these interfaces. It derives
-initial declarations for existing template versions from their task references.
-Existing diaries, dates, and completion records remain unchanged; legacy diaries
-with missing dates are not repaired automatically. Review the declarations of
-existing versions and create a new version for any additional required milestone.
-`save_version(milestone_definitions=...)` is replaced by `save_version(milestone_names=(...))`.
-Define the catalogue separately through `DiaryAPI.define_milestones()` during host setup.
-Deploy the updated package and apply migrations with the host project's normal migration command before using the updated editor.
-Re-export old transfer fixtures after migrating: imports now require explicit
-`Diary.templatemilestone` records and reject task references without declarations.
+Existing integration calls remain supported. Legacy `milestone_names` arguments
+and `set_milestones()` may seed draft metadata, but cannot impose unused requirements;
+approval derives the final set from tasks. Define the catalogue separately through
+`DiaryAPI.define_milestones()` during host setup. Task input cannot create identifiers.
+
+Apply migration `0011_derive_template_milestones` with the host's normal migration
+command. It rebuilds requirements for existing template versions from their task
+references. Existing diaries, stored dates, tasks and completion records remain
+unchanged. Reversing the data migration does not restore unused declarations.
+Re-export transfer fixtures after migration to capture the derived requirements.
 
 
 ## Template and diary creation
@@ -1055,7 +1054,7 @@ client.define_milestones(definitions={
 })
 template_name = 'Garage Sale calendar'
 template = client.create_template(name=template_name)
-version = template.create_version(number=1, milestone_names=('add_board_bookings_open', 'event_date'))
+version = template.create_version(number=1)
 entry = api.EntrySpec(
     name='Inspect advertising boards',
     date_kind=DateKind.RELATIVE,
@@ -1066,7 +1065,7 @@ entry_key = version.add_entry(spec=entry)
 version.approve()
 
 required = client.template_version(name=template_name).required_milestones()
-assert [item['name'] for item in required] == ['add_board_bookings_open', 'event_date']
+assert [item['name'] for item in required] == ['add_board_bookings_open']
 
 created = client.create_diary(
     template_name=template_name,
@@ -2645,11 +2644,11 @@ diary.apply_template(
 `DiaryInstance.apply_template()` accepts `milestone_dates` and either
 `template_name` or `template_version_key` (or the configured default if omitted).
 It requires manager access, permitted scope, an open diary, and an approved
-version. All declared milestone dates are required, including unused declarations.
+version. Every milestone used by the template requires a date; unused supplied dates are ignored.
 It returns the same diary reference. Identical retries reuse the snapshot; a
 replacement template or changed dates are rejected. The creation factory accepts
-`milestone_dates=None` as an empty mapping; template-free creation rejects dates
-until a template is applied. `without_template=True` cannot be combined with a
+`milestone_dates=None` as an empty mapping; template-free creation ignores supplied dates.
+Supply dates again when applying a template. `without_template=True` cannot be combined with a
 selector. Original template-free creation retries retain any later application.
 
 Existing tasks, stable keys, privacy, completion records, due-date overrides, and

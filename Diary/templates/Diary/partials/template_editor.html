@@ -15,9 +15,7 @@
         <div class="diary-card diary-template-metadata">
             {% include 'Diary/partials/template_field.html' with field=header_form.name %}
             {% include 'Diary/partials/template_field.html' with field=header_form.description %}
-            {% include 'Diary/partials/template_field.html' with field=header_form.milestone_names %}
-            <p class="diary-template-guidance">Milestones are configured by your site administrator. Select requirements before choosing task milestones.</p>
-            <button class="diary-button diary-template-refresh-milestones" type="submit" name="action" value="refresh_milestones" formnovalidate>Update milestone choices</button>
+            <p class="diary-template-guidance">Milestones are configured by your site administrator. Choose from the available milestones when creating tasks. Required dates are determined automatically from your tasks.</p>
         </div>
         {{ task_forms.management_form }}
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}

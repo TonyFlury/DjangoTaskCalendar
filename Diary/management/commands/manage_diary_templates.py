@@ -48,13 +48,14 @@ class Command(OperatorCommand):
             if options['details']:
                 diaries = EventCalendar.objects.only('id', 'name', 'template_version_id').order_by('name', 'pk')
                 versions = TemplateVersion.objects.order_by('number').prefetch_related(
-                    'milestones', Prefetch('calendars', queryset=diaries))
+                    'entries__milestone', Prefetch('calendars', queryset=diaries))
                 templates = templates.prefetch_related(Prefetch('versions', queryset=versions))
                 return [{'id': item.pk, 'name': item.name, 'description': item.description,
                          'versions': [{'number': version.number, 'status': version.status,
                                        'diary_count': len(version.calendars.all()),
                                        'diaries': [diary.name for diary in version.calendars.all()],
-                                       'milestones': [(milestone.name, milestone.label) for milestone in version.milestones.all()]}
+                                       'milestones': sorted({(entry.milestone.name, entry.milestone.label)
+                                                            for entry in version.entries.all() if entry.milestone_id})}
                                       for version in item.versions.all()]}
                         for item in templates]
             if options['json']:
@@ -72,7 +73,7 @@ class Command(OperatorCommand):
         if operation == 'versions':
             return list(CalendarTemplate.objects.get(pk=template.key).versions.annotate(
                 task_count=Count('entries', distinct=True), diary_count=Count('calendars', distinct=True),
-                milestone_count=Count('milestones', distinct=True)).order_by('number').values(
+                milestone_count=Count('entries__milestone', distinct=True)).order_by('number').values(
                     'id', 'number', 'status', 'created_by_ref', 'created_at', 'approved_by_ref', 'approved_at',
                     'task_count', 'diary_count', 'milestone_count'))
         if operation == 'create-version':

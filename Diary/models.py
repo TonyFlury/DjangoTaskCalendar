@@ -312,12 +312,6 @@ class TemplateEntry(EntryFields):
         ]
 
     # DV1-026: Versioned template save and approval.
-    def clean(self):
-        super().clean()
-        if self.version_id and self.milestone_id and not TemplateMilestone.objects.filter(
-                version_id=self.version_id, milestone_id=self.milestone_id).exists():
-            raise ValidationError({'milestone': 'Select a milestone declared by this template version.'})
-
     def save(self, *args, **kwargs):
         with transaction.atomic():
             version = TemplateVersion.objects.select_for_update().get(pk=self.version_id)

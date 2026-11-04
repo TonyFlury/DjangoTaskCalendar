@@ -58,16 +58,12 @@ class TemplateForm(StyledForm):
 
     name = forms.CharField(max_length=160, label='Template name')
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
-    milestone_names = forms.MultipleChoiceField(required=False, label='Required milestones',
-        help_text='The host must supply a date for every selected milestone, even if no task uses it.',
-        widget=forms.CheckboxSelectMultiple)
     expected_version_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
     def __init__(self, *args, editing=False, **kwargs):
         """Keep an existing template name fixed while accepting description changes."""
         super().__init__(*args, **kwargs)
         self.fields['name'].disabled = editing
-        self.fields['milestone_names'].choices = list(Milestone.objects.order_by('name').values_list('name', 'label'))
 
 
 # DV1-052: Read-only manager filters for one diary.
@@ -113,7 +109,7 @@ class TemplateTaskForm(StyledForm):
                                           (DateKind.RELATIVE, 'Days from a milestone'),
                                           (DateKind.ANNUAL, 'Annual date')], label='Date rule')
     milestone_name = forms.ChoiceField(required=False, label='Milestone',
-        help_text='Select a milestone declared in Required milestones.', choices=())
+        help_text='Select a milestone made available by your site.', choices=())
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647,
                                    label='Day offset', help_text='Use negative days before the milestone and positive days after it.')
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Month')

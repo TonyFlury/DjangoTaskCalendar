@@ -104,19 +104,19 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         self.export()
         self.command('import')
         imported = self.imported_version()
-        self.assertEqual(set(imported.milestones.values_list('name', flat=True)), {'target', 'unused'})
+        self.assertEqual(set(imported.milestones.values_list('name', flat=True)), {'target'})
         count = TemplateVersion.objects.count()
         self.command('import')
         self.assertEqual(TemplateVersion.objects.count(), count)
-        # Removing only an unused requirement is a real version change.
+        # Unused legacy metadata does not affect the exported requirements.
         reference = client.template(key=imported.template_id)
         reference.save_version(entries=(self.first, self.second),
             predecessors={self.second.entry_key: (self.first.entry_key,)},
             expected_version_key=imported.pk, milestone_names=('target',))
-        with self.assertRaises(CommandError):
-            self.command('import')
-        self.command('import', new_version=True)
-        self.assertEqual(set(self.imported_version().milestones.values_list('name', flat=True)), {'target', 'unused'})
+        count = TemplateVersion.objects.count()
+        self.command('import')
+        self.assertEqual(TemplateVersion.objects.count(), count)
+        self.assertEqual(set(self.imported_version().milestones.values_list('name', flat=True)), {'target'})
 
     def test_transfer_rejects_tasks_without_explicit_declarations(self):
         payload = self.export()

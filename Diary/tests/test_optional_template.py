@@ -57,8 +57,8 @@ class OptionalTemplateTests(OptionalTemplateFixtures, TestCase):
             self.assertIsNone(EventCalendar.objects.get(pk=other.key).template_version_id)
         with self.assertRaises(ValidationError):
             api.create_diary(name='Invalid', template_name='Creation template', without_template=True)
-        with self.assertRaises(ValidationError):
-            api.create_diary(name='Invalid', milestone_dates={'target': date(2027, 6, 20)}, without_template=True)
+        ignored = api.create_diary(name='No template', milestone_dates={'target': date(2027, 6, 20)}, without_template=True)
+        self.assertEqual(EventCalendar.objects.get(pk=ignored.key).date_context(), {})
 
     def test_application_preserves_private_fields_history_privacy_and_identity(self):
         first = self.personal_task('Prepare')
@@ -107,17 +107,16 @@ class OptionalTemplateTests(OptionalTemplateFixtures, TestCase):
             self.apply()
         self.assertEqual(self.snapshot(), before)
 
-    def test_unused_milestone_is_required_and_replacement_is_rejected(self):
+    def test_unused_milestone_is_ignored_and_replacement_is_rejected(self):
         Milestone.objects.create(name='unused', label='Unused date')
         next_version = self.template.save_version(entries=(self.first, self.second),
             predecessors={self.second.entry_key: (self.first.entry_key,)}, expected_version_key=self.version.key,
             milestone_names=('target', 'unused'))
-        with self.assertRaisesMessage(ValidationError, 'unused'):
-            self.empty.apply_template(template_version_key=next_version.key, milestone_dates={'target': date(2027, 6, 20)})
-        self.apply()
+        self.empty.apply_template(template_version_key=next_version.key, milestone_dates={'target': date(2027, 6, 20), 'unused': None})
+        self.empty.apply_template(template_version_key=next_version.key, milestone_dates={'target': date(2027, 6, 20), 'unused': 'ignored'})
         before = self.snapshot()
         with self.assertRaises(ValidationError):
-            self.empty.apply_template(template_version_key=next_version.key,
+            self.empty.apply_template(template_version_key=self.version.key,
                 milestone_dates={'target': date(2027, 6, 20), 'unused': date(2027, 6, 1)})
         with self.assertRaises(IntegrityError), transaction.atomic():
             EventCalendar.objects.filter(pk=self.empty.key).update(template_version=None)

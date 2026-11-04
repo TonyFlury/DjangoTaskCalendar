@@ -121,10 +121,11 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         text = output.getvalue()
         for value in ('Creation template', 'Description:   Reusable event tasks', 'In use:        Yes (2 diaries)',
                       'Version 1 (approved)', 'Target (target)', 'Used by:\n      - Other diary\n      - Selected diary',
-                      'Version 2 (draft)', 'Unused required date (unused_requirement)', 'Used by:     None',
+                      'Version 2 (draft)', 'Milestones:  None', 'Used by:     None',
                       'Empty definition', 'Versions:      None', 'Description:   (none)'):
             self.assertIn(value, text)
         self.assertNotIn('Unrelated catalogue date', text)
+        self.assertNotIn('Unused required date', text)
         version_two = text.split('Version 2 (draft)', 1)[1].split('Empty definition', 1)[0]
         self.assertNotIn('Target (target)', version_two)
         self.assertNotIn('Selected diary', version_two)
@@ -184,7 +185,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         text = human('manage_diaries', 'create', name='Human diary', template='Human template', milestone=['target=2027-06-01'])
         self.assertTrue(text.startswith('Human diary\n'))
         diary = EventCalendar.objects.get(name='Human diary')
-        self.assertIn('01 Jun 2027', text)
+        self.assertIn('Milestones: None', text)
         text = human('manage_diaries', 'show', diary=diary.pk)
         self.assertIn('Closed: No', text)
         text = human('manage_diaries', 'close', diary=diary.pk)
@@ -333,7 +334,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         self.templates('create', template='New definition', description='Example')
         draft = self.templates('create-version', template='New definition', milestone=['target'])
         self.assertEqual(draft['status'], 'draft')
-        self.assertEqual(draft['milestones'][0]['name'], 'target')
+        self.assertEqual(draft['milestones'], [])
         self.assertEqual(self.templates('approve', template='New definition', template_version=1)['status'], 'approved')
         copied = self.templates('create-version', template='Creation template', copy_version=1)
         self.assertEqual(copied['number'], 2)

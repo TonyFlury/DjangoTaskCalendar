@@ -697,6 +697,23 @@ This is a documentation-only scope record. It adds no executable symbols or veri
 
 These requirements have no assigned release and are not V1 completion conditions.
 
+- [ ] **DFUT-006: Host-defined milestone catalogues for different templates in one database.**
+  Support multiple templates in the same database with the host supplying different
+  sets of available milestones for different templates. Multiple templates already
+  exist; this requirement concerns separating their available milestone catalogues.
+  Managers must see the catalogue applicable to the template they are editing,
+  without a separate manual requirement-selection step. Required dates continue to
+  follow task usage; hosts may supply extra unused milestone data, which Diary ignores.
+  A substantial design review is required before implementation. Review catalogue
+  identity and ownership, template/version binding, milestone key and label collisions,
+  host configuration and authorization, editor choices, discovery APIs, management
+  commands, fixture transfer, and migration of the current shared catalogue.
+  Decide how catalogue changes affect existing versions and diary snapshots, and
+  how existing integrations retain their behavior. Do not assume that catalogues
+  require separate databases or that this introduces a full tenancy model.
+  Implementation: Not started. No release assigned; this is not a publication gate.
+  Design decisions remain open. Record the agreed design before making application changes.
+
 - [ ] **DFUT-001: Independent diary creation UI.**
   Let an authorized user create a diary from an approved template through Diary's own UI.
   Prompt for the diary name and the selected template's relevant milestone dates.

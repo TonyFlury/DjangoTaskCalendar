@@ -121,14 +121,11 @@ class TemplateEditorView(DiarySuccessMixin, LoginRequiredMixin, ContextMixin, Vi
     def header_initial(self):
         """Return metadata and the base version used for stale-save detection."""
         return {'name': self.data['name'], 'description': self.data['description'],
-                'expected_version_key': self.data['version_key'],
-                'milestone_names': [item['name'] for item in self.data.get('milestones', ())]}
+                'expected_version_key': self.data['version_key']}
 
     def milestone_choices(self):
-        """Offer only catalogue milestones declared in the proposed version."""
-        names = (self.request.POST.getlist('milestone_names') if self.request.method == 'POST'
-                 else [item['name'] for item in self.data.get('milestones', ())])
-        return tuple(Milestone.objects.filter(name__in=names).order_by('name').values_list('name', 'label'))
+        """Offer the full host milestone catalogue during task construction."""
+        return tuple(Milestone.objects.order_by('name').values_list('name', 'label'))
 
     # DV1-025: Template authoring interface.
     def post(self, request, *args, **kwargs):
@@ -182,7 +179,7 @@ class TemplateEditorView(DiarySuccessMixin, LoginRequiredMixin, ContextMixin, Vi
                         entries=tasks.specs, predecessors=tasks.graph,
                         expected_version_key=header.cleaned_data['expected_version_key'],
                         description=header.cleaned_data['description'],
-                        milestone_names=header.cleaned_data['milestone_names'], directory=DjangoOwnerDirectory(),
+                        directory=DjangoOwnerDirectory(),
                     )
             except ValidationError as error:
                 for message in error.messages:
@@ -525,7 +522,7 @@ class TaskCreateView(DiarySuccessMixin, DiaryScopeMixin, View):
             *Milestone.objects.filter(calendar_dates__calendar_id=key).order_by('name').values_list('name', 'label')]
         future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False)
         future.fields['milestone_name'].choices = [('', 'Select a milestone'),
-            *((item['name'], item['label']) for item in template_data['milestones'])] if template_data else [('', 'Select a milestone')]
+            *Milestone.objects.order_by('name').values_list('name', 'label')] if template_data else [('', 'Select a milestone')]
         if not context['diary_data']['template_version_key']:
             form.fields['add_to_template'].disabled = True
             form.fields['add_to_template'].widget = forms.HiddenInput(attrs=form.fields['add_to_template'].widget.attrs)
