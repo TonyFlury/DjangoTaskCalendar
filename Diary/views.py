@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -23,7 +24,7 @@ from .api import Actor, DiaryAPI
 from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
                     TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm,
-                    TemplateForm, editor_task_limit)
+                    TemplateForm, TemplateApplicationChoiceForm, TemplateApplicationDatesForm, editor_task_limit)
 from .models import EventCalendar, Milestone
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
@@ -384,6 +385,67 @@ class DiaryOwnerLabelsMixin:
         return labels, {role: tuple(sorted(names, key=str.casefold)) for role, names in members.items()}
 
 
+class TemplateApplyView(DiaryScopeMixin, View):
+    """Let a manager apply one approved template to an existing permitted diary."""
+
+    http_method_names = ['get', 'post', 'head', 'options']
+    template_name = 'Diary/template_apply.html'
+
+    def get(self, request, *args, **kwargs):
+        return self.respond()
+
+    def post(self, request, *args, **kwargs):
+        return self.respond(submitted=True)
+
+    def get_success_url(self, *, diary_key):
+        return reverse('Diary:manager-diary') + '?' + urlencode({'diary_key': diary_key})
+
+    def respond(self, *, submitted=False):
+        context = {**self.view_context, 'application_error': '', 'diary_data': None}
+        try:
+            key = self.selected_key()
+        except (ValueError, TypeError, AttributeError):
+            key = None
+        if key is None:
+            context['application_error'] = 'Select a permitted diary before applying a template.'
+            return render(self.request, self.template_name, context, status=400)
+        try:
+            diary = DiaryAPI(actor=self.actor).diary(key=key)
+            context['diary_data'] = diary.read()
+        except ObjectDoesNotExist:
+            raise Http404('The selected diary is unavailable.')
+        if context['diary_data']['closed']:
+            context['application_error'] = 'This diary is closed. A template cannot be applied.'
+            return render(self.request, self.template_name, context, status=400)
+        if context['diary_data']['template_version_key'] and not submitted:
+            context['application_error'] = 'A template is already applied to this diary.'
+            return render(self.request, self.template_name, context)
+        data = self.request.POST if submitted else self.request.GET
+        picker = TemplateApplicationChoiceForm(data if submitted or data.get('template_version_key') else None)
+        context['application_picker'] = picker
+        status = 200
+        if picker.is_bound and picker.is_valid():
+            version = DiaryAPI(actor=self.actor).template_version(key=picker.cleaned_data['template_version_key'])
+            milestones = version.required_milestones()
+            dates = TemplateApplicationDatesForm(self.request.POST if submitted else None, milestones=milestones)
+            context.update(application_dates=dates, application_version_key=version.key)
+            if submitted:
+                status = 400
+                if dates.is_valid():
+                    try:
+                        diary.apply_template(template_version_key=version.key, milestone_dates=dates.milestone_dates())
+                        return redirect(self.get_success_url(diary_key=key))
+                    except (ValidationError, IntegrityError) as error:
+                        if isinstance(error, ValidationError):
+                            for message in error.messages:
+                                dates.add_error(None, message)
+                        else:
+                            dates.add_error(None, 'The diary or template changed. Reload before applying the template.')
+        elif picker.is_bound:
+            status = 400
+        return render(self.request, self.template_name, context, status=status)
+
+
 # DV1-029, DV1-030, DV1-033: Authenticated creation within a selected permitted diary.
 class TaskCreateView(DiaryScopeMixin, View):
     """Create self-owned or manager-assigned tasks with an optional atomic template revision."""
@@ -433,11 +495,13 @@ class TaskCreateView(DiaryScopeMixin, View):
         initial = {'entry_key': uuid4()}
 
         # Only managers can inspect template metadata or request its revision.
+        template_data = None
         if manager:
             calendar = EventCalendar.objects.select_related('template_version__template').get(pk=key)
-            template_data = DiaryAPI(actor=self.actor).template(key=calendar.template_version.template_id).editor_data()
-            initial['expected_version_key'] = template_data['version_key']
-            context['creation_template'] = template_data
+            if calendar.template_version_id:
+                template_data = DiaryAPI(actor=self.actor).template(key=calendar.template_version.template_id).editor_data()
+                initial['expected_version_key'] = template_data['version_key']
+                context['creation_template'] = template_data
 
         # GET initializes an unbound form, while POST keeps the caller's submitted values.
         data = self.request.POST if submitted else None
@@ -446,7 +510,13 @@ class TaskCreateView(DiaryScopeMixin, View):
             *Milestone.objects.filter(calendar_dates__calendar_id=key).order_by('name').values_list('name', 'label')]
         future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False)
         future.fields['milestone_name'].choices = [('', 'Select a milestone'),
-            *((item['name'], item['label']) for item in template_data['milestones'])] if manager else [('', 'Select a milestone')]
+            *((item['name'], item['label']) for item in template_data['milestones'])] if template_data else [('', 'Select a milestone')]
+        if not context['diary_data']['template_version_key']:
+            form.fields['add_to_template'].disabled = True
+            form.fields['add_to_template'].widget = forms.HiddenInput(attrs=form.fields['add_to_template'].widget.attrs)
+            form.initial['add_to_template'] = False
+            form.fields['date_kind'].choices = [(value, label) for value, label in form.fields['date_kind'].choices
+                                                if value in {'annual', 'once'}]
         context.update(creation_form=form, future_form=future, creation_manager=manager)
 
         # Success appears only for a task visible in this selected diary after the redirect.
@@ -455,6 +525,9 @@ class TaskCreateView(DiaryScopeMixin, View):
                                           for entry in context['diary_data']['entries'])
             return render(self.request, self.template_name, context)
         valid = form.is_valid()
+        if not context['diary_data']['template_version_key'] and self.request.POST.get('add_to_template'):
+            form.add_error(None, 'Apply a template before adding tasks to it for future diaries.')
+            valid = False
         add_to_template = manager and form.cleaned_data.get('add_to_template', False)
 
         # The future rule is required only when the manager explicitly requests a template addition.
@@ -631,6 +704,10 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
             context['manager_error'] = 'The selected diary does not exist.'
             return render(request, self.template_name, context, status=404)
         context.update(diary_data=data, tasks=self.get_tasks(data, filters.cleaned_data))
+        if data['template_version_key'] is None and not data['closed']:
+            context['template_apply_url'] = self.view_context.get('template_apply_url') or (
+                reverse(self.view_context.get('template_apply_url_name', 'Diary:template-apply'))
+                + '?' + urlencode({'diary_key': data['key']}))
         return render(request, self.template_name, context)
 
     def get_tasks(self, data, filters):

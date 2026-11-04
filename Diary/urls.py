@@ -2,7 +2,7 @@
 from django.urls import path
 
 from .views import (DiaryDataView, ManagerDiaryView, PersonalDiaryView, TaskCreateView,
-                    TaskDetailView, TemplateCreateView, TemplateEditorView)
+                    TaskDetailView, TemplateApplyView, TemplateCreateView, TemplateEditorView)
 
 app_name = 'Diary'
 
@@ -30,6 +30,7 @@ urlpatterns = [
 
     # DV1-022, DV1-052: A selected diary uses trusted scope and manager-only task filters.
     path('manager/', ManagerDiaryView.as_view(), name='manager-diary'),
+    path('templates/apply/', TemplateApplyView.as_view(), name='template-apply'),
     path('templates/', TemplateEditorView.as_view(), name='template-list'),
     path('templates/new/', TemplateCreateView.as_view(), name='template-create'),
     path('templates/edit/<path:template_name>/', TemplateEditorView.as_view(), name='template-edit'),

@@ -88,7 +88,7 @@ In V1, DiaryManagers can edit dependencies only in templates.
 Template dependency changes do not propagate into live diaries.
 DiaryManagers cannot remove or replace live diary predecessors through dependency editing.
 Template changes leave existing diaries unchanged.
-Copying existing template tasks into existing diaries is not a required feature.
+A first template can be applied to an existing template-free diary, preserving personal tasks. Further copying into already templated diaries is unavailable.
 A manager can create a new diary task and optionally add it to a template for future diaries.
 
 ## V1 implementation tracking
@@ -913,7 +913,7 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryAPI.create_template` | Optional `name`, optional `description` | `DiaryTemplate`. |
 | `DiaryAPI.template` | Optional `key` or `name` | `DiaryTemplate`. |
 | `DiaryAPI.template_version` | Optional `key` or `name` | `DiaryTemplateVersion`. Names select the latest approved version. Without a selector, uses the optional default name. |
-| `DiaryAPI.create_diary` | `name`, `milestone_dates`, optional `event_ref`, optional `template_version_key` or `template_name` | `DiaryInstance`. |
+| `DiaryAPI.create_diary` | `name`, optional `milestone_dates`, `event_ref`, `template_version_key` or `template_name`, and `without_template=False` | `DiaryInstance`. |
 | `DiaryAPI.diary` | `key` | `DiaryInstance`. |
 | `DiaryTemplate.create` | Optional `name`, optional `description` | New `DiaryTemplate`. |
 | `DiaryTemplate.from_key` | `key` | Existing `DiaryTemplate`. |
@@ -925,15 +925,15 @@ A `DiaryAPI` factory supplies its stored actor.
 | `DiaryTemplateVersion.from_key` | `key` | Existing `DiaryTemplateVersion`. |
 | `DiaryTemplateVersion.from_name` | `name` | The named template's latest approved version. |
 | `DiaryTemplateVersion.from_default` | None. | The configured template's latest approved version. |
-| `DiaryInstance.create` | `name`, `milestone_dates`, optional `event_ref`, optional `template_version_key` or `template_name` | New or existing `DiaryInstance`. Identical repeated inputs with the same `event_ref` reuse its key. |
+| `DiaryInstance.create` | `name`, optional `milestone_dates`, `event_ref`, `template_version_key` or `template_name`, and `without_template=False` | New or existing `DiaryInstance`. Identical repeated inputs with the same `event_ref` reuse its key. |
 | `DiaryInstance.from_key` | `key` | Existing permitted `DiaryInstance`. |
 
 `DiaryAPI.template` rejects simultaneous `key` and `name` arguments.
 An HTTP view without a template name must still show the template chooser.
 The default-name factory is an explicit callable API convenience.
 Diary creation accepts either a template version key or a template name, but not both.
-Without either selector, it uses `DIARY_TEMPLATE_NAME` only if that optional default is set.
-A call without a selector or default raises a clear `ValidationError`.
+Without either selector, it uses `DIARY_TEMPLATE_NAME` if configured; otherwise it creates a template-free diary.
+Use `without_template=True` to bypass the default. Explicit invalid template selections still fail.
 Approved-version selection does not require the caller to read the template first.
 The template editor can use `DiaryTemplate.latest_version()` to include draft versions.
 
@@ -1140,7 +1140,7 @@ The V1 application save must include `DiaryTemplateVersion.approve()` without an
 `DiaryInstance.create_task()` implements the combined save workflow with an approved template revision.
 
 Diary entries retain their copied template content after creation.
-Copying an existing template task into an existing diary is not required.
+A template can be applied once to a template-free diary. Further copying into an already templated diary is not supported.
 DEC-003 is closed, and DV1-034 is removed from required work.
 
 ## EntrySpec fields
@@ -2610,3 +2610,71 @@ The resolved context supplies trusted template selection and survives chooser,
 editor, and POST error/refresh rendering. See
 [template editor context](HOST_EMBEDDING.md#template-editor-context) for the hook's
 execution order and a host integration example.
+
+## Template-free diaries and later application
+
+Apply migration `0010_optional_diary_template`. `EventCalendar.template_version`
+is now nullable. Existing diaries and their task/completion records are unchanged.
+Do not reverse this migration while template-free diaries remain: the old schema
+requires every diary to have a template, and no personal work is discarded automatically.
+
+```python
+created = client.create_diary(
+    name='Personal workspace', event_ref='project:event:17', without_template=True,
+)
+# Store created.key in the host and authorize it using the normal scope policy.
+```
+
+The host must create/store the empty diary and supply its permitted UUID to Diary
+views, just as it does for a templated diary. Opening a GET page never creates
+records. Do not use a nonexistent or unauthorized UUID as an empty-diary placeholder;
+invalid selections still return errors. Ordinary users see an empty task list and
+can immediately add private one-time or annual tasks to the permitted diary.
+
+When a manager later applies a template:
+
+```python
+# manager_client contains a current manager Actor whose calendar_keys includes diary_key.
+diary = manager_client.diary(key=diary_key)
+diary.apply_template(
+    template_name='Preparation',
+    milestone_dates={'target': date(2027, 6, 27)},
+)
+```
+
+`DiaryInstance.apply_template()` accepts `milestone_dates` and either
+`template_name` or `template_version_key` (or the configured default if omitted).
+It requires manager access, permitted scope, an open diary, and an approved
+version. All declared milestone dates are required, including unused declarations.
+It returns the same diary reference. Identical retries reuse the snapshot; a
+replacement template or changed dates are rejected. The creation factory accepts
+`milestone_dates=None` as an empty mapping; template-free creation rejects dates
+until a template is applied. `without_template=True` cannot be combined with a
+selector. Original template-free creation retries retain any later application.
+
+Existing tasks, stable keys, privacy, completion records, due-date overrides, and
+annual-date snapshots remain untouched. Copied template tasks receive distinct
+names when needed (`(template)`, `(template 2)`, with truncation to the name limit).
+A conflicting stable task UUID rejects the complete application. Template annual
+rules continue to use the diary's original creation date. Read responses include
+`template_version_key`, which is `None` before application.
+
+The database permits a single template assignment to initialize the copied graph
+and milestone dates in one transaction, then locks them again. An assigned version
+cannot be removed or replaced, and ordinary milestone/dependency editing remains
+unavailable. Template application never reclassifies personal additions as template
+work. Manager orphan recovery still applies only to template-sourced tasks.
+
+The manager page offers **Apply template** for open, template-free diaries. The
+`TemplateApplyView` / `Diary:template-apply` route uses the normal `DiaryScopeMixin`
+trusted context and current group checks. Hosts must register it with their own
+permitted scope; default package routes grant no diary access. Override
+`get_success_url(diary_key=...)` for host navigation. Supply `template_apply_url` or
+`template_apply_url_name` to `ManagerDiaryView` to link to a host route. The complete
+page is `Diary/template_apply.html`; its reusable fragment is
+`Diary/partials/template_apply.html`, compatible with `diary_base_template` and
+`diary_ui.form_fields`/`trusted_scope`. No JavaScript is required.
+
+See the [manager instructions](USER_GUIDE.md#apply-a-template-to-a-diary) and
+[operator commands](MANAGEMENT_COMMANDS.md#diary-instances). Verification is in
+`Diary/tests/test_optional_template.py`, including concurrent identical applications.

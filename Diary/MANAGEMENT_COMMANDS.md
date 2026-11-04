@@ -6,7 +6,7 @@ Diary provides two operator commands in addition to
 - `manage_diary_templates`: enumerate templates and versions, inspect content,
   create templates and drafts, copy versions, approve drafts, and delete unused versions or templates.
 - `manage_diaries`: enumerate instances, inspect their tasks, create instances,
-  close diaries, and permanently delete instances.
+  apply a first template, close diaries, and permanently delete instances.
 
 Run commands through the host project's `manage.py`, using its normal settings
 and default database. Apply migration `0009_administrative_deletion` before using
@@ -35,7 +35,7 @@ completion messages. Configuration validation and fixture transfer print readabl
 result messages and fields.
 
 Every command accepts `--json` for scripting, including `show`, `versions`,
-`create`, `create-version`, `approve`, `close`, deletion previews and execution,
+`create`, `create-version`, `approve`, `apply-template`, `close`, deletion previews and execution,
 configuration validation, and template import/export. JSON output consists of one
 JSON value on standard output, without human labels or progress messages. UUIDs and
 dates are encoded as strings. Administration lists return arrays and individual
@@ -172,13 +172,42 @@ python manage.py manage_diaries create --name "Summer event" --template "Event p
 python manage.py manage_diaries close --diary DIARY_UUID --actor operator
 ```
 
+A diary does not need a template. To create one independently of a configured
+default template, use:
+
+```sh
+python manage.py manage_diaries create --name "Summer event" --event-ref "event:17" --without-template --actor operator
+python manage.py manage_diaries apply-template --diary DIARY_UUID --template "Event preparation" --milestone event_date=2027-06-27 --milestone bookings_close=2027-06-01 --actor operator
+```
+
+Creation with no template selection and no configured `DIARY_TEMPLATE_NAME` also
+creates an empty diary. `--without-template` explicitly ignores that setting and
+cannot be combined with a template selector or milestone dates. Personal tasks can
+be added immediately. Detailed list output shows **Template: Not applied**.
+
+`apply-template` requires an open diary without an applied template. It preserves
+all existing tasks, privacy, dates, and completion history. The UUID/name of the
+diary stays unchanged. Copies with conflicting task names receive **(template)**
+suffixes. Every declared milestone date is required. Annual rules use the diary's
+original creation date. The operation is atomic and identical retries do not
+produce duplicate tasks; a different template or different dates are rejected
+once a template is applied. Applying a template needs no deletion confirmation.
+The web manager workflow is described in the [user guide](USER_GUIDE.md#apply-a-template-to-a-diary).
+
+Apply migration `0010_optional_diary_template` before using these operations.
+Existing template-backed diaries remain unchanged. Add `--json` to either command
+for scripting. Explicitly naming a template during creation still selects its
+latest approved version, as described below.
+
 Creation normally uses the latest approved version. Add `--template-version N` to choose
 a particular approved version. Supply every declared milestone through repeated
 `--milestone NAME=YYYY-MM-DD` arguments, even when no task uses a declaration.
 Missing dates, invalid dates, duplicate inputs, and unknown names are rejected.
 
 An explicit `--event-ref` supports safe retries: identical inputs reuse the diary;
-different inputs for the same reference fail. Omitting it creates a fresh reference.
+different names or conflicting template-backed creation inputs for the same reference fail.
+Retrying the original template-free creation after later application returns the
+existing diary without detaching its template. Omitting a reference creates a new diary.
 Closure records the actor and time but does not complete outstanding tasks. Repeated
 closure preserves the original closure record. Reopening is not supported.
 

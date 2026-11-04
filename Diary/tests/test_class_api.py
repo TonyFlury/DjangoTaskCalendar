@@ -156,17 +156,15 @@ class ClassAPITests(TestCase):
             for diary in (created, by_key):
                 self.assertEqual(EventCalendar.objects.get(pk=diary.key).template_version_id, version.key)
 
-    def test_implicit_template_selection_requires_a_selector_or_default(self):
+    def test_missing_default_allows_diary_without_a_template(self):
         with self.settings(DIARY_TEMPLATE_NAME=None):
-            with self.assertRaisesMessage(ValidationError, 'template name or version key'):
-                self.client.create_diary(
-                    event_ref='missing-template', name='No template', milestone_dates={},
-                )
+            created = self.client.create_diary(event_ref='missing-template', name='No template')
+            self.assertIsNone(EventCalendar.objects.get(pk=created.key).template_version_id)
             with self.assertRaises(ValidationError):
                 self.client.template_version()
             with self.assertRaises(ValidationError):
                 self.client.create_template()
-        self.assertFalse(EventCalendar.objects.filter(event_ref='missing-template').exists())
+        self.assertTrue(EventCalendar.objects.filter(event_ref='missing-template').exists())
 
     def test_explicit_name_overrides_default_and_rejects_ambiguous_selectors(self):
         with self.settings(DIARY_TEMPLATE_NAME='Unused default'):

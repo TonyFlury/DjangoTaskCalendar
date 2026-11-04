@@ -5,6 +5,7 @@
     {% if manager_error %}
         <p class="diary-manager-error" role="alert">{{ manager_error }}</p>
     {% elif diary_data %}
+        {% if template_apply_url %}<nav class="diary-actions"><a class="diary-button diary-apply-template-link" href="{{ template_apply_url }}">Apply template</a></nav>{% endif %}
         {# DV1-030, DV1-033: New tasks use a separately authorized creation route. #}
         {% if not diary_data.closed %}
             {% url 'Diary:task-create' as default_task_create_url %}

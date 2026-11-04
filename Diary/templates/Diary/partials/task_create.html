@@ -38,7 +38,7 @@
             </fieldset>
 
             {# Only managers can inspect or change the template for future diaries. #}
-            {% if creation_manager %}
+            {% if creation_template %}
                 <fieldset class="diary-card diary-create-future">
                     <legend class="diary-create-legend">Template for future diaries</legend>
                     <p class="diary-create-template">Template: {{ creation_template.name }}. Current version: {{ creation_template.number }} ({{ creation_template.status }}).</p>

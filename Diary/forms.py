@@ -13,7 +13,7 @@ from django.utils.functional import cached_property
 
 from .api import EntrySpec
 from .choices import DateKind, OwnerKind
-from .models import Milestone
+from .models import Milestone, TemplateVersion
 from .roles import access_groups, task_owner_roles
 from .template_graph import validate_template_graph
 
@@ -27,6 +27,29 @@ class StyledForm(forms.Form):
         super().__init__(*args, **kwargs)
         for name, field in self.fields.items():
             field.widget.attrs['class'] = f'diary-input diary-template-field-{name.replace("_", "-")}'
+
+
+class TemplateApplicationChoiceForm(StyledForm):
+    template_version_key = forms.ChoiceField(label='Template version')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['template_version_key'].choices = [('', 'Select a template version'),
+            *((str(version.pk), f'{version.template.name} — version {version.number}') for version in
+              TemplateVersion.objects.filter(status='approved').select_related('template').order_by('template__name', '-number'))]
+
+
+class TemplateApplicationDatesForm(StyledForm):
+    def __init__(self, *args, milestones, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.milestones = milestones
+        for milestone in milestones:
+            field = forms.DateField(label=milestone['label'], widget=forms.DateInput(attrs={'type': 'date'}))
+            field.widget.attrs['class'] = 'diary-input diary-apply-milestone-date'
+            self.fields['milestone_' + milestone['name']] = field
+
+    def milestone_dates(self):
+        return {item['name']: self.cleaned_data['milestone_' + item['name']] for item in self.milestones}
 
 
 # DV1-025: Template authoring interface.

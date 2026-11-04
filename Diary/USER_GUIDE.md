@@ -17,6 +17,7 @@ Some pages can be unavailable on your site.
 - [Change a due date](#change-a-due-date).
 - [Complete a task](#complete-a-task).
 - [Use the manager diary](#use-the-manager-diary).
+- [Apply a template to a diary](#apply-a-template-to-a-diary).
 - [Assign a task](#assign-a-task).
 - [Add a new task to a template](#add-a-new-task-to-a-template).
 - [Create or change a template](#create-or-change-a-template).
@@ -35,6 +36,17 @@ Some pages can be unavailable on your site.
 Opening a page does not create a diary.
 Your site controls when diaries become available.
 
+A diary can start empty. You can select **Add task** and create your own private
+tasks without waiting for a manager to choose a template. In this diary, use a
+one-time date or an annual date. Milestone date choices become available after a
+template and its milestone dates have been supplied.
+
+An empty task list is an ordinary starting point. You do not need to create or
+understand a template to use your diary. If a manager later applies a template,
+your existing personal tasks keep their names, ownership, dates, privacy, and
+completion history. New template tasks appear alongside them according to their
+normal visibility and assignment rules.
+
 ## Understand tasks and permissions
 
 | Term | Meaning |
@@ -42,7 +54,7 @@ Your site controls when diaries become available.
 | Diary | A named collection of tasks. |
 | Task | One item of work with an owner and an optional due date. |
 | Owner | The person, group, or whole team responsible for a task. |
-| Template | A reusable set of tasks for new diaries. |
+| Template | A reusable set of tasks that can be applied when a diary starts or later. |
 | Template task | A task that a diary received from its template. |
 | Diary addition | A task added directly to one existing diary. |
 | Personal addition | A diary addition that belongs to one person. |
@@ -269,6 +281,40 @@ Thus, **exclude non-late tasks** hides completed tasks even when **include compl
 Select **Reset filters** to clear these choices.
 The same diary stays selected.
 
+## Apply a template to a diary
+
+This action requires DiaryManager access and a diary you are permitted to manage.
+An open diary can receive one approved template, including after users have added
+private tasks. Your site administrator supplies the manager page and application
+route. There is no separate approval step for applying an already approved version.
+
+1. Open the manager diary and check the diary name.
+2. Select **Apply template**. This link is available when no template has been applied.
+3. Select the required **Template version** and select **Choose template**.
+4. Enter a date for every displayed milestone. All declarations are required,
+   including milestones not used by a task in that version.
+5. Select **Apply template** to save.
+
+The diary keeps its name and identity. Its existing tasks and completion records
+remain unchanged. Personal additions remain private to their owner and permitted
+managers. The copied template tasks retain their predecessor links and ownership.
+If a copied task would duplicate an existing task name, the copy receives a suffix
+such as **(template)** or **(template 2)**. Existing task names stay unchanged.
+
+An annual template date is calculated from the diary's original creation date,
+using the existing annual-date rules. Inspect the dates when applying a template
+to an older diary; some calculated dates can already be past.
+
+Applying a template is one complete save: if any date or task fails validation,
+none of its tasks, links, or dates are added. Repeating the same save does not add
+duplicate tasks. A closed diary cannot receive a template. An applied template
+cannot be removed, replaced, or applied a second time with different dates.
+Future template edits continue to affect future diary applications only.
+
+The **Add to template for future diaries** option on the task creation page is
+available after a template has been applied. Managers can still add and assign
+diary-only tasks before that point.
+
 ## Assign a task
 
 1. Select **Add task** from a permitted diary.
@@ -465,11 +511,11 @@ The current web pages have these limits:
 - Completed tasks cannot be reopened or edited.
 - A group or whole-team task has one shared completion record.
 - Task details provide no controls to change task names, descriptions, or owners.
-- V1 freezes predecessor links after diary creation. Managers cannot edit those links.
+- Predecessor links are copied when a template is first applied and then frozen. Managers cannot edit those links.
 - Task details provide no task deletion control.
 - Milestone date editing is unavailable in these pages.
 - Creating or closing a diary depends on your website's separate process.
-- Copying existing template tasks into existing diaries is not a required function.
+- A template can be applied once to an open diary without a template. Additional copying or replacement in an already templated diary is unavailable.
 - **My Diary** lists assigned tasks. The full diary list is a manager page.
 - Reminders, exports, a calendar month view, and future date-window filters are unavailable.
 

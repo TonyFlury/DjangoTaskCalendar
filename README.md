@@ -2,7 +2,8 @@
 
 Reusable task diaries for Django applications, with versioned templates, milestone dates, dependencies, and team ownership.
 
-DjangoTaskCalendar creates named diaries from approved task templates.
+DjangoTaskCalendar creates named diaries for personal and team tasks.
+Diaries can start empty and receive an approved task template later, preserving personal work.
 It calculates task dates and identifies ready, blocked, late, and completed work.
 Tasks can belong to a person, a configured group, or the whole team.
 The application provides permission-checked Python APIs, Django pages, reusable templates, and validated template fixture transfer.

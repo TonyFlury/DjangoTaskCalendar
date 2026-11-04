@@ -133,7 +133,7 @@ class EventCalendar(ValidatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_ref = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=160)
-    template_version = models.ForeignKey(TemplateVersion, on_delete=models.PROTECT, related_name='calendars')
+    template_version = models.ForeignKey(TemplateVersion, null=True, blank=True, on_delete=models.PROTECT, related_name='calendars')
     created_by_ref = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
@@ -168,6 +168,11 @@ class EventCalendar(ValidatedModel):
         # Empty names and caller references cannot identify a usable diary.
         if not self.event_ref or not self.name:
             raise ValidationError('Enter an event reference and calendar name.')
+
+        if not self._state.adding:
+            previous = type(self).objects.get(pk=self.pk)
+            if previous.template_version_id and previous.template_version_id != self.template_version_id:
+                raise ValidationError('An applied template cannot be removed or replaced.')
 
         # Only approved template versions can supply diary entries.
         if self.template_version_id and self.template_version.status != VersionStatus.APPROVED:

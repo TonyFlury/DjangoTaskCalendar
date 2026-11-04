@@ -1,0 +1,23 @@
+<section class="diary diary-apply-template" aria-label="Apply template">
+    <h1 class="diary-heading">Apply template{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
+    {% if application_error %}
+        <p class="diary-form-error" role="alert">{{ application_error }}</p>
+    {% else %}
+        <p class="diary-template-guidance">Existing tasks and completion history stay unchanged. A template can be applied once. Every declared milestone requires a date, even if no task uses it.</p>
+        <form class="diary-apply-selection" method="get">
+            {% include "Diary/partials/form_fields.html" %}
+            {% if not diary_ui.trusted_scope %}<input type="hidden" name="diary_key" value="{{ diary_data.key }}">{% endif %}
+            {% for field in application_picker %}{% include "Diary/partials/template_field.html" %}{% endfor %}
+            <button class="diary-button" type="submit">Choose template</button>
+        </form>
+        {% if application_dates %}
+            <form class="diary-apply-form" method="post">
+                {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
+                <input type="hidden" name="template_version_key" value="{{ application_version_key }}">
+                {% if application_dates.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in application_dates.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
+                {% for field in application_dates %}{% include "Diary/partials/template_field.html" %}{% empty %}<p>This template requires no milestone dates.</p>{% endfor %}
+                <button class="diary-button diary-button-primary" type="submit">Apply template</button>
+            </form>
+        {% endif %}
+    {% endif %}
+</section>

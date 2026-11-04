@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
@@ -228,6 +228,56 @@ def _template_version(key=None, name=None):
     return version
 
 
+def _creation_template(*, key=None, name=None, without_template=False):
+    if type(without_template) is not bool:
+        raise ValidationError('Supply a boolean without_template option.')
+    if without_template:
+        if key is not None or name is not None:
+            raise ValidationError('Do not select a template with without_template=True.')
+        return None
+    if key is None and name is None and not getattr(settings, 'DIARY_TEMPLATE_NAME', None):
+        return None
+    return _template_version(key=key, name=name)
+
+
+def _validate_milestone_dates(version, dates):
+    if not isinstance(dates, dict) or any(not isinstance(name, str) for name in dates):
+        raise ValidationError('Supply milestone dates by name.')
+    if version is None and dates:
+        raise ValidationError('Milestone dates require a template. Supply them when applying one.')
+    required = set(version.milestones.values_list('name', flat=True)) if version else set()
+    missing = required - dates.keys()
+    if missing:
+        raise ValidationError('Missing required milestone dates: ' + ', '.join(sorted(missing)) + '.')
+    unknown = dates.keys() - set(Milestone.objects.values_list('name', flat=True))
+    if unknown:
+        raise ValidationError('Unrecognised milestone dates: ' + ', '.join(sorted(unknown)) + '.')
+    if any(type(value) is not date for value in dates.values()):
+        raise ValidationError('Every supplied milestone value must be a date.')
+
+
+def _copy_template(calendar, version, actor):
+    """Add template tasks only; keep every existing task field and record intact."""
+    names = {name.casefold() for name in calendar.entries.values_list('name', flat=True)}
+    keys = set(calendar.entries.values_list('entry_key', flat=True))
+    copied = {}
+    for source in version.entries.all():
+        if source.entry_key in keys:
+            raise ValidationError('A template task identifier conflicts with an existing task. No template was applied.')
+        fields = EntryMapper.snapshot_fields(source)
+        proposed, sequence = source.name, 1
+        while proposed.casefold() in names:
+            suffix = ' (template)' if sequence == 1 else f' (template {sequence})'
+            proposed = source.name[:160 - len(suffix)] + suffix
+            sequence += 1
+        fields['name'] = proposed
+        names.add(proposed.casefold())
+        copied[source.pk] = CalendarEntry.objects.create(calendar=calendar, source_entry=source,
+                                                          created_by_ref=actor.reference, **fields)
+    for link in TemplateDependency.objects.filter(entry__version=version):
+        EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
+
+
 def _set_dates(calendar, dates):
     """Save supplied milestone dates without changing unspecified values.
     Raise ValidationError for values other than a plain date or None.
@@ -430,15 +480,16 @@ class DiaryAPI:
 
     # DV1-016: Revalidate ownership groups through the instance factory.
     # DV1-051: Creation requires no diary year.
-    def create_diary(self, *, name, milestone_dates, template_version_key=None,
-                     template_name=None, event_ref=None):
+    def create_diary(self, *, name, milestone_dates=None, template_version_key=None,
+                     template_name=None, event_ref=None, without_template=False):
         """Create a diary using this actor and return its API reference.
-        Select a template by name, version key, or the optional default.
+        A missing selection/default creates an empty diary; without_template bypasses the default.
         Do not expand the actor calendar scope.
         """
         return DiaryInstance.create(
             actor=self.actor, event_ref=event_ref, name=name,
             milestone_dates=milestone_dates, template_version_key=template_version_key, template_name=template_name,
+            without_template=without_template,
         )
 
     def diary(self, *, key):
@@ -795,10 +846,10 @@ class DiaryInstance(_DependencyAPI):
     # DV1-051: A diary has a name and milestone dates without a diary year.
     @classmethod
     @transaction.atomic
-    def create(cls, *, actor, name, milestone_dates, template_version_key=None,
-               template_name=None, event_ref=None):
-        """Create a diary reference with a stable key from an approved template.
-        Copy its rules, owners, and dependencies in one transaction.
+    def create(cls, *, actor, name, milestone_dates=None, template_version_key=None,
+               template_name=None, event_ref=None, without_template=False):
+        """Create a stable diary, optionally copying an approved template atomically.
+        Template-free diaries support personal tasks and later manager application.
         Repeated identical inputs with the same event_ref reuse the diary.
         Conflicting inputs raise ValidationError.
         Revalidate configured ownership groups on every call, including repeated requests.
@@ -811,22 +862,18 @@ class DiaryInstance(_DependencyAPI):
         # Independent callers can omit a host reference when they do not need safe retries.
         if event_ref is None:
             event_ref = f'diary:{uuid4()}'
-        selected = _template_version(key=template_version_key, name=template_name)
-        # Use the same parent-before-version lock order as template administration.
-        CalendarTemplate.objects.select_for_update().get(pk=selected.template_id)
-        version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
-
-        required = set(version.milestones.values_list('name', flat=True))
-        if not isinstance(milestone_dates, dict):
-            raise ValidationError('Supply milestone dates by name.')
-        missing = required - milestone_dates.keys()
-        if missing:
-            raise ValidationError('Missing required milestone dates: ' + ', '.join(sorted(missing)) + '.')
-        unknown = milestone_dates.keys() - set(Milestone.objects.values_list('name', flat=True))
-        if unknown:
-            raise ValidationError('Unrecognised milestone dates: ' + ', '.join(sorted(unknown)) + '.')
-        if any(type(value) is not date for value in milestone_dates.values()):
-            raise ValidationError('Every supplied milestone value must be a date.')
+        # A host reference serializes safe retries even before a template exists.
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', [event_ref.strip()])
+        selected = _creation_template(key=template_version_key, name=template_name, without_template=without_template)
+        version = None
+        if selected is not None:
+            CalendarTemplate.objects.select_for_update().get(pk=selected.template_id)
+            version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
+            if version.status != VersionStatus.APPROVED:
+                raise ValidationError('Select an approved template version.')
+        milestone_dates = {} if milestone_dates is None else milestone_dates
+        _validate_milestone_dates(version, milestone_dates)
 
         # The parent lock serializes repeated creation across template versions.
         existing = EventCalendar.objects.filter(event_ref=event_ref.strip()).first()
@@ -836,27 +883,47 @@ class DiaryInstance(_DependencyAPI):
             dates = existing.date_context()
 
             # Different inputs for the same reference require an explicit change rather than another creation.
-            if (existing.template_version_id != version.pk
-                    or existing.name != name.strip() or dates != milestone_dates):
+            if (existing.name != name.strip() or (version is not None and
+                    (existing.template_version_id != version.pk or dates != milestone_dates))):
                 raise ValidationError('This event reference already has a calendar with different inputs.')
             return cls(actor=actor, key=existing.pk)
 
         # DV1-028: Only this new diary's creation transaction can initialize its dependency snapshot.
         calendar = EventCalendar.objects.create(template_version=version, event_ref=event_ref, name=name,
-                                                created_by_ref=actor.reference, dependencies_locked=False)
-        _set_dates(calendar, milestone_dates)
-        copied = {}
-        for source in version.entries.all():
-            copied[source.pk] = CalendarEntry.objects.create(calendar=calendar, source_entry=source,
-                                                             created_by_ref=actor.reference,
-                                                             **EntryMapper.snapshot_fields(source))
-        for link in TemplateDependency.objects.filter(entry__version=version):
-            EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
+                                                created_by_ref=actor.reference, dependencies_locked=version is None)
+        if version is not None:
+            _set_dates(calendar, milestone_dates)
+            _copy_template(calendar, version, actor)
+            calendar.dependencies_locked = True
+            calendar.save(update_fields=['dependencies_locked'])
+        return cls(actor=actor, key=calendar.pk)
 
-        # The final creation step locks the graph before the API returns the diary to its caller.
+    @transaction.atomic
+    def apply_template(self, *, milestone_dates, template_version_key=None, template_name=None):
+        """Apply one approved template to an open diary, preserving all existing tasks.
+        Managers only. Identical retries are safe; replacement is not supported.
+        """
+        _require(self.actor, 'edit')
+        _validate_task_owner_roles()
+        selected = _template_version(key=template_version_key, name=template_name)
+        CalendarTemplate.objects.select_for_update().get(pk=selected.template_id)
+        version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
+        if version.status != VersionStatus.APPROVED:
+            raise ValidationError('Select an approved template version.')
+        _validate_milestone_dates(version, milestone_dates)
+        calendar = _open_calendar(self.actor, self.key, 'edit')
+        if calendar.template_version_id:
+            if calendar.template_version_id == version.pk and calendar.date_context() == milestone_dates:
+                return self
+            raise ValidationError('This diary already has a template. It cannot be replaced.')
+        calendar.template_version = version
+        calendar.dependencies_locked = False
+        calendar.save(update_fields=['template_version', 'dependencies_locked'])
+        _set_dates(calendar, milestone_dates)
+        _copy_template(calendar, version, self.actor)
         calendar.dependencies_locked = True
         calendar.save(update_fields=['dependencies_locked'])
-        return cls(actor=actor, key=calendar.pk)
+        return self
 
     # DV1-008: Close a diary instance.
     @transaction.atomic
@@ -1006,6 +1073,8 @@ class DiaryInstance(_DependencyAPI):
         if template_spec is None:
             return self.add_entry(spec=spec, directory=directory)
         _require(self.actor, 'edit')
+        if calendar.template_version_id is None:
+            raise ValidationError('Apply a template before adding tasks to it for future diaries.')
 
         # A recurring template task needs an explicitly supplied reusable rule and matching identity.
         if (template_spec.date_kind == DateKind.ONCE
@@ -1265,6 +1334,7 @@ class DiaryInstance(_DependencyAPI):
         # Public reads protect private entries after calculating readiness from all predecessors.
         visible = _visible_entries(actor, entries) if filter_visibility else tuple(entries)
         return {'key': calendar.pk, 'name': calendar.name, 'event_ref': calendar.event_ref,
+                'template_version_key': calendar.template_version_id,
                 'closed': calendar.closed_at is not None, 'closed_at': calendar.closed_at,
                 'closed_by_ref': calendar.closed_by_ref,
                 'milestones': context, 'entries': visible}

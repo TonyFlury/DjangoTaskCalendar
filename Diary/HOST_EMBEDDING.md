@@ -175,3 +175,20 @@ metadata keys afterwards, so host context cannot replace validated package forms
 A context `template_name` participates in the same conflict checks as URL/path and
 view-attribute selections; conflicting selections return HTTP 400. Creation views
 reject a selected template, including one supplied by inherited context.
+
+## Empty diaries and template application
+
+Create a diary through `DiaryAPI.create_diary(..., without_template=True)` before
+registering its UUID in the host's records and permitted scope. Users can then
+create private tasks without any template. Reads do not create a missing diary;
+a missing/unauthorized UUID must not be treated as permission to create one.
+
+For managers, register `TemplateApplyView` with the same trusted scope policy as
+`ManagerDiaryView`. It accepts `diary_key` from trusted context or the normal GET
+selector. Configure the manager context's `template_apply_url` (full URL) or
+`template_apply_url_name` (route name) for host navigation. The application page
+can extend `diary_base_template`, or a host template can include
+`Diary/partials/template_apply.html` with its prepared context. The view uses GET
+to choose an approved version and a CSRF-protected POST to apply it; it requires
+all declared dates and preserves personal work. Override
+`get_success_url(diary_key=...)` to return a fixed host page after success.
