@@ -20,7 +20,7 @@ class Command(OperatorCommand):
         parser.add_argument('--uuid', action='store_true', help='Show each item UUID alongside its name when listing.')
         output = parser.add_mutually_exclusive_group()
         output.add_argument('--details', '--full', action='store_true', help='Show formatted dates, task counts, and identifiers when listing.')
-        output.add_argument('--json', action='store_true', help='Return full list records as JSON for scripts.')
+        output.add_argument('--json', action='store_true', help='Return the result as JSON for scripts (all operations).')
         parser.add_argument('--diary', type=UUID, help='Exact diary UUID for show, close, or delete; names are not unique.')
         parser.add_argument('--state', choices=('all', 'open', 'closed'), default='all', help='Filter list results.')
         parser.add_argument('--template', help='Template name for creation or filtering list results.')
@@ -36,7 +36,7 @@ class Command(OperatorCommand):
                    'create': {'template', 'template_version', 'name', 'event_ref', 'milestone'},
                    'show': {'diary'}, 'close': {'diary'}, 'delete': {'diary'}}[operation]
         self.reject_unused(options, allowed, {'diary': None, 'state': 'all', 'template': None,
-            'template_version': None, 'name': None, 'event_ref': None, 'milestone': [], 'details': False, 'json': False, 'uuid': False})
+            'template_version': None, 'name': None, 'event_ref': None, 'milestone': [], 'details': False, 'uuid': False})
         if options['details'] and options['json']:
             raise ValueError('--details and --json cannot be combined.')
         if operation == 'list':
@@ -72,7 +72,8 @@ class Command(OperatorCommand):
         self.require(options, 'diary')
         options['diary'] = UUID(str(options['diary']))
         if operation == 'delete':
-            return delete_diary(key=options['diary'], actor=self.actor, execute=options['yes'] and not options['dry_run'])
+            return delete_diary(key=options['diary'], actor=self.actor, execute=options['yes'] and not options['dry_run'],
+                                expected=options.get('_delete_preview'))
         diary = DiaryAPI(actor=replace(self.actor, calendar_keys=frozenset({options['diary']}))).diary(key=options['diary'])
         if operation == 'close':
             diary.close()

@@ -4,30 +4,54 @@ Parent-first SQL relies on Django's deferred PostgreSQL foreign keys. Guards all
 child cleanup only after the parent is absent; no triggers are disabled. These
 operations are for deployment operators, outside the end-user callable API.
 """
-import json
 import logging
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist, PermissionDenied, ValidationError
 from django.core.management.base import BaseCommand, CommandError
-from django.core.serializers.json import DjangoJSONEncoder
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from Diary.api import Actor
 from Diary.models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
                           EventCalendar, TemplateDependency, TemplateEntry, TemplateMilestone, TemplateVersion)
 from Diary.roles import access_groups
+from Diary.management.output import write_command_result
 
 logger = logging.getLogger('Diary.management')
 
 
+def integrity_error_message(error, *, deleting):
+    """Preserve PostgreSQL diagnostics rather than guessing every failure is a foreign key."""
+    cause = error.__cause__
+    diagnostic = getattr(cause, 'diag', None)
+    reason = getattr(diagnostic, 'message_primary', None) or str(error).strip()
+    detail = getattr(diagnostic, 'message_detail', None)
+    state = getattr(cause, 'sqlstate', None) or getattr(cause, 'pgcode', None)
+    parts = [f'Database rejected {"deletion" if deleting else "the operation"}: {reason or "integrity check failed"}.']
+    if detail:
+        parts.append(f'Details: {detail}')
+    for attribute, label in (('table_name', 'Table'), ('constraint_name', 'Constraint')):
+        value = getattr(diagnostic, attribute, None)
+        if value:
+            parts.append(f'{label}: {value}.')
+    if state:
+        parts.append(f'SQLSTATE: {state}.')
+    if deleting:
+        parts.append('No records were deleted.')
+        if state == '23514' and 'V1 does not allow' in reason:
+            parts.append('A Diary protection trigger blocked cleanup. Check that migration '
+                         'Diary.0009_administrative_deletion is applied: '
+                         'python manage.py showmigrations Diary; python manage.py migrate Diary.')
+    return ' '.join(parts)
+
+
 class OperatorCommand(BaseCommand):
-    """Require a current manager and return structured command output."""
+    """Require a current manager and render human-readable or JSON results."""
 
     def add_operator_arguments(self, parser):
         parser.add_argument('--actor', required=True, help='Username of an active DiaryManager; required for all operations.')
-        parser.add_argument('--yes', action='store_true', help='Execute deletion rather than previewing it.')
-        parser.add_argument('--dry-run', action='store_true', help='Preview a deletion even when --yes is supplied.')
+        parser.add_argument('--force', '--yes', dest='yes', action='store_true', help='Delete without interactive confirmation (--yes is an alias).')
+        parser.add_argument('--dry-run', action='store_true', help='Preview deletion without prompting or changing data, even with --force.')
 
     def require(self, options, *names):
         for name in names:
@@ -40,25 +64,62 @@ class OperatorCommand(BaseCommand):
                 raise CommandError('--' + name.replace('_', '-') + ' does not apply to this operation.')
 
     def handle(self, *args, **options):
+        deleting = options['operation'] in {'delete', 'delete-version'}
         try:
             if (options['yes'] or options['dry_run']) and options['operation'] not in {'delete', 'delete-version'}:
-                raise CommandError('--yes and --dry-run apply only to deletion.')
+                raise CommandError('--force/--yes and --dry-run apply only to deletion.')
             model = get_user_model()
-            user = model._default_manager.get(**{model.USERNAME_FIELD: options['actor']}, is_active=True)
+            try:
+                user = model._default_manager.get(**{model.USERNAME_FIELD: options['actor']}, is_active=True)
+            except model.DoesNotExist as error:
+                raise CommandError(f"Actor {options['actor']} must identify an active user.") from error
             groups = frozenset(user.groups.values_list('name', flat=True))
             if access_groups()['manager'] not in groups:
                 raise CommandError('The actor must belong to the configured DiaryManager group.')
             self.actor = Actor(f'user:{user.pk}', groups)
+            if deleting and not options['yes'] and not options['dry_run']:
+                if options['json']:
+                    raise CommandError('JSON deletion requires --force to execute or --dry-run to preview; no confirmation is read from stdin.')
+                preview = self.execute_operation({**options, 'dry_run': True})
+                self.write_result(preview, options)
+                if not self.confirm_deletion():
+                    self.stdout.write('Deletion cancelled. No records were deleted.')
+                    return
+                options['yes'] = True
+                options['_delete_preview'] = preview
             result = self.execute_operation(options)
             self.write_result(result, options)
-        except (ObjectDoesNotExist, ValidationError, ValueError, IntegrityError, PermissionDenied, ImproperlyConfigured) as error:
-            raise CommandError(str(error)) from error
+        except (CommandError, ObjectDoesNotExist, ValidationError, ValueError, DatabaseError, PermissionDenied, ImproperlyConfigured) as error:
+            operation = options['operation']
+            target = (options.get('name') if operation == 'create' else None) or options.get('diary') or options.get('template') or 'selection'
+            if options.get('template_version') is not None:
+                target = f"{target} (version {options['template_version']})"
+            message = '; '.join(error.messages) if isinstance(error, ValidationError) else str(error)
+            if isinstance(error, ObjectDoesNotExist):
+                message = 'The selected item does not exist.'
+            if isinstance(error, IntegrityError):
+                message = integrity_error_message(error, deleting=deleting)
+            elif isinstance(error, DatabaseError):
+                message = 'Database operation failed. Check the connection and apply the Diary migrations.'
+            raise CommandError(f'Cannot {operation} {target}: {message}') from error
+
+    def confirm_deletion(self):
+        while True:
+            try:
+                answer = input('Delete the item shown above? [y/N]: ').strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return False
+            if answer in {'y', 'yes'}:
+                return True
+            if answer in {'', 'n', 'no'}:
+                return False
+            self.stderr.write('Please answer y or n.')
 
     def execute_operation(self, options):
         raise NotImplementedError
 
     def write_result(self, result, options):
-        self.stdout.write(json.dumps(result, cls=DjangoJSONEncoder, indent=2))
+        write_command_result(self.stdout, result, as_json=options['json'])
 
 
 def delete_rows(model, clause, parameters):
@@ -69,7 +130,7 @@ def delete_rows(model, clause, parameters):
 
 
 @transaction.atomic
-def delete_diary(*, key, actor, execute=False):
+def delete_diary(*, key, actor, execute=False, expected=None):
     diary = EventCalendar.objects.select_for_update().get(pk=key)
     entries = CalendarEntry.objects.filter(calendar=diary)
     result = {'operation': 'delete-diary', 'diary_key': diary.pk, 'name': diary.name,
@@ -78,6 +139,8 @@ def delete_diary(*, key, actor, execute=False):
                          'completed_tasks': entries.filter(completed_at__isnull=False).count(),
                          'dependencies': EntryDependency.objects.filter(entry__calendar=diary).count(),
                          'milestone_dates': diary.milestone_dates.count()}}
+    if execute and expected is not None and result != expected:
+        raise CommandError('The diary changed after the preview. Inspect it again before deleting.')
     if execute:
         delete_rows(EventCalendar, 'id = %s', [key])
         entry_table = connection.ops.quote_name(CalendarEntry._meta.db_table)
@@ -90,7 +153,7 @@ def delete_diary(*, key, actor, execute=False):
 
 
 @transaction.atomic
-def delete_template(*, key, actor, number=None, execute=False):
+def delete_template(*, key, actor, number=None, execute=False, expected=None):
     template = CalendarTemplate.objects.select_for_update().get(pk=key)
     versions = template.versions.order_by('number')
     if number is not None:
@@ -112,6 +175,8 @@ def delete_template(*, key, actor, number=None, execute=False):
                          'tasks': TemplateEntry.objects.filter(version_id__in=keys).count(),
                          'dependencies': TemplateDependency.objects.filter(entry__version_id__in=keys).count(),
                          'milestone_declarations': TemplateMilestone.objects.filter(version_id__in=keys).count()}}
+    if execute and expected is not None and result != expected:
+        raise CommandError('The template changed after the preview. Inspect it again before deleting.')
     if execute:
         for version in versions:
             delete_rows(TemplateVersion, 'id = %s', [version.pk])

@@ -17,7 +17,7 @@ class Command(OperatorCommand):
         parser.add_argument('--uuid', action='store_true', help='Show each item UUID alongside its name when listing.')
         output = parser.add_mutually_exclusive_group()
         output.add_argument('--details', '--full', action='store_true', help='List descriptions, versions, declared milestones, and diary usage.')
-        output.add_argument('--json', action='store_true', help='Return full list records as JSON for scripts.')
+        output.add_argument('--json', action='store_true', help='Return the result as JSON for scripts (all operations).')
         parser.add_argument('--template', help='Exact template name (case insensitive). Required except for list.')
         parser.add_argument('--template-version', type=int, help='Version number for show, approve, or delete-version.')
         parser.add_argument('--copy-version', type=int, help='Copy this version into a new draft, preserving its requirements and tasks.')
@@ -37,7 +37,7 @@ class Command(OperatorCommand):
         if operation == 'create':
             allowed.add('description')
         self.reject_unused(options, allowed, {'template_version': None, 'copy_version': None, 'milestone': [],
-                                             'description': '', 'details': False, 'json': False, 'uuid': False})
+                                             'description': '', 'details': False, 'uuid': False})
         if options['details'] and options['json']:
             raise ValueError('--details and --json cannot be combined.')
         api = DiaryAPI(actor=self.actor)
@@ -62,6 +62,8 @@ class Command(OperatorCommand):
             return list(templates.values('id', 'name'))
         self.require(options, 'template')
         if operation == 'create':
+            if CalendarTemplate.objects.filter(name__iexact=options['template'].strip()).exists():
+                raise ValueError('A template with this name already exists. Use show or create-version instead.')
             template = api.create_template(name=options['template'], description=options['description'])
             return template.editor_data()
         template = api.template(name=options['template'])
@@ -101,7 +103,7 @@ class Command(OperatorCommand):
             self.require(options, 'template_version')
         return delete_template(key=template.key, actor=self.actor,
             number=options['template_version'] if operation == 'delete-version' else None,
-            execute=options['yes'] and not options['dry_run'])
+            execute=options['yes'] and not options['dry_run'], expected=options.get('_delete_preview'))
 
     def write_result(self, result, options):
         if options['operation'] != 'list' or options['json']:

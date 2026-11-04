@@ -56,6 +56,26 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         """Return the latest imported version for direct identity and dependency assertions."""
         return TemplateVersion.objects.filter(template__name=name).order_by('-number').first()
 
+    def test_json_output_reports_transfer_without_changing_fixture_format(self):
+        result = json.loads(self.command('export', template=['Creation template'], json=True))
+        self.assertEqual(result['operation'], 'export')
+        self.assertEqual(result['template_count'], 1)
+        payload = json.loads(self.fixture.read_text())
+        self.assertIsInstance(payload, list)
+        for item in payload:
+            if item['model'] == CalendarTemplate._meta.label_lower:
+                item['fields']['name'] = 'JSON transfer'
+        self.fixture.write_text(json.dumps(payload))
+        result = json.loads(self.command('import', json=True, dry_run=True))
+        self.assertTrue(result['dry_run'])
+        self.assertFalse(CalendarTemplate.objects.filter(name='JSON transfer').exists())
+        text = self.command('import')
+        self.assertIn('Imported Diary template fixture.', text)
+        result = json.loads(self.command('import', json=True))
+        self.assertEqual(result['operation'], 'import')
+        self.assertFalse(result['dry_run'])
+        self.assertEqual(result['template_count'], 1)
+
     def test_round_trip_preserves_graph_and_skips_identical_reimports(self):
         """Rebuild task definitions with fresh database keys while keeping stable task keys and dependency links."""
         self.export()

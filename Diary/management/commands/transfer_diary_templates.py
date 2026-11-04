@@ -16,6 +16,7 @@ from Diary.models import CalendarTemplate, Milestone, TemplateDependency, Templa
 from Diary.roles import access_groups, validate_task_owner_roles
 from Diary.template_graph import validate_template_graph
 from Diary.views import DjangoOwnerDirectory
+from Diary.management.output import write_command_result
 
 
 class Command(BaseCommand):
@@ -33,6 +34,7 @@ class Command(BaseCommand):
                             help='Map a source owner email to a different local email address.')
         parser.add_argument('--new-version', action='store_true', help='Approve a new version when existing content differs.')
         parser.add_argument('--dry-run', action='store_true', help='Validate an import and roll back all changes.')
+        parser.add_argument('--json', action='store_true', help='Return the transfer result as JSON; fixture files always use JSON.')
 
     def handle(self, *args, **options):
         """Check the local actor and report import or export failures as CommandError."""
@@ -52,13 +54,14 @@ class Command(BaseCommand):
                 # Reject import-only flags instead of producing an export with different implied behavior.
                 if options['person_map'] or options['new_version'] or options['dry_run']:
                     raise ValueError('Person mappings, --new-version, and --dry-run apply only to import.')
-                self.export_fixture(options)
+                result = self.export_fixture(options)
             else:
 
                 # Import scope comes from the complete fixture rather than an export-only name filter.
                 if options['template']:
                     raise ValueError('--template applies only to export.')
-                self.import_fixture(options)
+                result = self.import_fixture(options)
+            write_command_result(self.stdout, result, as_json=options['json'])
         except (ValueError, TypeError, KeyError, OSError, ObjectDoesNotExist, PermissionDenied,
                 ValidationError, ImproperlyConfigured, IntegrityError, serializers.base.DeserializationError) as error:
             raise CommandError(f'Diary template transfer failed: {error}') from error
@@ -104,7 +107,8 @@ class Command(BaseCommand):
         payload = serializers.serialize('json', records, indent=2)
         with options['fixture'].open('x', encoding='utf-8') as destination:
             destination.write(payload + '\n')
-        self.stdout.write('Exported approved Diary templates. Existing files are not overwritten.')
+        return {'operation': 'export', 'fixture': str(options['fixture']), 'template_count': templates.count(),
+                'message': 'Exported approved Diary templates. Existing files are not overwritten.'}
 
     def read_fixture(self, path):
         """Deserialize only the six template model types without saving any source objects."""
@@ -277,7 +281,9 @@ class Command(BaseCommand):
         # Dry runs execute the same model and API validation but never retain database writes.
         if options['dry_run']:
             transaction.set_rollback(True)
-        self.stdout.write('Validated Diary template fixture.' if options['dry_run'] else 'Imported Diary template fixture.')
+        return {'operation': 'import', 'fixture': str(options['fixture']), 'template_count': len(plans),
+                'dry_run': options['dry_run'],
+                'message': 'Validated Diary template fixture.' if options['dry_run'] else 'Imported Diary template fixture.'}
 
     def save_plan(self, source, specs, graph, definitions, options, directory):
         """Preserve identical definitions or approve an explicitly requested new destination version."""

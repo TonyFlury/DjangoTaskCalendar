@@ -14,7 +14,8 @@ deletion operations. PostgreSQL is required.
 
 ## Operator identity and output
 
-Every operation requires `--actor USERNAME`. This must identify an active user in
+Template/diary administration and template transfer require `--actor USERNAME`.
+Configuration validation does not require an actor. The actor must identify an active user in
 the configured `DIARY_MANAGER` group, using the configured user model's username
 field. Superuser status alone does not replace that group membership.
 
@@ -23,14 +24,37 @@ all diaries in the database, including private personal tasks. Commands do not
 derive scope from HTTP requests, sessions, or the host's event access policy.
 They do not grant broader access through the web views.
 
-Diary and template lists print one name per line by default. Use `--details` (alias `--full`)
-for readable metadata, or `--json` for the full structured list. Add `--uuid` to
-show each UUID alongside its name, as `UUID  Name`. It also works with `--details`
-or `--full`; JSON already contains UUIDs. This option applies only to `list`. Other operations
-write indented JSON, with UUIDs and dates encoded as strings.
-JSON lists return arrays; individual records and deletion plans return objects.
-Failures use Django's `CommandError` and a nonzero process exit status.
+All Diary management commands use human-readable output by default. Diary and
+template lists print one name per line; use `--details` (alias `--full`) for readable
+metadata. Add `--uuid` to show each UUID alongside its name, as `UUID  Name`.
+These three switches apply only to list operations.
+
+Inspection and lifecycle operations print labelled fields, dates in the project's
+time zone, nested task/version information, and explicit deletion previews or
+completion messages. Configuration validation and fixture transfer print readable
+result messages and fields.
+
+Every command accepts `--json` for scripting, including `show`, `versions`,
+`create`, `create-version`, `approve`, `close`, deletion previews and execution,
+configuration validation, and template import/export. JSON output consists of one
+JSON value on standard output, without human labels or progress messages. UUIDs and
+dates are encoded as strings. Administration lists return arrays and individual
+records/deletion plans return objects; validation returns `valid` and `message`;
+transfer returns `operation`, `fixture`, `template_count`, `message`, and an import
+`dry_run` flag. Fixture files themselves always use Django JSON format, independently
+of the command's terminal output format.
+
+`--json` cannot be combined with `--details` or `--full`. JSON list records already
+include UUIDs, so `--uuid --json` leaves their schema unchanged. Failures retain
+Django's `CommandError` on standard error and a nonzero process exit status.
 Use each command's `--help` for argument details.
+
+```sh
+python manage.py manage_diaries show --diary DIARY_UUID --actor operator --json
+python manage.py manage_diary_templates versions --template "Event preparation" --actor operator --json
+python manage.py validate_diary_configuration --json
+python manage.py transfer_diary_templates export templates.json --actor operator --json
+```
 
 ## Templates and versions
 
@@ -75,8 +99,9 @@ Event preparation
 ```
 
 `--json` retains the original list records: template UUID, name, description, and
-version count. It cannot be combined with `--details` or `--full`. These output
-switches apply only to `list`. `versions` includes each version's status,
+version count. It cannot be combined with `--details` or `--full`. The display
+switches `--details`, `--full`, and `--uuid` apply only to `list`; `--json` works for
+every operation. `versions` includes each version's status,
 audit fields, and task, diary, and declared milestone counts. `show` without a
 version returns editor data for the highest version, including a draft; with a
 version it returns that version's complete tasks, predecessor keys, and milestone
@@ -137,9 +162,9 @@ Summer event
 ```
 
 Use `--json` for the original full structured list, including identifiers and counts.
-It cannot be combined with `--details` or `--full`. These output switches apply only
-to `list`. `show` returns the diary and its visible-to-manager task data through the
-callable API as JSON. Diary names need not be unique, so instance actions require
+It cannot be combined with `--details` or `--full`. `--details`, `--full`, and `--uuid` apply only
+to `list`; `--json` works for every operation. `show` returns the diary and its visible-to-manager task data through the
+callable API, with readable output by default and JSON when requested. Diary names need not be unique, so instance actions require
 an exact `--diary UUID`, available from the detailed or JSON list.
 
 ```sh
@@ -159,21 +184,35 @@ closure preserves the original closure record. Reopening is not supported.
 
 ## Deletion
 
-Deletion operates on one explicit target. Without `--yes` it only prints a preview.
-`--dry-run` also previews, including when combined with `--yes`. These options apply
-only to deletion, not creation or approval.
+Deletion operates on one explicit target. By default the command first displays
+the human-readable name, UUID, selected versions where applicable, and affected
+record counts. It then asks `Delete the item shown above? [y/N]:`.
+Answer `y` or `yes` to delete. Answer `n` or `no`, press Enter, or end input to cancel
+without changing records. Invalid answers repeat the question.
+
+Use `--force` to execute without confirmation. `--yes` remains an alias for
+compatibility. `--dry-run` only displays a preview and never prompts or deletes,
+even when combined with `--force`. These flags apply only to deletion.
+
+JSON-mode deletion never prompts: supply `--json --force` to execute, or
+`--json --dry-run` to preview. Omitting both flags in JSON mode fails clearly
+instead of waiting for input or performing an implicit delete.
 
 ```sh
 python manage.py manage_diaries delete --diary DIARY_UUID --actor operator
-python manage.py manage_diaries delete --diary DIARY_UUID --yes --actor operator
+python manage.py manage_diaries delete --diary DIARY_UUID --dry-run --actor operator
+python manage.py manage_diaries delete --diary DIARY_UUID --force --actor operator
 python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --actor operator
-python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --yes --actor operator
-python manage.py manage_diary_templates delete --template "Event preparation" --yes --actor operator
+python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --force --json --actor operator
+python manage.py manage_diary_templates delete --template "Event preparation" --force --actor operator
 ```
 
-Preview output includes the exact target, `deleted: false`, and affected counts.
-Executed deletion returns `deleted: true`. The selected records are locked and
-checked again during execution; a previous preview is not a reservation.
+Human-readable previews identify the exact target, affected counts, and that no
+records were deleted; executed deletion prints a completion message. With `--json`,
+previews include `deleted: false` and executed deletion returns `deleted: true`.
+The command rechecks the target under lock after confirmation. If its identity or
+affected counts have changed, it fails and requires a fresh inspection rather
+than deleting a different selection. A preview does not reserve the records.
 
 - Diary deletion removes the entire instance, including completed tasks and their
   completion history, open tasks, dependency links, and supplied milestone dates.
@@ -204,3 +243,20 @@ does not create a separate persistent deletion audit table.
 Verification is in `Diary/tests/test_administration_commands.py`. The existing
 live-dependency, milestone, and template-declaration tests verify that ordinary
 immutability rules remain enforced.
+
+## Failure messages
+
+Create and delete failures identify the operation and selected name or UUID (and
+version number when supplied), followed by a clear reason. Examples include a
+name already in use, missing required milestone dates, a nonexistent target,
+diaries still referencing a template version, or a target changed during
+confirmation. Failed deletion leaves the target intact. Database connection failures advise checking connectivity and migrations. Integrity
+errors preserve the PostgreSQL reason and available details, table, constraint,
+and SQLSTATE. A foreign-key failure identifies the referencing table/constraint
+and key in the database detail rather than hiding them behind a generic blocker.
+A legacy Diary protection-trigger failure points to migration
+`0009_administrative_deletion` and the commands to check/apply it.
+
+Errors are reported as Django `CommandError` messages on standard error, with a
+nonzero exit status in both text and JSON modes. JSON mode does not replace errors
+with a success object. A declined confirmation is a cancellation, not an error.

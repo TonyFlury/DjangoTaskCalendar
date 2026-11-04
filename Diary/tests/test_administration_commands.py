@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, OperationalError, connection, transaction
 from django.test import TestCase, override_settings
 
 from Diary.management import administration
@@ -19,6 +19,9 @@ from Diary.tests.test_task_creation import TaskCreationFixtures
 class AdministrationCommandTests(TaskCreationFixtures, TestCase):
     def command(self, command_name, operation, **options):
         output = StringIO()
+        options.setdefault('json', True)
+        if operation in {'delete', 'delete-version'} and not options.get('yes'):
+            options.setdefault('dry_run', True)
         call_command(command_name, operation, actor=options.pop('actor', self.manager.get_username()), stdout=output, **options)
         return json.loads(output.getvalue())
 
@@ -156,6 +159,175 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
             self.assertEqual(json.loads(output.getvalue())[0]['id'], str(key))
             with self.assertRaises(CommandError):
                 call_command(command_name, 'show', uuid=True, actor=self.manager.get_username(), **selector)
+
+    def test_non_list_operations_default_to_readable_text(self):
+        def human(command_name, operation, **options):
+            if operation in {'delete', 'delete-version'} and not options.get('yes'):
+                options.setdefault('dry_run', True)
+            output = StringIO()
+            call_command(command_name, operation, actor=self.manager.get_username(), stdout=output, **options)
+            return output.getvalue()
+
+        text = human('manage_diary_templates', 'create', template='Human template', description='Reusable work')
+        self.assertIn('Human template\n', text)
+        self.assertIn('Description: Reusable work', text)
+        text = human('manage_diary_templates', 'create-version', template='Human template', milestone=['target'])
+        self.assertIn('Version: 1', text)
+        self.assertIn('Status: draft', text)
+        text = human('manage_diary_templates', 'approve', template='Human template', template_version=1)
+        self.assertIn('Status: approved', text)
+        text = human('manage_diary_templates', 'versions', template='Human template')
+        self.assertTrue(text.startswith('Version 1\n'))
+        self.assertIn('Task count: 0', text)
+        text = human('manage_diary_templates', 'show', template='Human template')
+        self.assertTrue(text.startswith('Human template\n'))
+        text = human('manage_diaries', 'create', name='Human diary', template='Human template', milestone=['target=2027-06-01'])
+        self.assertTrue(text.startswith('Human diary\n'))
+        diary = EventCalendar.objects.get(name='Human diary')
+        self.assertIn('01 Jun 2027', text)
+        text = human('manage_diaries', 'show', diary=diary.pk)
+        self.assertIn('Closed: No', text)
+        text = human('manage_diaries', 'close', diary=diary.pk)
+        self.assertIn('Closed: Yes', text)
+        text = human('manage_diaries', 'delete', diary=diary.pk)
+        self.assertIn('Deletion preview (no records deleted).', text)
+        self.assertIn('Tasks: 0', text)
+        text = human('manage_diaries', 'delete', diary=diary.pk, yes=True)
+        self.assertIn('Deletion completed.', text)
+        self.assertIn('Deleted: Yes', text)
+        text = human('manage_diary_templates', 'delete-version', template='Human template', template_version=1)
+        self.assertIn('Deletion preview', text)
+        human('manage_diary_templates', 'delete-version', template='Human template', template_version=1, yes=True)
+        text = human('manage_diary_templates', 'delete', template='Human template', yes=True)
+        self.assertIn('Deletion completed.', text)
+
+    def test_delete_prompts_after_displaying_target_and_can_be_cancelled(self):
+        self.templates('create', template='Confirm template')
+        draft = self.templates('create-version', template='Confirm template')
+        cases = [('manage_diaries', 'delete', {'diary': self.diary.key}, 'Selected diary'),
+                 ('manage_diary_templates', 'delete', {'template': 'Confirm template'}, 'Confirm template'),
+                 ('manage_diary_templates', 'delete-version',
+                  {'template': 'Confirm template', 'template_version': draft['number']}, 'Confirm template')]
+        for command_name, operation, options, name in cases:
+            output = StringIO()
+            before = self.snapshot()
+
+            def refuse(prompt):
+                self.assertIn(name, output.getvalue())
+                self.assertIn('Deletion preview', output.getvalue())
+                return 'n'
+
+            with patch('builtins.input', side_effect=refuse) as question:
+                call_command(command_name, operation, actor=self.manager.get_username(), stdout=output, **options)
+            question.assert_called_once()
+            self.assertIn('Deletion cancelled.', output.getvalue())
+            self.assertEqual(self.snapshot(), before)
+
+    def test_yes_confirmation_executes_and_force_bypasses_prompt(self):
+        output = StringIO()
+        with patch('builtins.input', return_value='y') as question:
+            call_command('manage_diaries', 'delete', diary=self.diary.key,
+                         actor=self.manager.get_username(), stdout=output)
+        question.assert_called_once()
+        self.assertFalse(EventCalendar.objects.filter(pk=self.diary.key).exists())
+        self.assertIn('Deletion completed.', output.getvalue())
+        self.templates('create', template='Forced template')
+        with patch('builtins.input', side_effect=AssertionError('Unexpected confirmation')):
+            output = StringIO()
+            call_command('manage_diary_templates', 'delete', '--force', template='Forced template',
+                         actor=self.manager.get_username(), stdout=output)
+        self.assertFalse(CalendarTemplate.objects.filter(name='Forced template').exists())
+
+    def test_json_deletion_requires_explicit_force_or_dry_run(self):
+        before = self.snapshot()
+        with patch('builtins.input', side_effect=AssertionError('Unexpected confirmation')):
+            with self.assertRaisesMessage(CommandError, 'requires --force'):
+                call_command('manage_diaries', 'delete', '--json', diary=self.diary.key,
+                             actor=self.manager.get_username(), stdout=StringIO())
+            self.assertEqual(self.snapshot(), before)
+            output = StringIO()
+            call_command('manage_diaries', 'delete', '--json', '--force', diary=self.diary.key,
+                         actor=self.manager.get_username(), stdout=output)
+            self.assertTrue(json.loads(output.getvalue())['deleted'])
+
+    def test_changed_target_after_confirmation_is_not_deleted(self):
+        def change_target(prompt):
+            EventCalendar.objects.filter(pk=self.diary.key).update(name='Changed during confirmation')
+            return 'yes'
+
+        with patch('builtins.input', side_effect=change_target):
+            with self.assertRaisesMessage(CommandError, 'changed after the preview'):
+                call_command('manage_diaries', 'delete', diary=self.diary.key,
+                             actor=self.manager.get_username(), stdout=StringIO())
+        self.assertTrue(EventCalendar.objects.filter(pk=self.diary.key).exists())
+
+    def test_create_and_delete_errors_identify_operation_and_target(self):
+        with self.assertRaisesMessage(CommandError, 'Cannot create Creation template'):
+            self.templates('create', template='Creation template')
+        with self.assertRaisesMessage(CommandError, 'Cannot delete-version Creation template (version 1): Deletion blocked'):
+            self.templates('delete-version', template='Creation template', template_version=1, yes=True)
+
+    def test_empty_or_ended_confirmation_cancels_without_changes(self):
+        before = self.snapshot()
+        for response in ('', EOFError()):
+            output = StringIO()
+            side_effect = response if isinstance(response, Exception) else lambda prompt: response
+            with patch('builtins.input', side_effect=side_effect):
+                call_command('manage_diaries', 'delete', diary=self.diary.key,
+                             actor=self.manager.get_username(), stdout=output)
+            self.assertIn('Deletion cancelled.', output.getvalue())
+            self.assertEqual(self.snapshot(), before)
+
+    def test_database_failure_reports_target_and_recovery_advice(self):
+        before = self.snapshot()
+        with patch('Diary.management.commands.manage_diaries.delete_diary', side_effect=OperationalError('Unavailable')):
+            with self.assertRaisesMessage(CommandError, 'Check the connection and apply the Diary migrations'):
+                self.diaries('delete', diary=self.diary.key, yes=True)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_delete_error_identifies_external_foreign_key_and_record(self):
+        before = self.snapshot()
+        with connection.cursor() as cursor:
+            cursor.execute('CREATE TABLE diary_admin_host_reference (id integer PRIMARY KEY, diary_id uuid NOT NULL, '
+                           'CONSTRAINT diary_admin_host_diary_fk FOREIGN KEY (diary_id) REFERENCES "Diary_eventcalendar" (id))')
+            cursor.execute('INSERT INTO diary_admin_host_reference VALUES (1, %s)', [self.diary.key])
+        try:
+            with self.assertRaises(CommandError) as error:
+                self.diaries('delete', diary=self.diary.key, yes=True)
+            message = str(error.exception)
+            for value in ('diary_admin_host_reference', 'diary_admin_host_diary_fk', str(self.diary.key),
+                          'SQLSTATE: 23503', 'No records were deleted.'):
+                self.assertIn(value, message)
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute('DROP TABLE diary_admin_host_reference')
+
+    def test_legacy_milestone_guard_reports_missing_deletion_migration(self):
+        from importlib import import_module
+        migration = import_module('Diary.migrations.0009_administrative_deletion')
+        old_function = migration.MILESTONE
+        current_function = old_function.replace('BEGIN', 'BEGIN\n' + migration.MILESTONE_DELETE, 1)
+        before = self.snapshot()
+        with connection.cursor() as cursor:
+            cursor.execute(old_function)
+        try:
+            with self.assertRaises(CommandError) as error:
+                self.diaries('delete', diary=self.diary.key, yes=True)
+            message = str(error.exception)
+            self.assertIn('V1 does not allow milestone changes', message)
+            self.assertIn('SQLSTATE: 23514', message)
+            self.assertIn('0009_administrative_deletion', message)
+            self.assertNotIn('Related records prevent deletion', message)
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute(current_function)
+
+    def test_configuration_validation_has_explicit_json_output(self):
+        output = StringIO()
+        call_command('validate_diary_configuration', '--json', stdout=output)
+        self.assertEqual(json.loads(output.getvalue()), {'valid': True, 'message': 'Diary configuration is valid.'})
 
     def test_create_copy_and_approve_template_version(self):
         self.templates('create', template='New definition', description='Example')
