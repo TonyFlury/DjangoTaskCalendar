@@ -16,15 +16,17 @@
             {% if diary_data %}{% if not diary_ui.trusted_scope %}<input class="diary-personal-selector" type="hidden" name="diary_key" value="{{ diary_data.key }}">{% endif %}{% endif %}
             <fieldset class="diary-personal-filter-group">
                 <legend class="diary-personal-filter-legend">Task filters</legend>
-                {% for field in filters %}
-                    <label class="diary-personal-filter-label">{{ field }}<span class="diary-personal-filter-text">{{ field.label }}</span></label>
-                {% endfor %}
+                <div class="diary-personal-filter-controls">
+                    {% for field in filters %}
+                        <label class="diary-personal-filter-label">{{ field }}<span class="diary-personal-filter-text">{{ field.label }}</span></label>
+                    {% endfor %}
+                </div>
+                <p class="diary-muted diary-personal-filter-help">All open tasks shows ready tasks by default. Select a specific status to see that category, including blocked tasks.</p>
+                <div class="diary-actions diary-personal-filter-actions">
+                    <button class="diary-button diary-button-primary diary-personal-apply" type="submit">Apply filters</button>
+                    <a class="diary-button diary-personal-reset" href="{% if diary_ui.trusted_scope %}{% url 'Diary:personal-diary' %}{% else %}?{% if diary_data %}diary_key={{ diary_data.key }}{% endif %}{% endif %}">Clear filters</a>
+                </div>
             </fieldset>
-            <p class="diary-muted diary-personal-filter-help">All open tasks shows ready tasks by default. Select a specific status to see that category, including blocked tasks.</p>
-            <div class="diary-actions diary-personal-filter-actions">
-                <button class="diary-button diary-button-primary diary-personal-apply" type="submit">Apply filters</button>
-                <a class="diary-button diary-personal-reset" href="{% if diary_ui.trusted_scope %}{% url 'Diary:personal-diary' %}{% else %}?{% if diary_data %}diary_key={{ diary_data.key }}{% endif %}{% endif %}">Reset filters</a>
-            </div>
         </form>
         <nav class="diary-personal-status-links" aria-label="Personal task status">
             {% for link in status_links %}

@@ -139,9 +139,13 @@
 .diary .diary-manager-status-completed, .diary .diary-manager-completion { color: var(--diary-completed); }
 
 /* DV1-021, DV1-039, DV1-041, DV1-049: Personal filters and shared task highlights. */
-.diary .diary-personal-filter-group { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; }
+.diary .diary-personal-filter-group { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; margin: 0; padding: .5rem .75rem .75rem; }
 .diary .diary-personal-filter-legend { font-weight: bold; }
-.diary .diary-personal-filter-label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-weight: normal; }
+.diary .diary-personal-filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.diary .diary-personal-filter-label { display: flex; align-items: center; gap: .35rem; margin: 0; min-width: 0; font-weight: normal; }
+.diary .diary-personal-filter-help { margin-block: .5rem; font-size: .875rem; }
+.diary .diary-personal-filter-actions { flex-direction: row; flex-wrap: wrap; gap: .5rem; margin-block: .5rem 0; }
+.diary .diary-personal-filter-actions .diary-button { padding: .35rem .65rem; }
 .diary .diary-personal-control { max-width: 100%; accent-color: var(--diary-accent); }
 .diary .diary-personal-filter-text { overflow-wrap: anywhere; }
 .diary .diary-personal-error { color: var(--diary-late); }
