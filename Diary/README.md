@@ -2,6 +2,8 @@
 
 For browser instructions, see the [Diary web user guide](USER_GUIDE.md).
 This document covers integration, configuration, and the callable API.
+For operator commands to list, inspect, create, close, and delete templates and diaries,
+see [Template and diary administration](MANAGEMENT_COMMANDS.md).
 V1 uses English only. Localization is not required for the current release.
 
 ## Confirmed selector and task-edit rules

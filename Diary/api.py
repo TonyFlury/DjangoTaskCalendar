@@ -812,6 +812,8 @@ class DiaryInstance(_DependencyAPI):
         if event_ref is None:
             event_ref = f'diary:{uuid4()}'
         selected = _template_version(key=template_version_key, name=template_name)
+        # Use the same parent-before-version lock order as template administration.
+        CalendarTemplate.objects.select_for_update().get(pk=selected.template_id)
         version = TemplateVersion.objects.select_for_update().get(pk=selected.pk)
 
         required = set(version.milestones.values_list('name', flat=True))
@@ -826,8 +828,7 @@ class DiaryInstance(_DependencyAPI):
         if any(type(value) is not date for value in milestone_dates.values()):
             raise ValidationError('Every supplied milestone value must be a date.')
 
-        # All versions of one template share this lock for repeated calendar creation.
-        CalendarTemplate.objects.select_for_update().get(pk=version.template_id)
+        # The parent lock serializes repeated creation across template versions.
         existing = EventCalendar.objects.filter(event_ref=event_ref.strip()).first()
 
         # The host reference makes repeated creation safe without copying entries again.
