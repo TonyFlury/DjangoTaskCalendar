@@ -2,6 +2,7 @@
 from dataclasses import replace
 from datetime import date
 from uuid import uuid4
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -13,7 +14,7 @@ from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import DateKind, OwnerKind
 from Diary.forms import TaskFormSet
 from Diary.models import CalendarTemplate, Milestone, TemplateEntry, TemplateVersion
-from Diary.views import TemplateEditorView
+from Diary.views import TemplateCreateView, TemplateEditorView
 
 
 # Verifies DV1-025: Template authoring interface.
@@ -61,6 +62,89 @@ class TemplateEditorTests(TestCase):
         data = self.api.template(name='Reusable plan').editor_data()
         self.assertEqual(len(data['entries']), 2)
         self.assertEqual([item['name'] for item in data['milestones']], ['target'])
+
+    def test_inherited_context_selects_template_and_reaches_all_render_paths(self):
+        from django.shortcuts import render
+        from django.views.generic import TemplateView
+
+        template, version = self.create_template()
+
+        class HostParentView(TemplateView):
+            def get_context_data(self, **kwargs):
+                context = super().get_context_data(**kwargs)
+                self.request.context_calls = getattr(self.request, 'context_calls', 0) + 1
+                context['host_marker'] = 'Inherited host context'
+                context['diary_ui'] = {'form_fields': {'host_state': 'trusted-host-state'}}
+                if self.request.session.get('selected_template'):
+                    context['template_name'] = self.request.session['selected_template']
+                return context
+
+        class HostEditorView(TemplateEditorView, HostParentView):
+            pass
+
+        class HostCreateView(TemplateCreateView, HostParentView):
+            pass
+
+        requests = [(HostEditorView, 'get', {}, {}, 'Diary/template_list.html', 200),
+                    (HostEditorView, 'get', {}, {'selected_template': 'Reusable plan'}, 'Diary/template_editor.html', 200),
+                    (HostCreateView, 'get', {}, {}, 'Diary/template_editor.html', 200)]
+        for action, expected_status in (('add_task', 200), ('refresh_milestones', 200), ('save', 400)):
+            payload = self.payload(version=version.key)
+            payload['action'] = action
+            if action == 'save':
+                payload['tasks-0-name'] = ''
+            requests.append((HostEditorView, 'post', payload, {'selected_template': 'Reusable plan'},
+                             'Diary/template_editor.html', expected_status))
+        for view_class, method, payload, session, page, status in requests:
+            with self.subTest(view=view_class.__name__, method=method, action=payload.get('action')):
+                request = getattr(RequestFactory(), method)('/host/template/', payload)
+                request.user = self.manager
+                request.session = session
+                with patch('Diary.views.render', wraps=render) as renderer:
+                    response = view_class.as_view(extra_context={'static_marker': 'Extra context'})(request)
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(request.context_calls, 1)
+                self.assertEqual(renderer.call_args.args[1], page)
+                context = renderer.call_args.args[2]
+                self.assertEqual(context['host_marker'], 'Inherited host context')
+                self.assertEqual(context['static_marker'], 'Extra context')
+                self.assertIsInstance(context['view'], view_class)
+                if page.endswith('template_editor.html'):
+                    self.assertContains(response, 'name="host_state"', status_code=status)
+                    self.assertEqual(context['template_data']['name'], 'Reusable plan' if session else '')
+        self.assertEqual(TemplateVersion.objects.count(), 1)
+        request = RequestFactory().post('/host/template/', self.payload(version=version.key))
+        request.user = self.manager
+        request.session = {'selected_template': 'Reusable plan'}
+        response = HostEditorView.as_view()(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(request.context_calls, 1)
+        self.assertEqual(template.latest_version().read()['number'], 2)
+
+    def test_inherited_template_selector_cannot_override_url_or_permissions(self):
+        self.create_template()
+        context_calls = []
+
+        class HostMixin:
+            def get_context_data(self, **kwargs):
+                context = super().get_context_data(**kwargs)
+                context_calls.append(self.request.method)
+                context['template_name'] = 'Reusable plan'
+                return context
+
+        class HostEditorView(HostMixin, TemplateEditorView):
+            pass
+
+        request = RequestFactory().get('/host/template/', {'template_name': 'Another selection'})
+        request.user = self.manager
+        self.assertEqual(HostEditorView.as_view()(request).status_code, 400)
+        self.assertEqual(TemplateVersion.objects.count(), 1)
+        context_calls.clear()
+        request = RequestFactory().get('/host/template/')
+        request.user = self.user
+        with self.assertRaises(PermissionDenied):
+            HostEditorView.as_view()(request)
+        self.assertEqual(context_calls, [])
 
     def create_template(self, name='Reusable plan'):
         """Create a template with two reusable tasks and an approved predecessor link."""

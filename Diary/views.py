@@ -49,7 +49,7 @@ class DjangoOwnerDirectory:
 
 
 # Partial DV1-018: Authenticated routed views.
-class TemplateEditorView(LoginRequiredMixin, View):
+class TemplateEditorView(LoginRequiredMixin, ContextMixin, View):
     """Show the chooser or edit a template selected by URL or trusted view configuration."""
 
     template_name = None
@@ -73,8 +73,9 @@ class TemplateEditorView(LoginRequiredMixin, View):
         if access_groups()['manager'] not in groups:
             raise PermissionDenied('DiaryManager membership is required for template editing.')
         self.api = DiaryAPI(actor=Actor(reference=f'user:{request.user.pk}', groups=groups))
+        self.view_context = self.get_context_data(**kwargs)
         selectors = [kwargs.get('template_name'), request.GET.get('template_name'), self.template_name,
-                     (self.extra_context or {}).get('template_name')]
+                     self.view_context.get('template_name')]
 
         # Empty selectors request the chooser. Conflicting values must not select an unintended template.
         names = [value.strip() for value in selectors if value is not None and value.strip()]
@@ -104,7 +105,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
 
         # A missing name must show all templates without creating an empty template or version.
         if self.template is None and not self.creating:
-            return render(request, 'Diary/template_list.html', {**(self.extra_context or {}), 'templates': self.api.templates()})
+            return render(request, 'Diary/template_list.html', {**self.view_context, 'templates': self.api.templates()})
         header = TemplateForm(initial=self.header_initial(), editing=not self.creating)
         tasks = TaskFormSet(prefix='tasks', initial=list(self.data['entries']),
                             milestones=self.milestone_choices())
@@ -193,7 +194,7 @@ class TemplateEditorView(LoginRequiredMixin, View):
     def render_editor(self, header, tasks, status=200):
         """Render the complete editor document with task-specific ownership warnings."""
         return render(self.request, self.page_template, {
-            **(self.extra_context or {}),
+            **self.view_context,
             'header_form': header, 'task_forms': tasks, 'creating': self.creating,
             'template_data': self.data, 'ownership_warnings': tasks.ownership_warnings(),
             'empty_owner_roles': tasks.empty_roles,

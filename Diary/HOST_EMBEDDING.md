@@ -139,3 +139,39 @@ The package calls the hook after it saves the approved version.
 The default hook returns the existing named template editor URL.
 The hook does not receive forms or change template validation.
 Verification: `Diary/tests/test_template_editor.py`: `TemplateEditorTests.test_host_success_hook_delegates_all_form_processing`.
+
+## Template editor context
+
+`TemplateEditorView` and `TemplateCreateView` support Django's `ContextMixin` and
+`get_context_data(**kwargs)`. Host mixins and parent views can extend context using
+`super().get_context_data(**kwargs)` without replacing Diary's GET/POST handlers.
+
+```python
+from Diary.views import TemplateEditorView
+
+class HostTemplateEditor(TemplateEditorView):
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['host_navigation'] = build_host_navigation(self.request.user)
+        selected = self.request.session.get('selected_diary_template')
+        if selected:
+            context['template_name'] = selected
+        return context
+```
+
+`build_host_navigation` is a host-provided function. Session selection is optional
+host code; Diary does not read that session key itself. Template selection does not
+grant manager access.
+
+Context is resolved once per request after manager authorization and before Diary
+selects a template or builds forms. The hook can access `self.request`, `self.kwargs`,
+and `self.api`, but Diary's `self.data` and selected template are not initialized yet.
+Return a dictionary and call `super()` to preserve parent context and `extra_context`.
+Use cooperative Django context mixins/parent views when composing multiple bases.
+
+The resolved context reaches the chooser, editor, creation page, validation errors,
+and server-side task-row/milestone refreshes. Diary supplies its own form and template
+metadata keys afterwards, so host context cannot replace validated package forms.
+A context `template_name` participates in the same conflict checks as URL/path and
+view-attribute selections; conflicting selections return HTTP 400. Creation views
+reject a selected template, including one supplied by inherited context.

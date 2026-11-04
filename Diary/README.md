@@ -2601,3 +2601,12 @@ Verification: `Diary/tests/test_host_embedding.py`: `HostEmbeddingTests.test_man
 Override this hook to retain a host selection or return a fixed URL.
 Delegate template form construction, validation, task rows, and version saves to the package POST handler.
 See [Host page integration](HOST_EMBEDDING.md#template-save-navigation).
+
+## Template editor inherited context
+
+`TemplateEditorView` and `TemplateCreateView` resolve host context through Django's
+`get_context_data(**kwargs)` chain, including parent views and `extra_context`.
+The resolved context supplies trusted template selection and survives chooser,
+editor, and POST error/refresh rendering. See
+[template editor context](HOST_EMBEDDING.md#template-editor-context) for the hook's
+execution order and a host integration example.
