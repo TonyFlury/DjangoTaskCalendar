@@ -1831,19 +1831,18 @@ A failed atomic call does not keep partial entries or dependency changes.
 ## Template fixture transfer
 
 The technical management command `transfer_diary_templates` exports and imports Diary template definitions under DV1-054.
-It requires an active local user in the configured DiaryManager group through `--actor`.
-The actor value uses the configured user model's username field.
-The destination records identify that local manager as their creator and approver.
+Command-line access is trusted; no Django user or `--actor` argument is required.
+Destination records use `management:operator` as their creator and approver audit identity.
 
 ### Export a template
 
 Run this command on the source deployment:
 
 ```sh
-python manage.py transfer_diary_templates export diary-templates.json --actor 'manager@example.test' --template 'Preparation'
+python manage.py transfer_diary_templates export diary-templates.json --template 'Preparation'
 ```
 
-Replace the example actor and template name with source values.
+Replace the example template name with the source value.
 Repeat `--template` to select additional names. Omit it to select all templates.
 Each selected template must have an approved version.
 The export contains its latest approved version, tasks, dependency links, and referenced milestone definitions.
@@ -1855,16 +1854,16 @@ The command creates a Django JSON fixture. It refuses to overwrite an existing f
 Copy the fixture to the destination deployment.
 Create the configured access and ownership groups before importing.
 Assign users to those groups before normal application startup.
-Run a dry run with an active destination manager:
+Run a dry run on the destination deployment:
 
 ```sh
-python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --dry-run
+python manage.py transfer_diary_templates import diary-templates.json --dry-run
 ```
 
 Run the same command without `--dry-run` to retain the imported definitions:
 
 ```sh
-python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test'
+python manage.py transfer_diary_templates import diary-templates.json
 ```
 
 Use this command instead of `loaddata` for template transfers that require Diary validation.
@@ -1889,7 +1888,7 @@ Missing or ambiguous destination email matches stop the import.
 Use the technical option `--person-map` only when a person's email differs between deployments:
 
 ```sh
-python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --person-map 'alex@old.example=alex@new.example' --dry-run
+python manage.py transfer_diary_templates import diary-templates.json --person-map 'alex@old.example=alex@new.example' --dry-run
 ```
 
 Repeat `--person-map SOURCE_EMAIL=LOCAL_EMAIL` for each address that needs an override.
@@ -1907,7 +1906,7 @@ Identical approved content is skipped after ownership and graph validation.
 Different content requires explicit permission to create another approved version:
 
 ```sh
-python manage.py transfer_diary_templates import diary-templates.json --actor 'manager@example.test' --new-version --dry-run
+python manage.py transfer_diary_templates import diary-templates.json --new-version --dry-run
 ```
 
 Retain any necessary person mappings on every import command.
@@ -2691,3 +2690,60 @@ The shared hidden target field uses `diary-form-target`. The package message
 container uses `diary-notice` and reuses `diary-create-success` for task creation.
 These classes add no CSS variables. Hosts rendering fragments should display
 Django messages in their shell or handle `on_success` themselves.
+
+## Task notes and user display names
+
+Apply migration `0012_task_notes` before using task notes. It adds `TaskNote` and
+protects saved note text, author reference, and timestamp from updates or individual
+deletions, including bulk SQL updates through the ORM. Existing task records stay
+unchanged. Deliberate whole-diary deletion removes its notes with the other records;
+the command preview includes their count. Reversing this migration drops note history.
+
+```python
+# client contains an authenticated Actor with current groups and permitted diary keys.
+diary = client.diary(key=diary_key)
+note = diary.add_note(entry_key=entry_key, text='Waiting for confirmation.')
+history = diary.notes(entry_key=entry_key)
+```
+
+`DiaryInstance.add_note(*, entry_key, text, note_key=None)` appends trimmed plain
+text and returns `key`, `text`, `author_ref`, `author_label`, and `created_at`.
+The server supplies the author from the trusted Actor and an aware save timestamp.
+Whitespace-only text is rejected. Supplying a stable UUID `note_key` makes identical
+retries by the same author on the same task reuse the original note and timestamp;
+conflicting reuse raises `ValidationError`. Without a key, each call adds a new note.
+
+Assigned people, current members of an assigned ownership group, whole-team users,
+and Diary Managers may add notes. Current diary scope and normal access roles are
+always required. Notes can be added after completion or closure without changing
+revision, task dates, ownership, readiness, or completion audit records. Concurrent
+appends are serialized using the existing diary lock. Notes have no edit/delete API.
+
+`DiaryInstance.notes(*, entry_key)` returns a tuple in chronological order, with
+UUID ordering as a tie-breaker. `DiaryInstance.task()` also includes `notes` and
+`can_add_note`. Reads use the task's normal visibility: notes on public template
+tasks are visible to task viewers, while personal task notes remain private to the
+owner and permitted managers. List summaries do not automatically load note history.
+
+Author labels resolve current First Name Last Name from `user:PRIMARY_KEY`.
+Unknown/deleted users and unresolved display names appear as `deleted user`.
+Stable author references and save times remain intact even after account deletion.
+Labels do not fall back to email addresses. The same name policy applies to task
+owner/completion labels and person selectors. Hosts using opaque identity namespaces
+retain their audit references; without a resolvable Django user their label is
+`deleted user`. Labels are display values, not authorization identities.
+
+The task detail partial includes history and a separate CSRF-protected note form.
+Keep its signed `diary_target` and hidden `note_key` when customizing markup.
+Success uses the existing host hook contract with operation `task_note_added` and
+the diary/task identifiers; URLs remain query-free. No future Django Signals
+contract is introduced by this feature.
+
+Styling classes are `diary-task-notes` (section), `diary-note-list` (history),
+`diary-note` (entry), `diary-note-meta`, `diary-note-author`, `diary-note-time`,
+`diary-note-text`, `diary-notes-empty`, `diary-note-form`, `diary-note-help`, and
+`diary-note-submit`. Form fields use `diary-template-field-text` and
+`diary-template-field-note-key`. No CSS variables are added.
+
+See [user instructions](USER_GUIDE.md#add-task-notes). Verification is in
+`tests/test_task_notes.py`, including database protection and concurrent retries.

@@ -179,3 +179,11 @@
 .diary .diary-recovery-field { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .diary .diary-recovery-control { max-width: 100%; }
 .diary .diary-recovery-submit { margin-top: .5rem; }
+
+/* Append-only task notes remain readable in narrow host layouts. */
+.diary .diary-task-notes { border-block-start: 1px solid var(--diary-border); margin-block-start: 1rem; padding-block-start: 1rem; }
+.diary .diary-note-list { padding-inline-start: 1.5rem; }
+.diary .diary-note { margin-block: 1rem; }
+.diary .diary-note-meta, .diary .diary-note-help { color: var(--diary-muted); }
+.diary .diary-note-text { overflow-wrap: anywhere; }
+.diary .diary-note-form textarea { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }

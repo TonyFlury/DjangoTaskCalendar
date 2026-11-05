@@ -32,7 +32,7 @@
             </dl>
 
             {# Closed diaries remain readable but cannot accept date edits or completion. #}
-            {% if task.closed %}<p class="diary-detail-closed" role="status">This diary is closed. Task changes are unavailable.</p>{% endif %}
+            {% if task.closed %}<p class="diary-detail-closed" role="status">This diary is closed. Due-date changes and completion are unavailable.</p>{% endif %}
 
             {# A completed record shows the original actor, time, effective due date, action, and any forced comment. #}
             {% if task.completed_at %}
@@ -111,6 +111,26 @@
                     </form>
                 {% endif %}
             {% endif %}
+            <section class="diary-task-notes" aria-label="Task notes">
+                <h3 class="diary-detail-section-heading">Notes</h3>
+                <ol class="diary-note-list">
+                    {% for note in task.notes %}
+                        <li class="diary-note">
+                            <p class="diary-note-meta"><span class="diary-note-author">{{ note.author_label }}</span> · <time class="diary-note-time" datetime="{{ note.created_at|date:'c' }}">{{ note.created_at|date:'j F Y H:i T' }}</time></p>
+                            <div class="diary-note-text">{{ note.text|linebreaksbr }}</div>
+                        </li>
+                    {% empty %}<li class="diary-notes-empty">No notes yet.</li>{% endfor %}
+                </ol>
+                {% if task.can_add_note %}
+                    <form class="diary-note-form" method="post" action="{{ diary_form_url }}">
+                        {% csrf_token %}{% include "Diary/partials/form_fields.html" %}{{ note_form.note_key }}
+                        <label class="diary-detail-label" for="{{ note_form.text.id_for_label }}">{{ note_form.text.label }}</label>{{ note_form.text }}
+                        <p class="diary-note-help">{{ note_form.text.help_text }}</p>
+                        {% include 'Diary/partials/task_detail_errors.html' with form=note_form %}
+                        <button class="diary-button diary-note-submit" type="submit" name="action" value="add_note">Add note</button>
+                    </form>
+                {% endif %}
+            </section>
         </article>
     {% endif %}
 </section>

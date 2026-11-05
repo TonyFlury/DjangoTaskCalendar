@@ -9,11 +9,12 @@ from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 
-from Diary.api import Actor, DiaryAPI, EntrySpec
+from Diary.api import DiaryAPI, EntrySpec
 from Diary.choices import OwnerKind, VersionStatus
 from Diary.entry_mapping import EntryMapper, validate_entry_owner
 from Diary.models import CalendarTemplate, Milestone, TemplateDependency, TemplateEntry, TemplateVersion, TemplateMilestone
-from Diary.roles import access_groups, validate_task_owner_roles
+from Diary.roles import validate_task_owner_roles
+from Diary.management.administration import operator_actor
 from Diary.template_graph import validate_template_graph
 from Diary.views import DjangoOwnerDirectory
 from Diary.management.output import write_command_result
@@ -25,10 +26,9 @@ class Command(BaseCommand):
     help = 'Export and import Diary template JSON fixtures with ownership and dependency validation.'
 
     def add_arguments(self, parser):
-        """Define the operation, fixture path, destination actor, and explicit person mappings."""
+        """Define the operation, fixture path, and explicit person mappings."""
         parser.add_argument('operation', choices=('export', 'import'))
         parser.add_argument('fixture', type=Path)
-        parser.add_argument('--actor', required=True, help='Username of an active local DiaryManager.')
         parser.add_argument('--template', action='append', help='Export this template name. Repeat to select several.')
         parser.add_argument('--person-map', action='append', default=[], metavar='SOURCE_EMAIL=LOCAL_EMAIL',
                             help='Map a source owner email to a different local email address.')
@@ -37,16 +37,9 @@ class Command(BaseCommand):
         parser.add_argument('--json', action='store_true', help='Return the transfer result as JSON; fixture files always use JSON.')
 
     def handle(self, *args, **options):
-        """Check the local actor and report import or export failures as CommandError."""
+        """Trust command-line access and report import or export failures as CommandError."""
         try:
-            model = get_user_model()
-            user = model._default_manager.get(**{model.USERNAME_FIELD: options['actor']}, is_active=True)
-            groups = frozenset(user.groups.values_list('name', flat=True))
-
-            # A management invocation must identify a current local manager for its audit records.
-            if access_groups()['manager'] not in groups:
-                raise ValueError('The actor must belong to the configured DiaryManager group.')
-            self.actor = Actor(f'user:{user.pk}', groups)
+            self.actor = operator_actor()
 
             # Export options must not imply import behavior or silently discard requested validation.
             if options['operation'] == 'export':

@@ -63,8 +63,12 @@ class ManagerDiaryTests(TestCase):
         self.addCleanup(self.clock.stop)
         model = get_user_model()
         self.manager = model._default_manager.create_user(**{model.USERNAME_FIELD: 'manager@example.test'})
+        self.manager.first_name, self.manager.last_name = 'Mary', 'Jones'
+        self.manager.save()
         self.manager.groups.add(Group.objects.create(name='Planners'))
         self.user = model._default_manager.create_user(**{model.USERNAME_FIELD: 'participant@example.test'})
+        self.user.first_name, self.user.last_name = 'Alice', 'Smith'
+        self.user.save()
         self.user.groups.add(Group.objects.create(name='Participants'))
         self.role = Group.objects.create(name='Helpers')
         self.user.groups.add(self.role)
@@ -233,7 +237,8 @@ class ManagerDiaryTests(TestCase):
         self.assertFalse(task['blocked'])
         self.assertContains(response, 'diary-manager-completion-time')
         self.assertContains(response, 'Due date at completion: 1 June 2027')
-        self.assertContains(response, self.manager.get_username())
+        self.assertContains(response, 'Mary Jones')
+        self.assertNotContains(response, self.manager.get_username())
 
     def test_current_owners_private_entries_and_escaping(self):
         """Show permitted private entries and resolve current people and group members safely."""
@@ -248,7 +253,7 @@ class ManagerDiaryTests(TestCase):
         self.assertContains(response, '&lt;Private task&gt;')
         self.assertNotContains(response, '<Private task>')
         person = next(task for task in response.context['tasks'] if task['entry_key'] == own.entry_key)
-        self.assertEqual(person['owner_label'], self.user.get_username())
+        self.assertEqual(person['owner_label'], 'Alice Smith')
         self.assertContains(response, 'Current members:')
         self.assertContains(response, 'Whole team')
         self.user.groups.remove(self.role)

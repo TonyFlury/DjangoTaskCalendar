@@ -213,16 +213,16 @@ class OptionalTemplateTests(OptionalTemplateFixtures, TestCase):
     def test_management_create_inspect_apply_and_delete_without_a_template(self):
         output = StringIO()
         call_command('manage_diaries', 'create', '--without-template', '--json', name='CLI workspace',
-                     event_ref='cli:empty', actor=self.manager.get_username(), stdout=output)
+                     event_ref='cli:empty', stdout=output)
         key = json.loads(output.getvalue())['key']
         output = StringIO()
-        call_command('manage_diaries', 'list', '--details', event_ref='cli:empty', actor=self.manager.get_username(), stdout=output)
+        call_command('manage_diaries', 'list', '--details', event_ref='cli:empty', stdout=output)
         self.assertIn('Not applied', output.getvalue())
         call_command('manage_diaries', 'apply-template', '--json', diary=key, template='Creation template',
-                     milestone=['target=2027-06-20'], actor=self.manager.get_username(), stdout=StringIO())
+                     milestone=['target=2027-06-20'], stdout=StringIO())
         self.assertEqual(EventCalendar.objects.get(pk=key).template_version_id, self.version.key)
         call_command('manage_diaries', 'delete', '--force', diary=self.empty.key,
-                     actor=self.manager.get_username(), stdout=StringIO())
+                     stdout=StringIO())
         self.assertFalse(EventCalendar.objects.filter(pk=self.empty.key).exists())
         connection.check_constraints()
 

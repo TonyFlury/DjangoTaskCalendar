@@ -548,3 +548,30 @@ class EntryDependency(DependencyFields):
 
     class Meta(DependencyFields.Meta):
         abstract = False
+
+
+class TaskNote(ValidatedModel):
+    """Preserve a task's append-only note history independently of completion."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    entry = models.ForeignKey(CalendarEntry, on_delete=models.CASCADE, related_name='notes')
+    text = models.TextField()
+    author_ref = models.CharField(max_length=200)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        ordering = ('created_at', 'id')
+        constraints = [models.CheckConstraint(check=~Q(text=''), name='diary_task_note_text_present')]
+
+    def clean(self):
+        super().clean()
+        if not isinstance(self.text, str) or not self.text.strip():
+            raise ValidationError({'text': 'Enter a note.'})
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError('Saved notes cannot be changed. Add a new note instead.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Saved notes cannot be deleted.')

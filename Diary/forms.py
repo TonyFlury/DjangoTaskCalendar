@@ -16,6 +16,7 @@ from .choices import DateKind, OwnerKind
 from .models import Milestone, TemplateVersion
 from .roles import access_groups, task_owner_roles
 from .template_graph import validate_template_graph
+from .identity import user_display_name
 
 
 class StyledForm(forms.Form):
@@ -302,7 +303,7 @@ class TaskCreateForm(TemplateTaskForm):
         self.manager = access_groups()['manager'] in actor.groups
         users = get_user_model()._default_manager.filter(
             is_active=True, groups__name__in=access_groups().values()).distinct()
-        people = tuple((f'user:{user.pk}', user.get_full_name().strip() or user.get_username()) for user in users)
+        people = tuple((f'user:{user.pk}', user_display_name(user)) for user in users)
         super().__init__(*args, people=people, roles=sorted(task_owner_roles()), **kwargs)
         self.fields.pop('predecessors')
         self.fields['milestone_name'].choices = [('', 'Select a milestone'),
@@ -450,7 +451,7 @@ class TaskOwnerRecoveryForm(forms.Form):
         users = get_user_model()._default_manager.filter(
             is_active=True, groups__name=access_groups()['user']).distinct()
         self.fields['person_ref'].choices = [('', 'Select a person'),
-            *((f'user:{user.pk}', user.get_full_name().strip() or user.get_username()) for user in users)]
+            *((f'user:{user.pk}', user_display_name(user)) for user in users)]
         self.fields['role_ref'].choices = [('', 'Select a group'),
             *((role, role) for role in sorted(task_owner_roles()))]
         for name, field in self.fields.items():
@@ -476,3 +477,11 @@ class TaskOwnerRecoveryForm(forms.Form):
         if data.get('owner_kind') != OwnerKind.ROLE:
             data['role_ref'] = ''
         return data
+
+
+class TaskNoteForm(StyledForm):
+    """Keep the note key across validation errors and repeated submissions."""
+
+    note_key = forms.UUIDField(widget=forms.HiddenInput)
+    text = forms.CharField(label='Note', widget=forms.Textarea(attrs={'rows': 4}),
+                           help_text='Add to the history. Saved notes cannot be edited or removed.')

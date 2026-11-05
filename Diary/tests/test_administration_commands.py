@@ -22,7 +22,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         options.setdefault('json', True)
         if operation in {'delete', 'delete-version'} and not options.get('yes'):
             options.setdefault('dry_run', True)
-        call_command(command_name, operation, actor=options.pop('actor', self.manager.get_username()), stdout=output, **options)
+        call_command(command_name, operation, stdout=output, **options)
         return json.loads(output.getvalue())
 
     def templates(self, operation, **options):
@@ -59,25 +59,25 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
 
     def test_diary_list_defaults_to_names_only_and_retains_filters(self):
         output = StringIO()
-        call_command('manage_diaries', 'list', actor=self.manager.get_username(), stdout=output)
+        call_command('manage_diaries', 'list', stdout=output)
         self.assertEqual(output.getvalue(), 'Other diary\nSelected diary\n')
         output = StringIO()
-        call_command('manage_diaries', 'list', actor=self.manager.get_username(),
+        call_command('manage_diaries', 'list',
                      event_ref='creation:selected', stdout=output)
         self.assertEqual(output.getvalue(), 'Selected diary\n')
         output = StringIO()
-        call_command('manage_diaries', 'list', actor=self.manager.get_username(), state='closed', stdout=output)
+        call_command('manage_diaries', 'list', state='closed', stdout=output)
         self.assertEqual(output.getvalue(), '')
         EventCalendar.objects.filter(pk=self.other_diary.key).update(name='Selected diary')
         output = StringIO()
-        call_command('manage_diaries', 'list', actor=self.manager.get_username(), stdout=output)
+        call_command('manage_diaries', 'list', stdout=output)
         self.assertEqual(output.getvalue(), 'Selected diary\nSelected diary\n')
 
     def test_diary_list_details_formats_counts_dates_and_closed_state(self):
         self.diary.complete(entry_key=self.first.entry_key, expected_revision=0)
         self.diary.close()
         output = StringIO()
-        call_command('manage_diaries', 'list', '--full', actor=self.manager.get_username(),
+        call_command('manage_diaries', 'list', '--full',
                      state='closed', stdout=output)
         text = output.getvalue()
         self.assertTrue(text.startswith('Selected diary\n'))
@@ -87,7 +87,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         self.assertNotIn('Other diary', text)
         self.assertRegex(text, r'Created:\s+\d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2} [A-Z]+')
         output = StringIO()
-        call_command('manage_diaries', 'list', '--details', actor=self.manager.get_username(),
+        call_command('manage_diaries', 'list', '--details',
                      state='closed', stdout=output)
         self.assertEqual(text, output.getvalue())
         with self.assertRaises(CommandError):
@@ -98,15 +98,15 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
     def test_template_list_names_filter_and_empty_results(self):
         self.templates('create', template='Another template')
         output = StringIO()
-        call_command('manage_diary_templates', 'list', actor=self.manager.get_username(), stdout=output)
+        call_command('manage_diary_templates', 'list', stdout=output)
         self.assertEqual(output.getvalue(), 'Another template\nCreation template\n')
         output = StringIO()
         call_command('manage_diary_templates', 'list', template='CREATION TEMPLATE',
-                     actor=self.manager.get_username(), stdout=output)
+                     stdout=output)
         self.assertEqual(output.getvalue(), 'Creation template\n')
         output = StringIO()
         call_command('manage_diary_templates', 'list', template='Unknown',
-                     actor=self.manager.get_username(), stdout=output)
+                     stdout=output)
         self.assertEqual(output.getvalue(), '')
 
     def test_template_details_show_each_versions_requirements_and_actual_usage(self):
@@ -117,7 +117,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         self.templates('create', template='Empty definition')
         self.diary.close()
         output = StringIO()
-        call_command('manage_diary_templates', 'list', '--details', actor=self.manager.get_username(), stdout=output)
+        call_command('manage_diary_templates', 'list', '--details', stdout=output)
         text = output.getvalue()
         for value in ('Creation template', 'Description:   Reusable event tasks', 'In use:        Yes (2 diaries)',
                       'Version 1 (approved)', 'Target (target)', 'Used by:\n      - Other diary\n      - Selected diary',
@@ -132,7 +132,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         self.assertNotIn('Other diary', version_two)
         self.assertEqual(text.count('In use:'), 2)
         alias_output = StringIO()
-        call_command('manage_diary_templates', 'list', '--full', actor=self.manager.get_username(), stdout=alias_output)
+        call_command('manage_diary_templates', 'list', '--full', stdout=alias_output)
         self.assertEqual(alias_output.getvalue(), text)
         with self.assertRaises(CommandError):
             self.templates('list', details=True)
@@ -148,25 +148,25 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
                 with self.subTest(command=command_name, details=details):
                     output = StringIO()
                     call_command(command_name, 'list', '--uuid', details=details,
-                                 actor=self.manager.get_username(), stdout=output, **selector)
+                                 stdout=output, **selector)
                     text = output.getvalue()
                     self.assertEqual(text.splitlines()[0], f'{key}  {name}')
                     self.assertEqual(text.count(str(key)), 1)
                     if not details:
                         self.assertEqual(text, f'{key}  {name}\n')
             output = StringIO()
-            call_command(command_name, 'list', '--uuid', '--json', actor=self.manager.get_username(),
+            call_command(command_name, 'list', '--uuid', '--json',
                          stdout=output, **selector)
             self.assertEqual(json.loads(output.getvalue())[0]['id'], str(key))
             with self.assertRaises(CommandError):
-                call_command(command_name, 'show', uuid=True, actor=self.manager.get_username(), **selector)
+                call_command(command_name, 'show', uuid=True, **selector)
 
     def test_non_list_operations_default_to_readable_text(self):
         def human(command_name, operation, **options):
             if operation in {'delete', 'delete-version'} and not options.get('yes'):
                 options.setdefault('dry_run', True)
             output = StringIO()
-            call_command(command_name, operation, actor=self.manager.get_username(), stdout=output, **options)
+            call_command(command_name, operation, stdout=output, **options)
             return output.getvalue()
 
         text = human('manage_diary_templates', 'create', template='Human template', description='Reusable work')
@@ -219,7 +219,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
                 return 'n'
 
             with patch('builtins.input', side_effect=refuse) as question:
-                call_command(command_name, operation, actor=self.manager.get_username(), stdout=output, **options)
+                call_command(command_name, operation, stdout=output, **options)
             question.assert_called_once()
             self.assertIn('Deletion cancelled.', output.getvalue())
             self.assertEqual(self.snapshot(), before)
@@ -228,7 +228,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         output = StringIO()
         with patch('builtins.input', return_value='y') as question:
             call_command('manage_diaries', 'delete', diary=self.diary.key,
-                         actor=self.manager.get_username(), stdout=output)
+                         stdout=output)
         question.assert_called_once()
         self.assertFalse(EventCalendar.objects.filter(pk=self.diary.key).exists())
         self.assertIn('Deletion completed.', output.getvalue())
@@ -236,7 +236,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         with patch('builtins.input', side_effect=AssertionError('Unexpected confirmation')):
             output = StringIO()
             call_command('manage_diary_templates', 'delete', '--force', template='Forced template',
-                         actor=self.manager.get_username(), stdout=output)
+                         stdout=output)
         self.assertFalse(CalendarTemplate.objects.filter(name='Forced template').exists())
 
     def test_json_deletion_requires_explicit_force_or_dry_run(self):
@@ -244,11 +244,11 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         with patch('builtins.input', side_effect=AssertionError('Unexpected confirmation')):
             with self.assertRaisesMessage(CommandError, 'requires --force'):
                 call_command('manage_diaries', 'delete', '--json', diary=self.diary.key,
-                             actor=self.manager.get_username(), stdout=StringIO())
+                             stdout=StringIO())
             self.assertEqual(self.snapshot(), before)
             output = StringIO()
             call_command('manage_diaries', 'delete', '--json', '--force', diary=self.diary.key,
-                         actor=self.manager.get_username(), stdout=output)
+                         stdout=output)
             self.assertTrue(json.loads(output.getvalue())['deleted'])
 
     def test_changed_target_after_confirmation_is_not_deleted(self):
@@ -259,7 +259,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         with patch('builtins.input', side_effect=change_target):
             with self.assertRaisesMessage(CommandError, 'changed after the preview'):
                 call_command('manage_diaries', 'delete', diary=self.diary.key,
-                             actor=self.manager.get_username(), stdout=StringIO())
+                             stdout=StringIO())
         self.assertTrue(EventCalendar.objects.filter(pk=self.diary.key).exists())
 
     def test_create_and_delete_errors_identify_operation_and_target(self):
@@ -275,7 +275,7 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
             side_effect = response if isinstance(response, Exception) else lambda prompt: response
             with patch('builtins.input', side_effect=side_effect):
                 call_command('manage_diaries', 'delete', diary=self.diary.key,
-                             actor=self.manager.get_username(), stdout=output)
+                             stdout=output)
             self.assertIn('Deletion cancelled.', output.getvalue())
             self.assertEqual(self.snapshot(), before)
 
@@ -457,18 +457,8 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
                 self.templates('delete-version', template='Creation template', template_version=2, yes=True)
         self.assertEqual(self.snapshot(), before)
 
-    def test_missing_actors_targets_and_irrelevant_flags_fail_without_changes(self):
+    def test_missing_targets_and_irrelevant_flags_fail_without_changes(self):
         before = self.snapshot()
-        for actor in (self.user, self.outsider):
-            for name in ('manage_diaries', 'manage_diary_templates'):
-                with self.assertRaises(CommandError):
-                    self.command(name, 'list', actor=actor.get_username())
-        self.manager.is_active = False
-        self.manager.save()
-        with self.assertRaises(CommandError):
-            self.diaries('list')
-        self.manager.is_active = True
-        self.manager.save()
         for operation, options in (('delete', {}), ('delete', {'diary': self.diary.key, 'template': 'Creation template'})):
             with self.assertRaises(CommandError):
                 self.diaries(operation, yes=True, **options)
@@ -479,3 +469,14 @@ class AdministrationCommandTests(TaskCreationFixtures, TestCase):
         with self.assertRaises(CommandError):
             self.templates('create-version', template='Creation template', milestone=['typo'])
         self.assertEqual(self.snapshot(), before)
+
+    def test_commands_trust_operator_without_an_active_manager_account(self):
+        self.manager.is_active = False
+        self.manager.save()
+        self.manager.groups.clear()
+        self.assertTrue(self.diaries('list'))
+        self.templates('create', template='Operator template')
+        version = self.templates('create-version', template='Operator template')
+        self.assertEqual(TemplateVersion.objects.get(pk=version['key']).created_by_ref, 'management:operator')
+        approved = self.templates('approve', template='Operator template', template_version=1)
+        self.assertEqual(TemplateVersion.objects.get(pk=approved['key']).approved_by_ref, 'management:operator')

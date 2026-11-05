@@ -25,11 +25,12 @@ from .api import Actor, DiaryAPI
 from .view_api import DiarySuccessMixin, DiaryViewResult, form_target, submitted_target
 from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
-                    TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm,
+                    TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm, TaskNoteForm,
                     TemplateForm, TemplateApplicationChoiceForm, TemplateApplicationDatesForm, editor_task_limit)
 from .models import CalendarTemplate, EventCalendar, Milestone, TemplateVersion
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
+from .identity import user_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +385,7 @@ class DiaryOwnerLabelsMixin:
         labels = {}
         members = {role: [] for role in roles}
         for user in users:
-            name = user.get_full_name().strip() or user.get_username()
+            name = user_display_name(user)
             labels[f'user:{user.pk}'] = name
             for group in user.groups.all():
 
@@ -625,7 +626,7 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
             return render(self.request, self.template_name, context, status=404)
         labels, members = self.get_owner_labels((task,))
         task.update(owner_label=self.owner_label(task, labels), owner_members=members.get(task['role_ref'], ()),
-                    completed_by_label=labels.get(task['completed_by_ref'], task['completed_by_ref']))
+                    completed_by_label=labels.get(task['completed_by_ref'], 'deleted user'))
         task['completion_action_label'] = {'complete': 'Complete', 'close_all': 'Close all',
                                            'forced_predecessor': 'Close all: predecessor'}.get(
                                                task['completion_action'], 'Earlier completion')
@@ -655,21 +656,29 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
         recovery_form = TaskOwnerRecoveryForm(self.request.POST if action == 'save_owner' else None,
             initial={'entry_key': entry_key, 'revision': task['revision']},
             auto_id=f'diary-recovery-{entry_key}-%s')
-        context.update(due_form=due_form, completion_form=completion_form, recovery_form=recovery_form)
+        note_form = TaskNoteForm(self.request.POST if action == 'add_note' else None,
+                                 initial={'note_key': uuid4()}, auto_id=f'diary-note-{entry_key}-%s')
+        context.update(due_form=due_form, completion_form=completion_form, recovery_form=recovery_form,
+                       note_form=note_form)
 
         # GET shows the current state, while POST must name one supported action.
         if not submitted:
             return render(self.request, self.template_name, context)
 
         # Unknown actions must never fall through to a different mutation.
-        if action not in {'save_date', 'save_owner', 'complete', 'close_all'} or len(self.request.POST.getlist('action')) != 1:
+        if action not in {'save_date', 'save_owner', 'complete', 'close_all', 'add_note'} or len(self.request.POST.getlist('action')) != 1:
             context['detail_error'] = 'Select one supported task action.'
             return render(self.request, self.template_name, context, status=400)
         result = None
         try:
 
             # DV1-040: Ownership changes recheck manager scope, template provenance, and current eligibility in the API.
-            if action == 'save_owner':
+            if action == 'add_note':
+                if note_form.is_valid():
+                    diary.add_note(entry_key=entry_key, text=note_form.cleaned_data['text'],
+                                   note_key=note_form.cleaned_data['note_key'])
+                    result = DiaryViewResult(operation='task_note_added', diary_key=key, entry_key=entry_key)
+            elif action == 'save_owner':
 
                 # Invalid owner controls must not change the inspected task.
                 if recovery_form.is_valid():
@@ -710,7 +719,7 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
 
         # Person references can use an opaque namespace outside the configured Django user model.
         if task['owner_kind'] == OwnerKind.PERSON:
-            return labels.get(task['person_ref'], task['person_ref'])
+            return labels.get(task['person_ref'], 'deleted user')
 
         # Role tasks keep their group name and current membership separately.
         if task['owner_kind'] == OwnerKind.ROLE:
@@ -777,11 +786,11 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
                 continue
             task = {**entry, 'orphaned': entry['entry_key'] in orphaned, 'completed': completed, 'blocked': blocked, 'late': late,
                     'blocked_late': blocked and bool(set(entry['blocking_predecessors']) & late_keys),
-                    'owner_members': (), 'completed_by_label': labels.get(entry['completed_by_ref'], entry['completed_by_ref'])}
+                    'owner_members': (), 'completed_by_label': labels.get(entry['completed_by_ref'], 'deleted user')}
 
             # Resolve current Django person names without changing opaque person references.
             if entry['owner_kind'] == OwnerKind.PERSON:
-                task['owner_label'] = labels.get(entry['person_ref'], entry['person_ref'])
+                task['owner_label'] = labels.get(entry['person_ref'], 'deleted user')
 
             # Group ownership retains the group reference and shows its current members.
             elif entry['owner_kind'] == OwnerKind.ROLE:
@@ -864,7 +873,7 @@ class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
 
             # A person owner can have an opaque reference outside the configured Django user model.
             if task['owner_kind'] == OwnerKind.PERSON:
-                task['owner_label'] = labels.get(task['person_ref'], task['person_ref'])
+                task['owner_label'] = labels.get(task['person_ref'], 'deleted user')
 
             # Group labels show current members without changing the stored role reference.
             elif task['owner_kind'] == OwnerKind.ROLE:

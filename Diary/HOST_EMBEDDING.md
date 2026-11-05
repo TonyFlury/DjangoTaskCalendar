@@ -353,3 +353,22 @@ milestone-date mapping when creating a diary or applying a template. Diary
 validates dates used by that version and silently ignores unused keys and values.
 Existing integration signatures remain supported. Apply migration
 `0011_derive_template_milestones`; existing diary snapshots stay unchanged.
+
+## Task note integration
+
+Apply migration `0012_task_notes`. The existing task detail partial now displays
+notes and allows assigned users and managers to append notes, including on completed
+tasks and closed diaries. Each POST uses `action=add_note`, `text`, and `note_key`,
+plus the normal CSRF and signed `diary_target` fields. Do not suppress the notes
+section just because a task or diary is closed.
+
+The shared success hooks receive operation `task_note_added`, with `diary_key` and
+`entry_key`. `DiaryViewResult` keeps its existing fields. The default response
+redirects to the clean task detail path. Custom `success_response` implementations
+work as for other task actions. Notes are available through `DiaryInstance.notes()`
+and the `notes`/`can_add_note` fields of `DiaryInstance.task()`.
+
+Author, owner and completion labels use First Name Last Name and `deleted user`
+for unresolved users/names; email login names are not a display fallback. Internal
+user references remain stable. The host must continue supplying trusted current
+identity, groups and permitted diary scope.

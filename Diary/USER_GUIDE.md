@@ -15,6 +15,7 @@ Some pages can be unavailable on your site.
 - [Add a personal task](#add-a-personal-task).
 - [Select a date rule](#select-a-date-rule).
 - [Change a due date](#change-a-due-date).
+- [Add task notes](#add-task-notes).
 - [Complete a task](#complete-a-task).
 - [Use the manager diary](#use-the-manager-diary).
 - [Apply a template to a diary](#apply-a-template-to-a-diary).
@@ -81,9 +82,11 @@ Your website can use different names for these roles.
 | Change a group or Whole team task's due date | Not permitted. | Permitted within your diary access. |
 | Complete an accessible task | Permitted when no predecessors remain open. | Permitted when no predecessors remain open. |
 | Use Close all | Not permitted. | Permitted for an open blocking chain. |
+| Add a note | Tasks assigned to you, your ownership groups, or the whole team. | Any task within permitted diary access. |
 | Create or change templates | Not permitted. | Permitted. |
 
 These actions require an open diary and an incomplete task where applicable.
+Notes can also be added after task completion or diary closure.
 Managers cannot use diaries outside their permitted access.
 
 Personal additions are private to their owner and permitted managers.
@@ -226,6 +229,23 @@ It does not change related task dates automatically.
 
 Examine predecessor and successor dates before changing a template task's due date.
 Late and Blocked marks do not provide a scheduling-conflict warning.
+
+## Add task notes
+
+Open a task and find **Notes**. Enter your text and select **Add note**.
+Notes are optional; you do not need one to progress or complete a task.
+Each save adds a separate entry with its author and save time. Earlier notes stay
+in the history and cannot be edited or removed. Add a correction as another note.
+
+You may add notes to tasks assigned to you, to your current ownership groups, or
+to the whole team. Diary Managers may add notes to any task within their permitted
+diary access. Notes remain available on completed tasks and closed diaries.
+Adding a note does not change dates, task status, or dependencies.
+
+Anyone permitted to view the task can read its notes. Personal task privacy also
+applies to its notes. Authors appear as First Name Last Name, with **deleted user**
+when a user or their display name cannot be resolved; email addresses are not used
+as fallback names. Save times use the page's configured display time zone.
 
 ## Complete a task
 
@@ -489,7 +509,7 @@ The task stays incomplete until someone completes it.
 | A template changed during saving. | Another save changed its version. | Open the template or task creation form again. |
 | A person or group is unavailable. | The current assignment choices do not include that owner. | Ask your site administrator for help. |
 | A selected task is unavailable. | The task does not exist or you cannot access it. | Use a current task-list link. |
-| A diary is closed. | Its records remain available, but task changes are unavailable. | Ask your site administrator which diary to use. |
+| A diary is closed. | Its records remain available; assigned users and managers can still add notes. | Ask your site administrator which diary to use. |
 | Diary access is denied. | Your account or selected diary lacks the necessary access. | Ask your site administrator to examine your access. |
 
 An empty list can also mean that no matching work is assigned to you.

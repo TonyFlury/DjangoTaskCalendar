@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, transaction
 from django.db.models import Q
@@ -15,12 +16,13 @@ from django.utils.crypto import salted_hmac
 from .choices import DateKind, OwnerKind, VersionStatus
 from .entry_mapping import EntryMapper, validate_entry_owner
 from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
-                     EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion, TemplateMilestone)
+                     EventCalendar, Milestone, TemplateDependency, TemplateEntry, TemplateVersion, TemplateMilestone, TaskNote)
 from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
 from .roles import validate_task_owner_roles as _validate_task_owner_roles
 from .template_graph import validate_template_graph
 from .ownership import orphaned_entry_keys
+from .identity import user_display_name
 
 API_VERSION = 1
 __all__ = [
@@ -1197,7 +1199,64 @@ class DiaryInstance(_DependencyAPI):
         result['blocked_late'] = any(item.completed_at is None and item.open_due_date(source_dates=data['milestones']) is not None
                                     and item.open_due_date(source_dates=data['milestones']) <= today
                                     for item in entry.predecessors.select_related('milestone'))
+        result['can_add_note'] = self._can_add_note(entry)
+        result['notes'] = self.notes(entry_key=entry.entry_key)
         return result
+
+    def _can_add_note(self, entry):
+        return (_allowed(self.actor, 'edit') or entry.owner_kind == OwnerKind.TEAM
+                or (entry.owner_kind == OwnerKind.PERSON and entry.person_ref == self.actor.reference)
+                or (entry.owner_kind == OwnerKind.ROLE and entry.role_ref in self.actor.groups))
+
+    @staticmethod
+    def _note_data(note, labels):
+        return {'key': note.pk, 'text': note.text, 'author_ref': note.author_ref,
+                'author_label': labels.get(note.author_ref, 'deleted user'), 'created_at': note.created_at}
+
+    @staticmethod
+    def _note_author_labels(references):
+        model = get_user_model()
+        keys = []
+        for reference in references:
+            if reference.startswith('user:'):
+                try:
+                    keys.append(model._meta.pk.to_python(reference[5:]))
+                except (ValueError, TypeError, ValidationError):
+                    pass
+        return {f'user:{user.pk}': user_display_name(user) for user in model._default_manager.filter(pk__in=keys)}
+
+    def notes(self, *, entry_key):
+        """Read chronological notes using the task's normal visibility and diary scope."""
+        entry = self._task_entry(_calendar(self.actor, self.key), entry_key)
+        notes = tuple(entry.notes.all())
+        labels = self._note_author_labels({note.author_ref for note in notes})
+        return tuple(self._note_data(note, labels) for note in notes)
+
+    @transaction.atomic
+    def add_note(self, *, entry_key, text, note_key=None):
+        """Append a stamped note, including after task completion or diary closure.
+        Assigned users/group members and managers may write. A repeated note_key
+        reuses identical content by the same author; no task revision is changed.
+        """
+        calendar = _calendar(self.actor, self.key, 'use')
+        EventCalendar.objects.select_for_update().get(pk=calendar.pk)
+        entry = self._task_entry(calendar, entry_key)
+        if not self._can_add_note(entry):
+            raise PermissionDenied('Only the assigned users or a Diary Manager can add notes.')
+        if not isinstance(text, str) or not text.strip():
+            raise ValidationError('Enter a note.')
+        text = text.strip()
+        try:
+            key = uuid4() if note_key is None else UUID(str(note_key))
+        except (ValueError, TypeError, AttributeError) as error:
+            raise ValidationError('Supply a valid note key.') from error
+        existing = TaskNote.objects.filter(pk=key).first()
+        if existing:
+            if (existing.entry_id, existing.author_ref, existing.text) != (entry.pk, self.actor.reference, text):
+                raise ValidationError('This note key was already used. Reload before adding a new note.')
+            return self._note_data(existing, self._note_author_labels({existing.author_ref}))
+        note = TaskNote.objects.create(id=key, entry=entry, text=text, author_ref=self.actor.reference)
+        return self._note_data(note, self._note_author_labels({note.author_ref}))
 
     # DV1-032: Users edit their personal additions, while managers can also edit template-task dates.
     @transaction.atomic

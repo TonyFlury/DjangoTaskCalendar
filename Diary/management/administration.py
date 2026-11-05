@@ -6,18 +6,22 @@ operations are for deployment operators, outside the end-user callable API.
 """
 import logging
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist, PermissionDenied, ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from Diary.api import Actor
 from Diary.models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDependency,
-                          EventCalendar, TemplateDependency, TemplateEntry, TemplateMilestone, TemplateVersion)
+                          EventCalendar, TemplateDependency, TemplateEntry, TemplateMilestone, TemplateVersion, TaskNote)
 from Diary.roles import access_groups
 from Diary.management.output import write_command_result
 
 logger = logging.getLogger('Diary.management')
+
+
+def operator_actor():
+    """Trust command-line access and use a stable, non-user audit identity."""
+    return Actor('management:operator', frozenset({access_groups()['manager']}))
 
 
 def integrity_error_message(error, *, deleting):
@@ -46,10 +50,9 @@ def integrity_error_message(error, *, deleting):
 
 
 class OperatorCommand(BaseCommand):
-    """Require a current manager and render human-readable or JSON results."""
+    """Trust deployment operators and render human-readable or JSON results."""
 
     def add_operator_arguments(self, parser):
-        parser.add_argument('--actor', required=True, help='Username of an active DiaryManager; required for all operations.')
         parser.add_argument('--force', '--yes', dest='yes', action='store_true', help='Delete without interactive confirmation (--yes is an alias).')
         parser.add_argument('--dry-run', action='store_true', help='Preview deletion without prompting or changing data, even with --force.')
 
@@ -68,15 +71,7 @@ class OperatorCommand(BaseCommand):
         try:
             if (options['yes'] or options['dry_run']) and options['operation'] not in {'delete', 'delete-version'}:
                 raise CommandError('--force/--yes and --dry-run apply only to deletion.')
-            model = get_user_model()
-            try:
-                user = model._default_manager.get(**{model.USERNAME_FIELD: options['actor']}, is_active=True)
-            except model.DoesNotExist as error:
-                raise CommandError(f"Actor {options['actor']} must identify an active user.") from error
-            groups = frozenset(user.groups.values_list('name', flat=True))
-            if access_groups()['manager'] not in groups:
-                raise CommandError('The actor must belong to the configured DiaryManager group.')
-            self.actor = Actor(f'user:{user.pk}', groups)
+            self.actor = operator_actor()
             if deleting and not options['yes'] and not options['dry_run']:
                 if options['json']:
                     raise CommandError('JSON deletion requires --force to execute or --dry-run to preview; no confirmation is read from stdin.')
@@ -138,7 +133,8 @@ def delete_diary(*, key, actor, execute=False, expected=None):
               'counts': {'diaries': 1, 'tasks': entries.count(),
                          'completed_tasks': entries.filter(completed_at__isnull=False).count(),
                          'dependencies': EntryDependency.objects.filter(entry__calendar=diary).count(),
-                         'milestone_dates': diary.milestone_dates.count()}}
+                         'milestone_dates': diary.milestone_dates.count(),
+                         'notes': TaskNote.objects.filter(entry__calendar=diary).count()}}
     if execute and expected is not None and result != expected:
         raise CommandError('The diary changed after the preview. Inspect it again before deleting.')
     if execute:
@@ -146,6 +142,7 @@ def delete_diary(*, key, actor, execute=False, expected=None):
         entry_table = connection.ops.quote_name(CalendarEntry._meta.db_table)
         delete_rows(EntryDependency, f'entry_id IN (SELECT id FROM {entry_table} WHERE calendar_id = %s)', [key])
         delete_rows(CalendarMilestone, 'calendar_id = %s', [key])
+        delete_rows(TaskNote, f'entry_id IN (SELECT id FROM {entry_table} WHERE calendar_id = %s)', [key])
         delete_rows(CalendarEntry, 'calendar_id = %s', [key])
         result['deleted'] = True
         transaction.on_commit(lambda: logger.info('Diary deleted: actor=%s diary_key=%s', actor.reference, key))

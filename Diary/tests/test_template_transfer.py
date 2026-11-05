@@ -28,15 +28,14 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         folder = TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.fixture = Path(folder.name) / 'diary.json'
-        self.actor_name = self.manager.get_username()
         for user in (self.user, self.other, self.manager, self.outsider):
             user.email = user.get_username()
             user.save(update_fields=('email',))
 
     def command(self, operation, **options):
-        """Invoke the public command with an active local manager and captured output."""
+        """Invoke the public command as a trusted operator and capture output."""
         output = StringIO()
-        call_command('transfer_diary_templates', operation, str(self.fixture), actor=options.pop('actor', self.actor_name),
+        call_command('transfer_diary_templates', operation, str(self.fixture),
                      stdout=output, **options)
         return output.getvalue()
 
@@ -85,7 +84,7 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         self.assertNotEqual(version.pk, self.version_key())
         copied = version.entries.get(entry_key=self.second.entry_key)
         self.assertEqual(list(copied.predecessors.values_list('entry_key', flat=True)), [self.first.entry_key])
-        self.assertEqual(version.approved_by_ref, f'user:{self.manager.pk}')
+        self.assertEqual(version.approved_by_ref, 'management:operator')
         count = TemplateVersion.objects.count()
         self.command('import')
         self.assertEqual(TemplateVersion.objects.count(), count)
@@ -201,11 +200,9 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         self.assertEqual(template.versions.count(), 2)
         self.assertTrue(template.versions.get(number=2).entries.filter(name='Changed definition').exists())
 
-    def test_wrong_models_invalid_dates_and_nonmanager_actors_are_rejected(self):
-        """Reject unrelated fixture records, invalid task dates, and unauthorized local actors."""
+    def test_wrong_models_and_invalid_dates_are_rejected(self):
+        """Reject unrelated fixture records and invalid task dates."""
         payload = self.export()
-        with self.assertRaises(CommandError):
-            self.command('import', actor=self.user.get_username())
         self.fixture.write_text(json.dumps([{'model': 'auth.user', 'pk': 1, 'fields': {}}]))
         with self.assertRaisesMessage(CommandError, 'unsupported model'):
             self.command('import')
@@ -296,3 +293,11 @@ class TemplateTransferTests(TaskCreationFixtures, TestCase):
         with self.assertRaisesMessage(CommandError, 'exactly one active destination user'):
             self.command('import')
         self.assertFalse(CalendarTemplate.objects.filter(name='Imported definition').exists())
+
+    def test_transfer_trusts_operator_without_an_active_manager_account(self):
+        self.export()
+        self.manager.is_active = False
+        self.manager.save()
+        self.manager.groups.clear()
+        self.command('import')
+        self.assertEqual(self.imported_version().approved_by_ref, 'management:operator')

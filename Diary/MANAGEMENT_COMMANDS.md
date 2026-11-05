@@ -14,15 +14,16 @@ deletion operations. PostgreSQL is required.
 
 ## Operator identity and output
 
-Template/diary administration and template transfer require `--actor USERNAME`.
-Configuration validation does not require an actor. The actor must identify an active user in
-the configured `DIARY_MANAGER` group, using the configured user model's username
-field. Superuser status alone does not replace that group membership.
+Template/diary administration and template transfer trust the operator who can run
+management commands. No `--actor` argument, Django login, or manager account is
+required. Scripts using the old `--actor` option must remove it.
+Writes and deletion audit records use the stable identity `management:operator`;
+this is an operator identity, not a Django user or an identification of the OS caller.
 
-These are deployment-operator tools. A manager named by an operator can inspect
-all diaries in the database, including private personal tasks. Commands do not
-derive scope from HTTP requests, sessions, or the host's event access policy.
-They do not grant broader access through the web views.
+Operators can inspect all diaries in the database, including private tasks.
+Commands do not derive scope from HTTP requests, sessions, or host event policy.
+Web and callable API permissions remain unchanged. Task ownership validation,
+configuration checks, atomic writes, and deletion confirmation still apply.
 
 All Diary management commands use human-readable output by default. Diary and
 template lists print one name per line; use `--details` (alias `--full`) for readable
@@ -50,10 +51,10 @@ Django's `CommandError` on standard error and a nonzero process exit status.
 Use each command's `--help` for argument details.
 
 ```sh
-python manage.py manage_diaries show --diary DIARY_UUID --actor operator --json
-python manage.py manage_diary_templates versions --template "Event preparation" --actor operator --json
+python manage.py manage_diaries show --diary DIARY_UUID --json
+python manage.py manage_diary_templates versions --template "Event preparation" --json
 python manage.py validate_diary_configuration --json
-python manage.py transfer_diary_templates export templates.json --actor operator --json
+python manage.py transfer_diary_templates export templates.json --json
 ```
 
 ## Templates and versions
@@ -63,13 +64,13 @@ Template names are exact, case-insensitive selectors. Version selectors are inte
 version numbers within the selected template, not version UUIDs.
 
 ```sh
-python manage.py manage_diary_templates list --actor operator
-python manage.py manage_diary_templates list --uuid --actor operator
-python manage.py manage_diary_templates list --details --actor operator
-python manage.py manage_diary_templates list --json --actor operator
-python manage.py manage_diary_templates versions --template "Event preparation" --actor operator
-python manage.py manage_diary_templates show --template "Event preparation" --actor operator
-python manage.py manage_diary_templates show --template "Event preparation" --template-version 1 --actor operator
+python manage.py manage_diary_templates list
+python manage.py manage_diary_templates list --uuid
+python manage.py manage_diary_templates list --details
+python manage.py manage_diary_templates list --json
+python manage.py manage_diary_templates versions --template "Event preparation"
+python manage.py manage_diary_templates show --template "Event preparation"
+python manage.py manage_diary_templates show --template "Event preparation" --template-version 1
 ```
 
 `list` prints template names only, one per line, ordered by name. An optional
@@ -108,10 +109,10 @@ version it returns that version's complete tasks, predecessor keys, and mileston
 declarations. These reads do not create records.
 
 ```sh
-python manage.py manage_diary_templates create --template "Event preparation" --description "Event tasks" --actor operator
-python manage.py manage_diary_templates create-version --template "Event preparation" --milestone event_date --milestone bookings_close --actor operator
-python manage.py manage_diary_templates create-version --template "Event preparation" --copy-version 1 --actor operator
-python manage.py manage_diary_templates approve --template "Event preparation" --template-version 2 --actor operator
+python manage.py manage_diary_templates create --template "Event preparation" --description "Event tasks"
+python manage.py manage_diary_templates create-version --template "Event preparation" --milestone event_date --milestone bookings_close
+python manage.py manage_diary_templates create-version --template "Event preparation" --copy-version 1
+python manage.py manage_diary_templates approve --template "Event preparation" --template-version 2
 ```
 
 `create` creates an unversioned template. `create-version` allocates the next number
@@ -133,13 +134,13 @@ diaries remain unchanged by these operations.
 ## Diary instances
 
 ```sh
-python manage.py manage_diaries list --actor operator
-python manage.py manage_diaries list --uuid --actor operator
-python manage.py manage_diaries list --details --actor operator
-python manage.py manage_diaries list --json --actor operator
-python manage.py manage_diaries list --state open --template "Event preparation" --actor operator
-python manage.py manage_diaries list --event-ref "event:17" --actor operator
-python manage.py manage_diaries show --diary DIARY_UUID --actor operator
+python manage.py manage_diaries list
+python manage.py manage_diaries list --uuid
+python manage.py manage_diaries list --details
+python manage.py manage_diaries list --json
+python manage.py manage_diaries list --state open --template "Event preparation"
+python manage.py manage_diaries list --event-ref "event:17"
+python manage.py manage_diaries show --diary DIARY_UUID
 ```
 
 `list` prints only diary names, one per line, ordered by name. Duplicate names are
@@ -168,16 +169,16 @@ callable API, with readable output by default and JSON when requested. Diary nam
 an exact `--diary UUID`, available from the detailed or JSON list.
 
 ```sh
-python manage.py manage_diaries create --name "Summer event" --template "Event preparation" --event-ref "event:17" --milestone event_date=2027-06-27 --milestone bookings_close=2027-06-01 --actor operator
-python manage.py manage_diaries close --diary DIARY_UUID --actor operator
+python manage.py manage_diaries create --name "Summer event" --template "Event preparation" --event-ref "event:17" --milestone event_date=2027-06-27 --milestone bookings_close=2027-06-01
+python manage.py manage_diaries close --diary DIARY_UUID
 ```
 
 A diary does not need a template. To create one independently of a configured
 default template, use:
 
 ```sh
-python manage.py manage_diaries create --name "Summer event" --event-ref "event:17" --without-template --actor operator
-python manage.py manage_diaries apply-template --diary DIARY_UUID --template "Event preparation" --milestone event_date=2027-06-27 --milestone bookings_close=2027-06-01 --actor operator
+python manage.py manage_diaries create --name "Summer event" --event-ref "event:17" --without-template
+python manage.py manage_diaries apply-template --diary DIARY_UUID --template "Event preparation" --milestone event_date=2027-06-27 --milestone bookings_close=2027-06-01
 ```
 
 Creation with no template selection and no configured `DIARY_TEMPLATE_NAME` also
@@ -228,12 +229,12 @@ JSON-mode deletion never prompts: supply `--json --force` to execute, or
 instead of waiting for input or performing an implicit delete.
 
 ```sh
-python manage.py manage_diaries delete --diary DIARY_UUID --actor operator
-python manage.py manage_diaries delete --diary DIARY_UUID --dry-run --actor operator
-python manage.py manage_diaries delete --diary DIARY_UUID --force --actor operator
-python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --actor operator
-python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --force --json --actor operator
-python manage.py manage_diary_templates delete --template "Event preparation" --force --actor operator
+python manage.py manage_diaries delete --diary DIARY_UUID
+python manage.py manage_diaries delete --diary DIARY_UUID --dry-run
+python manage.py manage_diaries delete --diary DIARY_UUID --force
+python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2
+python manage.py manage_diary_templates delete-version --template "Event preparation" --template-version 2 --force --json
+python manage.py manage_diary_templates delete --template "Event preparation" --force
 ```
 
 Human-readable previews identify the exact target, affected counts, and that no
@@ -289,3 +290,11 @@ A legacy Diary protection-trigger failure points to migration
 Errors are reported as Django `CommandError` messages on standard error, with a
 nonzero exit status in both text and JSON modes. JSON mode does not replace errors
 with a success object. A declined confirmation is a cancellation, not an error.
+
+## Task note history and deletion
+
+Task note history is retained through completion and diary closure. A whole-diary
+delete deliberately removes its notes with its tasks. The deletion preview includes
+a note count, and database guards continue to prevent individual note changes or
+deletions from surviving diaries. Apply migration `0012_task_notes` before using
+this updated deletion command with note history.

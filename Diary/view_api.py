@@ -40,7 +40,7 @@ class DiarySuccessMixin:
             return reverse('Diary:diary-manager', kwargs={'diary_key': result.diary_key})
         if result.operation == 'task_created':
             return reverse('Diary:diary-task-create', kwargs={'diary_key': result.diary_key})
-        if result.operation in {'task_date_updated', 'task_owner_updated', 'task_completed', 'task_chain_completed'}:
+        if result.operation in {'task_date_updated', 'task_owner_updated', 'task_completed', 'task_chain_completed', 'task_note_added'}:
             return reverse('Diary:diary-task-detail', kwargs={'diary_key': result.diary_key, 'entry_key': result.entry_key})
         raise ValueError(f'No default success URL for operation {result.operation!r}.')
 
