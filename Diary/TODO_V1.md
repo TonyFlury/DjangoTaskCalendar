@@ -697,6 +697,95 @@ This is a documentation-only scope record. It adds no executable symbols or veri
 
 These requirements have no assigned release and are not V1 completion conditions.
 
+- [ ] **DFUT-009: Optional group voting for task progression.**
+  Let tasks assigned to a group optionally require agreement from its members before
+  progressing. Candidate policies include All, Majority, and At least N.
+  Decide whether members submit approval only or approve/reject votes, and how
+  rejection affects task status and dependent tasks. Define when dependants remain
+  blocked and exactly what agreement permits progression.
+  Review voter eligibility, membership changes, denominator and quorum rules,
+  abstentions, ties, empty groups, impossible thresholds, vote changes, reopening,
+  manager overrides, privacy, audit history, retries, and concurrent voting.
+  Distinguish a member's vote from completion of the shared task.
+  Implementation: Not started. No release assigned; policy and state transitions need design.
+
+- [ ] **DFUT-010: Decision tasks with conditional branches.**
+  Support a yes/no decision task whose outcome activates one of two different
+  successor tasks. Define how an outcome is recorded, who may decide, and how
+  unselected branches are represented and excluded from normal blocking rules.
+  Review branch convergence, shared successors, changing or reopening a decision,
+  already completed branch work, and interaction with group voting and loops.
+  Preserve the distinction between a decision outcome and task completion.
+  Implementation: Not started. No release assigned; branching semantics need design.
+
+- [ ] **DFUT-011: Graphical task graph editor.**
+  Provide a graphical editor for tasks and their relationships.
+  Decide its scope for templates versus existing diaries, editing permissions,
+  versioning, layout, keyboard accessibility, and an equivalent non-graphical workflow.
+  Review representations for dependencies, decision branches, voting requirements,
+  and deliberate loops. Server-side validation remains authoritative.
+  Coordinate with DFUT-004 for any editing of dependencies in existing diaries;
+  a graphical interface does not itself authorize live graph changes.
+  Implementation: Not started. No release assigned; editor scope and interaction design remain open.
+
+- [ ] **DFUT-012: Task data capture through arbitrary forms.**
+  Allow a task to capture data using an arbitrary form. Decide how forms are
+  supplied or defined, including whether the host provides Django forms, stored
+  schemas, or another mechanism; no form framework is selected yet.
+  Review validation, storage and ownership of submissions, permissions, sensitive
+  data, audit history, attachments, form versioning, and template portability.
+  Define whether valid submission is required for progression, whether drafts and
+  later edits are supported, and how hosts retrieve data and receive notifications.
+  Implementation: Not started. No release assigned; form and data contracts need design.
+
+- [ ] **DFUT-013: Deliberate task reactivation and workflow loops.**
+  Allow tasks to reactivate previous tasks as explicitly designed workflow loops.
+  Review graph validation so deliberate loops are supported and loops without exit
+  options are highlighted. Define what constitutes an exit and which cases should
+  produce warnings or prevent saving; structural and conditional exits may differ.
+  Decide how reactivation affects completion history, task state, dependent tasks,
+  votes, decisions, captured data, and repeated workflow passes. Preserve an audit
+  trail and define safeguards against unintended or uncontrolled repetition.
+  Review existing readiness calculations, traversal, completion, and Close all;
+  current assumptions about acyclic dependencies cannot simply be removed.
+  Implementation: Not started. No release assigned; execution and exit semantics need design.
+
+DFUT-009 through DFUT-013 require a coordinated workflow design review before
+implementation. They are not publication gates. Review their interaction with
+DFUT-007 signals, existing diary snapshots, callable APIs, management commands,
+template transfer, migration, and backward compatibility.
+
+- [ ] **DFUT-008: Task prioritisation fields.**
+  Add fields that let tasks express priority. The field set, allowed values,
+  defaults, and meaning remain to be designed; do not assume a particular scale
+  or scoring scheme.
+  Review priority on template tasks and diary tasks, inheritance when creating
+  diaries, diary-specific overrides, editing permissions, and migration of existing
+  tasks. Define how priority affects display, sorting, filtering, callable APIs,
+  management commands, and template transfer. Keep priority distinct from due dates,
+  lateness, and dependency readiness. Consider whether priority changes belong in
+  the future signal contract (DFUT-007).
+  Implementation: Not started. No release assigned; this is not a publication gate.
+  Agree the field model and user-facing behaviour before application changes.
+
+- [ ] **DFUT-007: Standard signals for task progression and changes.**
+  Confirmed mechanism: use Django Signals (`django.dispatch.Signal`). This is a
+  requirement, not an open choice of event framework.
+  Provide a documented, standard set of Django signals that hosts can subscribe to
+  when tasks progress, including completion and ownership changes.
+  Design the complete event set before implementation; consider due-date changes,
+  chain completion, and any future progression states without committing to them yet.
+  Cover supported task mutations consistently across callable APIs, class views,
+  and management commands, rather than relying on view success hooks alone.
+  Review signal names, senders, stable payloads (diary/task identifiers, actor and
+  relevant changes), privacy, transaction commit timing, rollback, retries,
+  idempotent operations, receiver failures, and ordering. Decide whether chain
+  completion produces individual task events, an aggregate event, or both.
+  Define the relationship to existing host view hooks and document delivery
+  guarantees; do not imply durable or exactly-once event delivery from Django signals.
+  Implementation: Not started. No release assigned; this is not a publication gate.
+  Record the agreed signal contract and verification plan before application changes.
+
 - [ ] **DFUT-006: Host-defined milestone catalogues for different templates in one database.**
   Support multiple templates in the same database with the host supplying different
   sets of available milestones for different templates. Multiple templates already
