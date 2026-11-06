@@ -768,23 +768,20 @@ template transfer, migration, and backward compatibility.
   Implementation: Not started. No release assigned; this is not a publication gate.
   Agree the field model and user-facing behaviour before application changes.
 
-- [ ] **DFUT-007: Standard signals for task progression and changes.**
-  Confirmed mechanism: use Django Signals (`django.dispatch.Signal`). This is a
-  requirement, not an open choice of event framework.
-  Provide a documented, standard set of Django signals that hosts can subscribe to
-  when tasks progress, including completion and ownership changes.
-  Design the complete event set before implementation; consider due-date changes,
-  chain completion, and any future progression states without committing to them yet.
-  Cover supported task mutations consistently across callable APIs, class views,
-  and management commands, rather than relying on view success hooks alone.
-  Review signal names, senders, stable payloads (diary/task identifiers, actor and
-  relevant changes), privacy, transaction commit timing, rollback, retries,
-  idempotent operations, receiver failures, and ordering. Decide whether chain
-  completion produces individual task events, an aggregate event, or both.
-  Define the relationship to existing host view hooks and document delivery
-  guarantees; do not imply durable or exactly-once event delivery from Django signals.
-  Implementation: Not started. No release assigned; this is not a publication gate.
-  Record the agreed signal contract and verification plan before application changes.
+- [x] **DFUT-007: Standard signals for task progression and changes.**
+  Scope confirmed by the implementation request: Task Created, Task Note Added,
+  Task Dependency Changed, Task Closed, and Task Ownership Changed.
+  Each carries `user` (UI actor email),
+  `task` (stable task UUID), and `task-name` (task name).
+  Implementation: [signals.py](signals.py): five Django `Signal` instances and
+  `_queue_task_event`; [api.py](api.py): `_copy_template`, `DiaryTemplateVersion.approve`,
+  `DiaryInstance.add_entry`, `DiaryInstance.add_note`, `DiaryInstance.complete`, and `DiaryInstance.reassign_task`.
+  UI attribution: [views.py](views.py): `TemplateEditorView.dispatch`, `DiaryScopeMixin.dispatch`.
+  Verification: [tests/test_signals.py](tests/test_signals.py): `TaskSignalTests`, `TaskSignalCommitTests`.
+  Documentation: [Task change signals](README.md#task-change-signals) defines payloads,
+  template approval comparisons, retries, commit timing, receiver failures, ordering,
+  privacy, and in-process delivery limits. Due-date signals are outside
+  the confirmed five-signal scope. This is not a publication gate.
 
 - [ ] **DFUT-006: Host-defined milestone catalogues for different templates in one database.**
   Support multiple templates in the same database with the host supplying different

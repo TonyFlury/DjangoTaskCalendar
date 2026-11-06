@@ -23,6 +23,8 @@ from .roles import validate_task_owner_roles as _validate_task_owner_roles
 from .template_graph import validate_template_graph
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
+from .signals import (_queue_task_event, task_created, task_note_added, task_dependency_changed,
+                      task_closed, task_ownership_changed)
 
 API_VERSION = 1
 __all__ = [
@@ -36,10 +38,12 @@ __all__ = [
 class Actor:
     """Store the trusted caller reference, current group names, and permitted diary keys.
     The host must construct this identity from authenticated data for each request.
+    Supply email for signal attribution; non-UI callers may leave it empty.
     """
     reference: str
     groups: frozenset[str]
     calendar_keys: frozenset[UUID] = field(default_factory=frozenset)
+    email: str = ''
 
 
 class OwnerDirectory(Protocol):
@@ -273,8 +277,13 @@ def _copy_template(calendar, version, actor):
         names.add(proposed.casefold())
         copied[source.pk] = CalendarEntry.objects.create(calendar=calendar, source_entry=source,
                                                           created_by_ref=actor.reference, **fields)
+        _queue_task_event(task_created, actor=actor, entry=copied[source.pk])
+    dependent_ids = set()
     for link in TemplateDependency.objects.filter(entry__version=version):
         EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
+        dependent_ids.add(link.entry_id)
+    for source_id in dependent_ids:
+        _queue_task_event(task_dependency_changed, actor=actor, entry=copied[source_id])
 
 
 def _set_dates(calendar, dates):
@@ -789,6 +798,8 @@ class DiaryTemplateVersion(_DependencyAPI):
         """
         actor, template_version_key = self.actor, self.key
         _require(actor, 'edit')
+        template_id = TemplateVersion.objects.values_list('template_id', flat=True).get(pk=template_version_key)
+        CalendarTemplate.objects.select_for_update().get(pk=template_id)
         version = TemplateVersion.objects.select_for_update().get(pk=template_version_key)
 
         if version.status == VersionStatus.DRAFT:
@@ -798,10 +809,24 @@ class DiaryTemplateVersion(_DependencyAPI):
                 TemplateMilestone.objects.get_or_create(version=version, milestone_id=milestone_id)
         # Repeated approval preserves the original actor and approval time.
         if version.status != VersionStatus.APPROVED:
+            previous = version.template.versions.filter(status=VersionStatus.APPROVED,
+                                                         number__lt=version.number).order_by('-number').first()
+            old_entries = {item.entry_key: item for item in previous.entries.prefetch_related('predecessors')} if previous else {}
             version.status = VersionStatus.APPROVED
             version.approved_at = timezone.now()
             version.approved_by_ref = actor.reference
             version.save()
+            for entry in version.entries.prefetch_related('predecessors'):
+                old = old_entries.get(entry.entry_key)
+                if old is None:
+                    _queue_task_event(task_created, actor=actor, entry=entry)
+                elif ((old.owner_kind, old.person_ref, old.role_ref) !=
+                      (entry.owner_kind, entry.person_ref, entry.role_ref)):
+                    _queue_task_event(task_ownership_changed, actor=actor, entry=entry)
+                before = {item.entry_key for item in old.predecessors.all()} if old else set()
+                after = {item.entry_key for item in entry.predecessors.all()}
+                if before != after:
+                    _queue_task_event(task_dependency_changed, actor=actor, entry=entry)
         return self
 
     def read(self):
@@ -998,6 +1023,7 @@ class DiaryInstance(_DependencyAPI):
         entry.owner_kind, entry.person_ref, entry.role_ref = owner_kind, person_ref, role_ref
         entry.revision += 1
         entry.save()
+        _queue_task_event(task_ownership_changed, actor=self.actor, entry=entry)
 
         # A template update requires separate consent and keeps every other template field unchanged.
         if update_template:
@@ -1058,8 +1084,10 @@ class DiaryInstance(_DependencyAPI):
             if not EntryMapper.matches_spec(existing, spec):
                 raise ValidationError('The entry key already identifies a different entry.')
             return existing.entry_key
-        return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
-                                            **EntryMapper.to_model_fields(spec)).entry_key
+        entry = CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
+                                             **EntryMapper.to_model_fields(spec))
+        _queue_task_event(task_created, actor=actor, entry=entry)
+        return entry.entry_key
 
     # DV1-029, DV1-030, DV1-033: Save a task and an optional template revision together.
     @transaction.atomic
@@ -1256,6 +1284,7 @@ class DiaryInstance(_DependencyAPI):
                 raise ValidationError('This note key was already used. Reload before adding a new note.')
             return self._note_data(existing, self._note_author_labels({existing.author_ref}))
         note = TaskNote.objects.create(id=key, entry=entry, text=text, author_ref=self.actor.reference)
+        _queue_task_event(task_note_added, actor=self.actor, entry=entry)
         return self._note_data(note, self._note_author_labels({note.author_ref}))
 
     # DV1-032: Users edit their personal additions, while managers can also edit template-task dates.
@@ -1341,6 +1370,7 @@ class DiaryInstance(_DependencyAPI):
             else:
                 item.completion_action = 'close_all' if close_all else 'complete'
             item.save()
+            _queue_task_event(task_closed, actor=self.actor, entry=item)
         return self.task(entry_key=entry.entry_key)
 
     # DV1-007: Task reads for one diary.

@@ -783,6 +783,78 @@ python manage.py test Diary.tests.browser_template_editor --settings=your_projec
 Select test settings that use a separate PostgreSQL test database.
 The browser check creates its own users and templates in that database.
 
+### Task change signals
+
+DFUT-007 provides five Django signals in `Diary.signals`:
+
+| Signal | Committed change |
+| --- | --- |
+| `task_created` | A diary task is added or copied from a template; a template task first appears in an approved version. |
+| `task_note_added` | A new task note is saved. |
+| `task_dependency_changed` | A task's predecessor set changes in an approved template version, including removal of all predecessors or initial nonempty dependencies. Also sent for initial dependencies copied into a diary. |
+| `task_closed` | An open task becomes completed. Close all sends one event per newly completed task, including forced predecessors. |
+| `task_ownership_changed` | An orphaned diary task is reassigned, or an existing template task's owner kind, person, or role changes in an approved version. |
+
+Each receiver gets Django's `signal` argument, the model class as `sender`
+(`CalendarEntry` or `TemplateEntry`), and these payload fields:
+
+| Field | Value |
+| --- | --- |
+| `user` | The authenticated UI user's email at the time of the action. |
+| `task` | The task's stable UUID (`entry_key`). |
+| `task-name` | The task name at the time of the action. |
+
+UI views obtain email from the authenticated user, ignoring submitted identity fields.
+Callable API hosts can supply `Actor(email=...)` from trusted identity data.
+The default is an empty string, including for management commands without a UI user.
+An account without an email also produces an empty string.
+Email is event metadata; it does not grant permissions or change stored actor references.
+Task keys persist across template versions and diary copies.
+Receivers must treat email and private task names as trusted integration data and
+apply the host's access rules before exposing them to users.
+
+Register receivers from the host application's `AppConfig.ready()`:
+
+```python
+from django.dispatch import receiver
+from Diary.signals import task_closed
+
+@receiver(task_closed, dispatch_uid='host.diary.task_closed')
+def handle_task_closed(sender, user, task, **kwargs):
+    task_name = kwargs['task-name']
+    # Process the committed event using user, task, and task_name.
+```
+
+The hyphen in `task-name` requires access through `kwargs`.
+Receivers run after the outermost successful database commit. Payload values are
+captured when the change is made. Rollbacks discard pending events, including
+failure of a combined diary and template save. Identical task/note retries,
+repeated completion or approval, and unchanged predecessor sets emit no extra events.
+Unchanged template owners and initial ownership on new tasks do not emit ownership
+change events. A combined diary and template reassignment emits one event for each
+changed copy, distinguished by `sender`. Failed or repeated recovery emits no event.
+Template drafts emit events on approval, compared with the previous approved
+version by stable task key. Draft edits alone do not emit events.
+Live diary dependency editing remains prohibited in V1.
+Closing a diary preserves open tasks and does not emit `task_closed`.
+
+Signals originate in callable API operations, so UI and management operations
+that use those APIs share the same behavior. Raw model saves, bulk writes,
+fixture loading, and template fixture transfers do not send these task events.
+Due-date changes are outside this five-signal contract.
+Host view success hooks retain their existing navigation behavior.
+
+Delivery uses Django's `send_robust()`: receiver exceptions are logged by
+`django.dispatch`, other receivers continue, and committed changes remain saved.
+The callback is registered with `transaction.on_commit(..., robust=True)`.
+The database commit finishes before dispatch starts. If dispatch itself raises
+an exception, Django logs it and continues with later callbacks. Signal errors
+do not turn a successful save into a failed operation.
+Events follow operation order; Close all queues predecessor events before the
+selected task, without promising a topological order among predecessors.
+Delivery is in-process, with no durable queue, automatic retry, or exactly-once
+guarantee. For durable external processing, a host needs its own delivery mechanism.
+
 ### Template page styling
 
 The complete pages are `Diary/template_list.html` and `Diary/template_editor.html`.
