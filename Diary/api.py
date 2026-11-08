@@ -20,7 +20,7 @@ from .models import (CalendarEntry, CalendarMilestone, CalendarTemplate, EntryDe
 from .roles import task_owner_roles as _task_owner_roles
 from .roles import access_groups
 from .roles import validate_task_owner_roles as _validate_task_owner_roles
-from .template_graph import validate_template_graph
+from .template_graph import validate_template_graph, ordered_task_choices
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
 from .date_rules import task_date_order
@@ -354,8 +354,8 @@ class _DependencyAPI(_BoundObject):
         if not template:
             choices = choices.filter(source_entry__isnull=False)
         successors = {}
-        for item, predecessor in links.objects.filter(**{f'entry__{field_name}': scope}).values_list('entry_id',
-                                                                                                     'predecessor_id'):
+        link_pairs = list(links.objects.filter(**{f'entry__{field_name}': scope}).values_list('entry_id', 'predecessor_id'))
+        for item, predecessor in link_pairs:
             successors.setdefault(predecessor, set()).add(item)
         excluded, pending = set(), [entry.pk]
 
@@ -367,8 +367,15 @@ class _DependencyAPI(_BoundObject):
             if item not in excluded:
                 excluded.add(item)
                 pending.extend(successors.get(item, ()))
-        return tuple(choices.exclude(pk__in=excluded)
-                     .order_by('name').values('entry_key', 'name'))
+        candidates = list(choices.order_by('name').values('pk', 'entry_key', 'name'))
+        by_pk = {candidate['pk']: candidate for candidate in candidates}
+        for candidate in candidates:
+            candidate['predecessors'] = []
+        for item, predecessor in link_pairs:
+            if item in by_pk and predecessor in by_pk:
+                by_pk[item]['predecessors'].append(by_pk[predecessor]['entry_key'])
+        return tuple({'entry_key': item['entry_key'], 'name': item['name']}
+                     for item in ordered_task_choices(candidates) if item['pk'] not in excluded)
 
     # DV1-006, DV1-028: Only draft template dependencies can change in V1.
     @transaction.atomic

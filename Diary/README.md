@@ -807,6 +807,13 @@ The graph inherits `--diary-background`, `--diary-surface`, `--diary-text`,
 `--diary-muted`, `--diary-border`, `--diary-accent`, `--diary-focus`, and
 `--diary-radius`. Full task names are accessible labels and tooltips; the forms
 are the non-graphical editing alternative.
+`arrangeGraph()` separates connected components, performs alternating barycenter
+sweeps over dependency layers, and retains the ordering with the fewest counted
+crossings. Temporary routing waypoints reserve space for edges spanning layers;
+these are not tasks and do not change saved data. A bounded waypoint budget uses
+exterior lanes for dense graphs. Crossing-free layouts are not guaranteed for
+arbitrary dependency graphs. Edge elements expose `data-source-key` and
+`data-target-key` for the existing visible task keys.
 
 Graph styling classes are `diary-template-graph` (panel), `diary-graph-toolbar`
 (controls), `diary-graph-zoom` (scale output), `diary-graph-status` (counts or
@@ -1165,6 +1172,18 @@ The V1 application save must include `DiaryTemplateVersion.approve()` without an
 Diary entries retain their copied template content after creation.
 A template can be applied once to a template-free diary. Further copying into an already templated diary is not supported.
 DEC-003 is closed, and DV1-034 is removed from required work.
+
+### Task selector ordering
+
+Predecessor choices use connected-subgraph order, placing prerequisites before
+dependants. Date-source choices use the independent date-reference graph, using
+completion subgraph order for ties. Input order breaks remaining ties and keeps
+unrelated groups stable. `template_graph.ordered_task_choices()` supplies the
+server forms and callable predecessor selector; `orderedTaskChoices()` mirrors
+it for unsaved browser edits. Ordering is presentation only and does not change
+task rows, saved relationships, or permissions. Invalid unsaved cycles retain all
+choices for ordinary validation. Only permitted visible tasks contribute to a
+diary's date-source choices; hidden source references do not affect that order.
 
 ## EntrySpec fields
 

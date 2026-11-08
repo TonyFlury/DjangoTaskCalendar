@@ -1,7 +1,63 @@
 """Validate the complete predecessor graph submitted by a template editor."""
 from uuid import UUID
+from collections import deque
 
 from django.core.exceptions import ValidationError
+
+
+def ordered_task_choices(entries, *, date_sources=False):
+    """Group visible tasks by connected subgraph, then put sources before dependants.
+
+    Preserve input order for ties and unrelated groups. This is presentation only:
+    missing references are ignored and cyclic/invalid input remains visible for
+    normal form validation. Completion and date-reference graphs stay independent.
+    """
+    entries = tuple(entries)
+    if date_sources:
+        entries = ordered_task_choices(entries)
+    keys = [str(entry['entry_key']) for entry in entries]
+    if len(set(keys)) != len(keys):
+        return entries
+    known = set(keys)
+    incoming = {}
+    outgoing = {key: [] for key in keys}
+    neighbors = {key: set() for key in keys}
+    for key, entry in zip(keys, entries):
+        references = ((entry.get('source_task_key'),) if date_sources
+                      else (entry.get('predecessors') or ()))
+        incoming[key] = {str(reference) for reference in references if reference is not None} & known
+        for source in incoming[key]:
+            outgoing[source].append(key)
+            neighbors[key].add(source)
+            neighbors[source].add(key)
+    by_key = dict(zip(keys, entries))
+    seen, ordered = set(), []
+    for key in keys:
+        if key in seen:
+            continue
+        component, pending = {key}, [key]
+        while pending:
+            current = pending.pop()
+            for neighbor in neighbors[current] - component:
+                component.add(neighbor)
+                pending.append(neighbor)
+        members = [candidate for candidate in keys if candidate in component]
+        remaining = {candidate: len(incoming[candidate]) for candidate in members}
+        ready = deque(candidate for candidate in members if not remaining[candidate])
+        while ready:
+            current = ready.popleft()
+            seen.add(current)
+            ordered.append(by_key[current])
+            for successor in outgoing[current]:
+                remaining[successor] -= 1
+                if remaining[successor] == 0:
+                    ready.append(successor)
+        # Keep all choices available when an unsaved date graph contains a cycle.
+        for current in members:
+            if current not in seen:
+                seen.add(current)
+                ordered.append(by_key[current])
+    return tuple(ordered)
 
 
 # DV1-027: Safe template predecessor editor.

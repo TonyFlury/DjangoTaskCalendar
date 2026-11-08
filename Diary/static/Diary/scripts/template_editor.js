@@ -22,6 +22,190 @@
         return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
 
+    /** Match the server's source-first, connected-subgraph choice order, including unsaved rows. */
+    function orderedTaskChoices(rows, dateSources = false) {
+        if (dateSources) rows = orderedTaskChoices(rows);
+        const keys = rows.map(row => field(row, 'entry-key').value);
+        const byKey = new Map(keys.map((key, index) => [key, rows[index]]));
+        if (byKey.size !== rows.length) return rows;
+        const incoming = new Map(), outgoing = new Map(keys.map(key => [key, []]));
+        const neighbors = new Map(keys.map(key => [key, new Set()]));
+        rows.forEach((row, index) => {
+            const references = dateSources
+                ? (field(row, 'date-kind').value === 'task' ? [field(row, 'source-task-key').value] : [])
+                : Array.from(field(row, 'predecessors').selectedOptions, option => option.value);
+            const sources = new Set(references.filter(key => byKey.has(key)));
+            incoming.set(keys[index], sources);
+            for (const source of sources) {
+                outgoing.get(source).push(keys[index]);
+                neighbors.get(source).add(keys[index]);
+                neighbors.get(keys[index]).add(source);
+            }
+        });
+        const seen = new Set(), result = [];
+        for (const key of keys) {
+            if (seen.has(key)) continue;
+            const component = new Set([key]), pending = [key];
+            while (pending.length) {
+                for (const neighbor of neighbors.get(pending.pop())) {
+                    if (!component.has(neighbor)) { component.add(neighbor); pending.push(neighbor); }
+                }
+            }
+            const members = keys.filter(candidate => component.has(candidate));
+            const remaining = new Map(members.map(candidate => [candidate, incoming.get(candidate).size]));
+            const ready = members.filter(candidate => remaining.get(candidate) === 0);
+            for (let index = 0; index < ready.length; index++) {
+                const current = ready[index];
+                seen.add(current);
+                result.push(byKey.get(current));
+                for (const next of outgoing.get(current)) {
+                    remaining.set(next, remaining.get(next) - 1);
+                    if (remaining.get(next) === 0) ready.push(next);
+                }
+            }
+            // Invalid proposed date cycles must remain selectable and be reported on Save.
+            for (const current of members) {
+                if (!seen.has(current)) { seen.add(current); result.push(byKey.get(current)); }
+            }
+        }
+        return result;
+    }
+
+    /** Layered layout with crossing reduction and reserved lanes for edges spanning rows. */
+    function arrangeGraph(nodes, links, cyclic) {
+        const neighbors = new Map(nodes.map(node => [node, []]));
+        for (const [from, to] of links) { neighbors.get(from).push(to); neighbors.get(to).push(from); }
+        const seen = new Set(), components = [];
+        for (const node of nodes) {
+            if (seen.has(node)) continue;
+            const component = {nodes: [node], links: []};
+            seen.add(node);
+            for (let i = 0; i < component.nodes.length; i++) {
+                const current = component.nodes[i];
+                current.component = component;
+                for (const next of neighbors.get(current)) {
+                    if (!seen.has(next)) { seen.add(next); component.nodes.push(next); }
+                }
+            }
+            // Form order supplies deterministic ties without moving tasks when their names change.
+            component.nodes.sort((a, b) => a.index - b.index);
+            components.push(component);
+        }
+        for (const link of links) link[0].component.links.push(link);
+
+        /** Count inversions between adjacent rows, excluding shared endpoints. */
+        function crossings(layers, outgoing) {
+            let total = 0;
+            for (let level = 0; level < layers.length - 1; level++) {
+                const next = layers[level + 1];
+                const ranks = new Map(next.map((node, index) => [node, index + 1]));
+                const tree = new Array(next.length + 1).fill(0);
+                let inserted = 0;
+                for (const node of layers[level]) {
+                    const targets = outgoing.get(node);
+                    for (const target of targets) {
+                        let sum = 0;
+                        for (let i = ranks.get(target); i > 0; i -= i & -i) sum += tree[i];
+                        total += inserted - sum;
+                    }
+                    // Add a source's whole group afterwards: its own edges do not cross each other.
+                    for (const target of targets) {
+                        for (let i = ranks.get(target); i < tree.length; i += i & -i) tree[i]++;
+                        inserted++;
+                    }
+                }
+            }
+            return total;
+        }
+
+        function reduceCrossings(layers, incoming, outgoing) {
+            let best = layers.map(layer => layer.slice());
+            let score = crossings(layers, outgoing);
+            for (let sweep = 0; sweep < 12 && score > 0; sweep++) {
+                const down = sweep % 2 === 0;
+                for (let level = down ? 1 : layers.length - 2;
+                     down ? level < layers.length : level >= 0; level += down ? 1 : -1) {
+                    const adjacent = layers[level + (down ? -1 : 1)];
+                    const positions = new Map(adjacent.map((node, index) => [node, index]));
+                    const relationships = down ? incoming : outgoing;
+                    const centers = new Map(layers[level].map((node, index) => {
+                        const connected = relationships.get(node);
+                        return [node, connected.length ? connected.reduce((sum, neighbor) => sum + positions.get(neighbor), 0) / connected.length : index];
+                    }));
+                    layers[level].sort((a, b) => centers.get(a) - centers.get(b));
+                }
+                const candidate = crossings(layers, outgoing);
+                if (candidate < score) { score = candidate; best = layers.map(layer => layer.slice()); }
+            }
+            return best;
+        }
+
+        let left = 24, height = 130, virtualBudget = 4000;
+        const routes = [];
+        for (const component of components) {
+            let layers = [];
+            const incoming = new Map(), outgoing = new Map();
+            function add(vertex, level) {
+                (layers[level] ||= []).push(vertex);
+                incoming.set(vertex, []);
+                outgoing.set(vertex, []);
+            }
+            for (const node of component.nodes) add(node, cyclic ? 0 : node.level);
+            const chains = [], bypasses = [];
+            for (const [from, to] of component.links) {
+                const span = to.level - from.level - 1;
+                // Bound work even for dense templates. Overflow edges use exterior lanes instead.
+                if (!cyclic && span > virtualBudget) { bypasses.push({from, to}); continue; }
+                const chain = [from];
+                if (!cyclic) {
+                    for (let level = from.level + 1; level < to.level; level++) {
+                        const waypoint = {virtual: true};
+                        add(waypoint, level);
+                        chain.push(waypoint);
+                        virtualBudget--;
+                    }
+                    chain.push(to);
+                    for (let i = 1; i < chain.length; i++) {
+                        outgoing.get(chain[i - 1]).push(chain[i]);
+                        incoming.get(chain[i]).push(chain[i - 1]);
+                    }
+                } else chain.push(to);
+                chains.push({from, to, chain});
+            }
+            if (!cyclic) layers = reduceCrossings(layers, incoming, outgoing);
+            const rowWidth = layer => layer.reduce((sum, node) => sum + (node.virtual ? 20 : 216), 0) + Math.max(0, layer.length - 1) * 32;
+            const componentWidth = Math.max(...layers.map(rowWidth)) + 48;
+            layers.forEach((layer, level) => {
+                let x = left + (componentWidth - rowWidth(layer)) / 2;
+                for (const node of layer) {
+                    node.x = x;
+                    node.y = 24 + level * 166;
+                    node.center = x + (node.virtual ? 10 : 108);
+                    x += (node.virtual ? 20 : 216) + 32;
+                }
+            });
+            for (const {from, to, chain} of chains) {
+                let path = `M ${from.center} ${from.y + 82}`;
+                for (let i = 1; i < chain.length; i++) {
+                    const previous = chain[i - 1], current = chain[i];
+                    const top = current.y - 4, bottom = previous.y + (previous.virtual ? 86 : 82);
+                    const middle = (bottom + top) / 2;
+                    // Change horizontal position only in the gap between task rows.
+                    path += ` C ${previous.center} ${middle} ${current.center} ${middle} ${current.center} ${top}`;
+                    if (current.virtual) path += ` L ${current.center} ${current.y + 86}`;
+                }
+                routes.push({from, to, path});
+            }
+            bypasses.forEach(({from, to}, index) => {
+                const lane = left + componentWidth + 16 + (index % 12) * 8;
+                routes.push({from, to, path: `M ${from.center} ${from.y + 82} L ${from.center} ${from.y + 102} L ${lane} ${from.y + 102} L ${lane} ${to.y - 20} L ${to.center} ${to.y - 20} L ${to.center} ${to.y - 4}`});
+            });
+            left += componentWidth + (bypasses.length ? 40 + Math.min(12, bypasses.length) * 8 : 0) + 32;
+            height = Math.max(height, layers.length * 166 + 32);
+        }
+        return {width: Math.max(320, left - 8), height, routes};
+    }
+
     /** Read-only graph of the proposed form state; all mutations still use the task forms. */
     function taskGraph(editor) {
         const panel = editor.querySelector('.diary-template-graph');
@@ -117,14 +301,9 @@
                 }
             }
             const cyclic = ready.length !== nodes.length;
-            const layers = [];
-            // Keep malformed graphs visible in a simple row instead of implying a valid ordering.
-            for (const node of nodes) {
-                const level = cyclic ? 0 : node.level;
-                (layers[level] ||= []).push(node);
-            }
-            width = Math.max(320, ...layers.map(layer => layer.length * 248 + 32));
-            height = Math.max(130, layers.length * 166 + 32);
+            const layout = arrangeGraph(nodes, links, cyclic);
+            width = layout.width;
+            height = layout.height;
             svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
             svg.replaceChildren();
             const defs = element('defs');
@@ -133,15 +312,9 @@
             marker.append(element('path', {d: 'M 0 0 L 10 5 L 0 10 z', class: 'diary-graph-arrow'}));
             defs.append(marker);
             svg.append(defs);
-            for (const [level, layer] of layers.entries()) {
-                const offset = (width - layer.length * 248) / 2;
-                layer.forEach((node, index) => { node.x = offset + index * 248 + 12; node.y = 24 + level * 166; });
-            }
-            for (const [from, to] of links) {
-                const x1 = from.x + 108, y1 = from.y + 82, x2 = to.x + 108, y2 = to.y - 4;
-                const middle = (y1 + y2) / 2;
+            for (const {from, to, path: route} of layout.routes) {
                 const path = element('path', {class: 'diary-graph-edge',
-                    d: `M ${x1} ${y1} C ${x1} ${middle} ${x2} ${middle} ${x2} ${y2}`,
+                    d: route, 'data-source-key': from.key, 'data-target-key': to.key,
                     'marker-end': `url(#${markerId})`});
                 path.append(element('title', {}, `${from.name} → ${to.name}`));
                 svg.append(path);
@@ -209,6 +382,8 @@
         function refresh() {
             const rows = tasks();
             const active = rows.filter(task => !field(task, 'delete').checked);
+            const predecessorOrder = orderedTaskChoices(active);
+            const dateOrder = orderedTaskChoices(active, true);
             const successors = new Map();
             for (const task of active) {
                 const key = field(task, 'entry-key').value;
@@ -252,7 +427,7 @@
                 const sourceSelect = field(task, 'source-task-key');
                 const sourceValue = sourceSelect.value;
                 const dateChoices = [{value: '', label: 'Select a source task', selected: !sourceValue},
-                    ...active.filter(candidate => candidate !== task).map(candidate => {
+                    ...dateOrder.filter(candidate => candidate !== task).map(candidate => {
                         const key = field(candidate, 'entry-key').value;
                         return {value: key, label: field(candidate, 'name').value.trim() || 'Unnamed task',
                                 selected: key === sourceValue};
@@ -290,7 +465,7 @@
                 const selected = new Set(Array.from(select.selectedOptions, option => option.value));
                 const search = task.querySelector('.diary-template-predecessor-search').value.trim().toLocaleLowerCase();
                 const choices = [];
-                for (const candidate of active) {
+                for (const candidate of predecessorOrder) {
                     const key = field(candidate, 'entry-key').value;
                     const name = field(candidate, 'name').value.trim();
 

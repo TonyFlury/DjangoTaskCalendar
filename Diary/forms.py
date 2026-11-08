@@ -15,7 +15,7 @@ from .api import EntrySpec
 from .choices import DateKind, OwnerKind
 from .models import Milestone, TemplateVersion
 from .roles import access_groups, task_owner_roles
-from .template_graph import validate_template_graph
+from .template_graph import validate_template_graph, ordered_task_choices
 from .identity import user_display_name
 from .date_rules import task_date_order
 
@@ -219,9 +219,13 @@ class TemplateTaskFormSet(BaseFormSet):
 
             # Only complete task identities can be presented as predecessor choices.
             if key and name and not form['DELETE'].value():
-                choices.append((str(key), name))
+                choices.append({'entry_key': str(key), 'name': name,
+                                'predecessors': form['predecessors'].value() or (),
+                                'source_task_key': form['source_task_key'].value() if form['date_kind'].value() == DateKind.TASK else None})
                 for predecessor in form['predecessors'].value() or ():
                     successors.setdefault(str(predecessor), set()).add(str(key))
+        predecessor_choices = [(entry['entry_key'], entry['name']) for entry in ordered_task_choices(choices)]
+        date_choices = [(entry['entry_key'], entry['name']) for entry in ordered_task_choices(choices, date_sources=True)]
         for form in self.forms:
             excluded, pending = set(), [str(form['entry_key'].value())]
 
@@ -235,10 +239,10 @@ class TemplateTaskFormSet(BaseFormSet):
                     pending.extend(successors.get(key, ()))
 
             # Apply the same exclusions to server-rendered choices and browser updates.
-            form.fields['predecessors'].choices = [(key, name) for key, name in choices if key not in excluded]
+            form.fields['predecessors'].choices = [(key, name) for key, name in predecessor_choices if key not in excluded]
             # Date references have their own graph; completion dependencies do not restrict these choices.
             form.fields['source_task_key'].choices = [('', 'Select a source task'),
-                *((key, name) for key, name in choices if key != str(form['entry_key'].value()))]
+                *((key, name) for key, name in date_choices if key != str(form['entry_key'].value()))]
 
     def add_fields(self, form, index):
         """Apply deletion-control classes to stored rows and the empty browser prototype."""
@@ -319,7 +323,8 @@ class TaskCreateForm(TemplateTaskForm):
         super().__init__(*args, people=people, roles=sorted(task_owner_roles()), **kwargs)
         self.fields.pop('predecessors')
         self.fields['source_task_key'].choices = [('', 'Select a source task'),
-            *((str(entry['entry_key']), entry['name']) for entry in source_tasks if entry.get('date') is not None)]
+            *((str(entry['entry_key']), entry['name']) for entry in
+              ordered_task_choices((entry for entry in source_tasks if entry.get('date') is not None), date_sources=True))]
         self.fields['source_task_key'].help_text = 'Use a visible task’s current due date once, when this task is added. Later source changes do not move this date.'
         self.fields['milestone_name'].choices = [('', 'Select a milestone'),
             *Milestone.objects.order_by('name').values_list('name', 'label')]
@@ -393,7 +398,7 @@ class ReusableTaskRuleForm(StyledForm):
         self.fields['milestone_name'].choices = [('', 'Select a milestone'),
                                                 *Milestone.objects.order_by('name').values_list('name', 'label')]
         self.fields['source_task_key'].choices = [('', 'Select a source task'),
-            *((str(entry['entry_key']), entry['name']) for entry in source_tasks)]
+            *((str(entry['entry_key']), entry['name']) for entry in ordered_task_choices(source_tasks, date_sources=True))]
         for name, field in self.fields.items():
             field.widget.attrs['class'] = f'diary-create-control diary-create-future-{name.replace("_", "-")}'
 

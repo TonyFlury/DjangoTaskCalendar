@@ -454,6 +454,10 @@ Diary Managers can see **Task connections** above the task forms in the template
 editor. Each box is a task. Arrows point from a prerequisite to the task that
 depends on it. Tasks without connections are included. The graph arranges tasks
 automatically and shows the current form contents, including unsaved changes.
+Connected groups are laid out separately. Within a group, task order is adjusted
+to reduce crossing arrows, and longer connections use lanes around intervening
+task boxes. Some dependency patterns still require crossings; the layout does
+not change your task order in the forms or the saved dependencies.
 
 - Select a box to move to that task's name field for editing.
 - Use **+** and **−** to zoom, or **Fit to screen** to show the whole graph.
@@ -492,6 +496,12 @@ A circular dependency would make tasks require each other to finish first.
 
 Select the required tasks in **Predecessors**.
 Hold Ctrl or Command to select several tasks when your browser requires it.
+Choices are grouped by connected subgraph, with prerequisites before dependent
+tasks. **Source task** and **Future source task** use date-source order, with the
+completion subgraphs as the tie order when no date reference determines the order.
+Unrelated tasks retain their existing relative order. These lists are no longer
+sorted globally by task name. Unsaved changes update the lists without clearing
+your selections; the same ordering is used when JavaScript is disabled.
 
 Enter a task name in **Find predecessors** when that control is available.
 The editor can show a warning when an ownership group has no members.

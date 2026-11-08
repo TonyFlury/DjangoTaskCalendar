@@ -160,3 +160,103 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(saved['predecessors'], ())
         self.assertEqual(self.row(book).find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key').get_attribute('value'),
                          str(start.entry_key))
+
+    def show_layout(self, names, graph):
+        """Use a real saved template, with deliberately unhelpful alphabetical task order."""
+        specs = [EntrySpec(name, DateKind.ANNUAL, month=6, day=1) for name in names]
+        self.template.save_version(entries=specs,
+            predecessors={specs[index].entry_key: [specs[source].entry_key for source in sources]
+                          for index, sources in graph.items()}, expected_version_key=self.version.key)
+        self.driver.refresh()
+        self.wait.until(lambda browser: self.count('.diary-graph-node') == len(specs)
+                         and 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        return specs
+
+    def test_layout_removes_avoidable_crossings_in_connected_branches(self):
+        specs = self.show_layout(['A root', 'B root', 'C root', 'D branch', 'E branch', 'F branch', 'Z join'],
+                                  {3: [2], 4: [1], 5: [0], 6: [3, 4, 5]})
+        x = lambda index: float(self.node(specs[index]).find_element(By.TAG_NAME, 'rect').get_attribute('x'))
+        connections = [(0, 5), (1, 4), (2, 3)]
+        crossings = sum((x(a) - x(c)) * (x(b) - x(d)) < 0
+                        for index, (a, b) in enumerate(connections) for c, d in connections[index + 1:])
+        # Alphabetical order has three crossings here. This graph admits a crossing-free arrangement.
+        self.assertEqual(crossings, 0)
+        self.assertEqual(self.count('.diary-graph-edge'), 6)
+        before = self.driver.execute_script('return Array.from(document.querySelectorAll(".diary-graph-node"), n => [n.dataset.taskKey, n.querySelector("rect").getAttribute("x")])')
+        name = self.row(specs[0]).find_element(By.CSS_SELECTOR, '.diary-template-field-name')
+        name.send_keys(' renamed')
+        self.wait.until(lambda browser: 'renamed' in self.node(specs[0]).get_attribute('aria-label'))
+        after = self.driver.execute_script('return Array.from(document.querySelectorAll(".diary-graph-node"), n => [n.dataset.taskKey, n.querySelector("rect").getAttribute("x")])')
+        self.assertEqual(before, after)
+
+    def test_long_connections_do_not_pass_through_other_task_boxes(self):
+        self.show_layout(['A start', 'B middle', 'C middle', 'D finish'], {1: [0], 2: [1], 3: [0, 2]})
+        collisions = self.driver.execute_script('''
+            const boxes = Array.from(document.querySelectorAll('.diary-graph-node'), node =>
+                ({key: node.dataset.taskKey, box: node.querySelector('rect').getBBox()}));
+            const collisions = [];
+            for (const path of document.querySelectorAll('.diary-graph-edge')) {
+                const others = boxes.filter(node => node.key !== path.dataset.sourceKey && node.key !== path.dataset.targetKey);
+                for (let distance = 0; distance <= path.getTotalLength(); distance += 2) {
+                    const point = path.getPointAtLength(distance);
+                    for (const {key, box} of others) {
+                        if (point.x > box.x && point.x < box.x + box.width && point.y > box.y && point.y < box.y + box.height) {
+                            collisions.push(key);
+                        }
+                    }
+                }
+            }
+            return collisions;
+        ''')
+        self.assertEqual(collisions, [])
+        self.assertEqual(self.count('.diary-graph-node'), 4)
+        self.assertEqual(self.count('.diary-graph-edge'), 4)
+
+    def test_dense_graph_with_unavoidable_crossings_keeps_all_tasks_and_connections(self):
+        # A complete DAG also exercises the bounded waypoint budget and exterior routing lanes.
+        count = 36
+        self.show_layout([f'Task {index:02}' for index in range(count)],
+                         {index: list(range(index)) for index in range(1, count)})
+        self.assertEqual(self.count('.diary-graph-node'), count)
+        self.assertEqual(self.count('.diary-graph-edge'), count * (count - 1) // 2)
+        self.assertTrue(self.driver.execute_script('''
+            return Array.from(document.querySelectorAll('.diary-graph-edge'), path => path.getTotalLength())
+                .every(length => Number.isFinite(length) && length > 0);
+        '''))
+        self.assertEqual([item for item in self.driver.get_log('browser')
+                          if item['source'] == 'javascript' and item['level'] == 'SEVERE'], [])
+
+    def test_task_selectors_follow_subgraphs_and_keep_selections_when_renamed(self):
+        specs = self.show_layout(['A end', 'B unrelated', 'C target', 'Y middle', 'Z source'],
+                                 {0: [3], 3: [4]})
+        end, unrelated, target, middle, root = specs
+        expected = [str(spec.entry_key) for spec in (root, middle, end, unrelated)]
+        target_row = self.row(target)
+
+        def values(field_name):
+            return [option.get_attribute('value') for option in
+                    Select(target_row.find_element(By.CSS_SELECTOR, f'.diary-template-field-{field_name}')).options
+                    if option.get_attribute('value')]
+
+        self.wait.until(lambda browser: values('predecessors') == expected)
+        self.assertEqual(values('source-task-key'), expected)
+        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).select_by_value(str(end.entry_key))
+        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(middle.entry_key))
+        name = self.row(root).find_element(By.CSS_SELECTOR, '.diary-template-field-name')
+        name.clear()
+        name.send_keys('Renamed source')
+        self.wait.until(lambda browser: 'Renamed source' in self.node(root).get_attribute('aria-label'))
+        self.assertEqual(values('predecessors'), expected)
+        self.assertEqual(values('source-task-key'), expected)
+        self.assertEqual([option.get_attribute('value') for option in
+                         Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).all_selected_options],
+                         [str(end.entry_key)])
+        self.assertEqual(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key').get_attribute('value'),
+                         str(middle.entry_key))
+        search = target_row.find_element(By.CSS_SELECTOR, '.diary-template-predecessor-search')
+        search.send_keys('no match')
+        self.assertEqual(values('predecessors'), [str(end.entry_key)])
+        search.clear()
+        search.send_keys(' ')
+        self.wait.until(lambda browser: values('predecessors') == expected)

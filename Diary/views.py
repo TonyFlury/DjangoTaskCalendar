@@ -27,7 +27,7 @@ from .choices import OwnerKind
 from .forms import (ManagerDiaryFilterForm, PersonalDiaryFilterForm, ReusableTaskRuleForm,
                     TaskCompletionForm, TaskCreateForm, TaskDueDateForm, TaskFormSet, TaskOwnerRecoveryForm, TaskNoteForm,
                     TemplateForm, TemplateApplicationChoiceForm, TemplateApplicationDatesForm, editor_task_limit)
-from .models import CalendarTemplate, EventCalendar, Milestone, TemplateVersion
+from .models import CalendarEntry, CalendarTemplate, EventCalendar, Milestone, TemplateVersion
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
@@ -518,7 +518,13 @@ class TaskCreateView(DiarySuccessMixin, DiaryScopeMixin, View):
 
         # GET initializes an unbound form, while POST keeps the caller's submitted values.
         data = self.request.POST if submitted else None
-        form = TaskCreateForm(data, actor=self.actor, initial=initial, source_tasks=context['diary_data']['entries'])
+        visible_tasks = context['diary_data']['entries']
+        visible_keys = {entry['entry_key'] for entry in visible_tasks}
+        date_sources = dict(CalendarEntry.objects.filter(calendar_id=key, entry_key__in=visible_keys)
+                            .values_list('entry_key', 'source_task_key'))
+        source_tasks = [{**entry, 'source_task_key': date_sources.get(entry['entry_key'])
+                         if date_sources.get(entry['entry_key']) in visible_keys else None} for entry in visible_tasks]
+        form = TaskCreateForm(data, actor=self.actor, initial=initial, source_tasks=source_tasks)
         form.fields['milestone_name'].choices = [('', 'Select a milestone'),
             *Milestone.objects.filter(calendar_dates__calendar_id=key).order_by('name').values_list('name', 'label')]
         future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False,
