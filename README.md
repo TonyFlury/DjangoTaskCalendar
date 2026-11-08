@@ -22,6 +22,8 @@ No published package name, supported-version matrix, or release installation pro
 
 ## Existing documentation
 
+- [Package build guide](BUILD.md)
+- [Management command help](docs/management-commands/README.md)
 - [Developer guide](Diary/README.md)
 - [User guide](Diary/USER_GUIDE.md)
 - [V1 implementation checklist](Diary/TODO_V1.md)

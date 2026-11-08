@@ -1,5 +1,8 @@
 # Template and diary administration
 
+For command syntax, option tables, examples, and operational warnings, see the
+[management command help pages](../docs/management-commands/README.md).
+
 Diary provides two operator commands in addition to
 `validate_diary_configuration` and `transfer_diary_templates`:
 
