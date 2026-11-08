@@ -798,6 +798,28 @@ All classes below use the `.diary` namespace.
 Existing class names and CSS variables remain unchanged.
 The editor adds no CSS variables.
 
+The manager-only editor also provides a read-only SVG task graph. It is rendered
+from the current task form rows by `taskGraph()` in `template_editor.js`; it does
+not fetch data, write records, or add a separate permission surface. The existing
+server save validates all tasks and dependencies. No third-party scripts, CDN,
+or build step are needed. Host fragments keep using the same script include.
+The graph inherits `--diary-background`, `--diary-surface`, `--diary-text`,
+`--diary-muted`, `--diary-border`, `--diary-accent`, `--diary-focus`, and
+`--diary-radius`. Full task names are accessible labels and tooltips; the forms
+are the non-graphical editing alternative.
+
+Graph styling classes are `diary-template-graph` (panel), `diary-graph-toolbar`
+(controls), `diary-graph-zoom` (scale output), `diary-graph-status` (counts or
+empty/error state), `diary-graph-viewport` (scrollable region),
+`diary-graph-dragging` (mouse pan state), `diary-graph-canvas` (SVG),
+`diary-graph-node` (task link), `diary-graph-edge` (prerequisite arrow line), and
+`diary-graph-arrow` (arrowhead). Graph controls use `data-graph-action` values
+`in`, `out`, and `fit`; graph task links carry `data-task-key`.
+`Diary.tests.browser_template_graph` verifies real rendering, branches and joins,
+disconnected tasks, safe text, form synchronization, keyboard navigation, zoom,
+narrow layout, larger graphs, and inherited colors. Run it explicitly with
+the same isolated PostgreSQL settings used for other browser tests.
+
 | Class | Purpose |
 | --- | --- |
 | `diary-template-chooser` | Template chooser root. |

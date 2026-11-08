@@ -9,6 +9,7 @@ from django.contrib.auth.models import Group
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import override_settings
 from selenium import webdriver
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
@@ -40,7 +41,7 @@ class EditorBrowserTests(StaticLiveServerTestCase):
             options.add_argument(argument)
         options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
         driver = webdriver.Chrome(service=Service(executable_path=os.environ.get('DIARY_CHROMEDRIVER')), options=options)
-        wait = WebDriverWait(driver, 10)
+        wait = WebDriverWait(driver, 10, ignored_exceptions=(StaleElementReferenceException,))
         try:
             driver.set_window_size(1400, 1100)
             driver.get(self.live_server_url + '/diary/templates/')

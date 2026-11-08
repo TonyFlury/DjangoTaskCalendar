@@ -726,7 +726,15 @@ These requirements have no assigned release and are not V1 completion conditions
   and deliberate loops. Server-side validation remains authoritative.
   Coordinate with DFUT-004 for any editing of dependencies in existing diaries;
   a graphical interface does not itself authorize live graph changes.
-  Implementation: Not started. No release assigned; editor scope and interaction design remain open.
+  Partial implementation: the manager template editor has a read-only SVG preview
+  in `templates/Diary/partials/template_editor.html`, `static/Diary/scripts/template_editor.js`:
+  `taskGraph`, and `static/Diary/styles/diary.css`: `.diary-template-graph`.
+  It previews unsaved tasks and dependencies with automatic layout, zoom, pan,
+  keyboard access, and links to the existing task forms.
+  Verification: `tests/browser_template_graph.py`: `TemplateGraphBrowserTests`;
+  `tests/test_template_editor.py`: `TemplateEditorTests.test_graph_preview_uses_existing_manager_editor_and_does_not_write`.
+  Remaining: direct graphical editing, live diary scope, and representations for
+  future decisions, votes, and workflow loops. No release assigned for that work.
 
 - [ ] **DFUT-012: Task data capture through arbitrary forms.**
   Allow a task to capture data using an arbitrary form. Decide how forms are

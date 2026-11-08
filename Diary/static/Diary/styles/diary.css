@@ -187,3 +187,20 @@
 .diary .diary-note-meta, .diary .diary-note-help { color: var(--diary-muted); }
 .diary .diary-note-text { overflow-wrap: anywhere; }
 .diary .diary-note-form textarea { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }
+
+/* DFUT-011 preview: inherit the host's Diary palette, with scrolling inside the graph. */
+.diary .diary-template-graph { min-width: 0; max-width: 100%; }
+.diary .diary-graph-toolbar { align-items: center; }
+.diary .diary-graph-zoom { min-width: 3.5rem; text-align: center; }
+.diary .diary-graph-status { color: var(--diary-muted); overflow-wrap: anywhere; }
+.diary .diary-graph-viewport { width: 100%; max-width: 100%; max-height: 32rem; overflow: auto; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-background); cursor: grab; }
+.diary .diary-graph-viewport:focus-visible { outline: 3px solid var(--diary-focus); outline-offset: 2px; }
+.diary .diary-graph-dragging { cursor: grabbing; user-select: none; }
+.diary .diary-graph-canvas { display: block; max-width: none; margin-inline: auto; font: 14px/1.4 sans-serif; }
+.diary .diary-graph-edge { fill: none; stroke: var(--diary-accent); stroke-width: 2; }
+.diary .diary-graph-arrow { fill: var(--diary-accent); }
+.diary .diary-graph-node { cursor: pointer; text-decoration: none; }
+.diary .diary-graph-node rect { fill: var(--diary-surface); stroke: var(--diary-border); stroke-width: 2; }
+.diary .diary-graph-node text { fill: var(--diary-text); pointer-events: none; }
+.diary .diary-graph-node:hover rect, .diary .diary-graph-node:focus rect { stroke: var(--diary-focus); stroke-width: 3; }
+.diary .diary-graph-node:focus { outline: none; }

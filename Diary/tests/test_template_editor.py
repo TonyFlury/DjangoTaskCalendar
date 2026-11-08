@@ -154,6 +154,18 @@ class TemplateEditorTests(TestCase):
             HostEditorView.as_view()(request)
         self.assertEqual(context_calls, [])
 
+    def test_graph_preview_uses_existing_manager_editor_and_does_not_write(self):
+        template, version = self.create_template()
+        url = reverse('Diary:template-edit', kwargs={'template_name': 'Reusable plan'})
+        response = self.client.get(url)
+        self.assertContains(response, 'Task connections')
+        self.assertContains(response, 'data-graph-action="fit"')
+        self.assertContains(response, '<noscript>')
+        self.assertEqual(template.latest_version().key, version.key)
+        self.assertEqual(TemplateVersion.objects.count(), 1)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(url).status_code, 403)
+
     def create_template(self, name='Reusable plan'):
         """Create a template with two reusable tasks and an approved predecessor link."""
         template = self.api.create_template(name=name)

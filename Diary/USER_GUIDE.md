@@ -422,6 +422,29 @@ Older versions and existing diary tasks stay unchanged.
 When that button is unavailable, the row can provide a **Delete** checkbox.
 The removal does not delete the task from an existing diary.
 
+### View task connections
+
+Diary Managers can see **Task connections** above the task forms in the template
+editor. Each box is a task. Arrows point from a prerequisite to the task that
+depends on it. Tasks without connections are included. The graph arranges tasks
+automatically and shows the current form contents, including unsaved changes.
+
+- Select a box to move to that task's name field for editing.
+- Use **+** and **−** to zoom, or **Fit to screen** to show the whole graph.
+- Scroll inside the graph, or drag its background with a mouse, to move around.
+- Use Tab to reach a task and Enter to edit it. With the graph background focused,
+  use **+**, **−**, or **Home** to zoom or fit; arrow keys scroll.
+
+Names, added tasks, removed or restored tasks, and predecessor selections update
+the preview. Unnamed tasks receive temporary labels. A preview does not save
+anything: select **Save template** to create the new version. Removing a task also
+removes its connections from the proposed version.
+
+Use the existing task forms to change task content and predecessors. Connections
+cannot be dragged or edited on the graph. The forms remain available with
+JavaScript disabled, and show full names and predecessor selections when the graph
+is too large to read at fit size. Existing diary copies are unaffected by this preview.
+
 ### Template dates and predecessors
 
 Template tasks use reusable date rules.

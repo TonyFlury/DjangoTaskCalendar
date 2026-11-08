@@ -21,6 +21,22 @@
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
         <h2 class="diary-template-section-title">Tasks</h2>
         <p class="diary-template-guidance">Use milestone dates or annual dates. Select predecessors that must finish before each task.</p>
+        <section class="diary-template-graph diary-card" aria-label="Task graph" hidden>
+            <h3 class="diary-template-section-title">Task connections</h3>
+            <p class="diary-template-guidance">Arrows point from a prerequisite to the task that depends on it. Select a task to edit it below. This preview includes unsaved changes; save the template to keep them.</p>
+            <div class="diary-actions diary-graph-toolbar" role="group" aria-label="Graph controls">
+                <button class="diary-button" type="button" data-graph-action="out" aria-label="Zoom out">−</button>
+                <output class="diary-graph-zoom" aria-label="Graph zoom">100%</output>
+                <button class="diary-button" type="button" data-graph-action="in" aria-label="Zoom in">+</button>
+                <button class="diary-button" type="button" data-graph-action="fit">Fit to screen</button>
+            </div>
+            <p class="diary-graph-status" role="status" aria-live="polite"></p>
+            <div class="diary-graph-viewport" tabindex="0" role="region" aria-label="Task connections. Scroll or drag the background to pan. Use plus and minus to zoom, Home to fit.">
+                <svg class="diary-graph-canvas" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Tasks and prerequisite connections"></svg>
+            </div>
+            <p class="diary-template-guidance">Scroll or drag the background to move around. Keyboard: Tab to a task and press Enter to edit; focus the graph background and use +, −, or Home for zoom. The task forms below provide the same tasks and predecessor selections.</p>
+        </section>
+        <noscript><p class="diary-template-guidance">Enable JavaScript to see the task graph. You can still edit tasks and their predecessors using the forms below.</p></noscript>
         <div class="diary-template-task-list">
             {% for form in task_forms %}{% include 'Diary/partials/template_task.html' %}{% endfor %}
         </div>
