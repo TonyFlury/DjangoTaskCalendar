@@ -39,7 +39,8 @@ Your site controls when diaries become available.
 
 A diary can start empty. You can select **Add task** and create your own private
 tasks without waiting for a manager to choose a template. In this diary, use a
-one-time date or an annual date. Milestone date choices become available after a
+one-time date or an annual date. Once it has a task with a due date, you can also
+base another task's date on that task. Milestone date choices become available after a
 template and its milestone dates have been supplied.
 
 An empty task list is an ordinary starting point. You do not need to create or
@@ -178,6 +179,7 @@ Only the fields for the selected rule are necessary.
 | Milestone date | **Milestone**. | The same date as the selected milestone. |
 | Days from a milestone | **Milestone** and **Day offset**. | A calculated date before or after the milestone. |
 | Annual date | **Month**, **Day of month**, and **Year offset** when necessary. | One date calculated from the diary's creation date. |
+| Days from another task | **Source task** and **Day offset**. | A date calculated once from another task's due date. |
 
 A negative **Day offset** means days before the milestone.
 A positive value means days after it.
@@ -188,6 +190,30 @@ The task creation form offers milestones available in the selected diary.
 Your website supplies their dates when it creates the diary.
 New diaries require dates for every milestone used by their template tasks.
 Older diaries may still have missing dates; ask your site administrator for help.
+
+### Dates from another task
+
+Select **Days from another task**, choose a **Source task**, and enter the signed
+**Day offset**. Zero uses the same date; positive values mean after it, and negative
+values mean before it. The source cannot be the task itself.
+
+In a template, Diary resolves chains when creating a diary or first applying its
+template. For example, a source due on 10 June, a review three days later, and a
+submission two days after the review become 10, 13, and 15 June. Templates can
+refer to other unsaved task rows; save rejects missing sources and circular date
+references. A source must have a calculable date when the diary is initialized.
+
+When adding a task to an existing diary, the choices include visible tasks with
+due dates. The new task's date is fixed when added. If you also add the task to a
+template, select its **Future source task** and **Future day offset** separately.
+
+These dates do not move if the source finishes late or its due date is edited.
+An explicit permitted edit to this task's date changes this task only. Task details
+retain the original calculated date. Tracking downstream impacts is future work.
+
+A date source is separate from a completion predecessor. Select **Predecessors**
+as well if the task must wait for another task to finish. The template's task graph
+continues to show completion dependencies, rather than date-source links.
 
 ### Annual dates
 

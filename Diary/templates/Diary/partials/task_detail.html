@@ -29,6 +29,7 @@
                 {% if task.milestone_name %}<dt class="diary-detail-rule-label">Milestone</dt><dd class="diary-detail-rule-value">{{ task.milestone_name }}. Day offset: {{ task.date_rule.day_offset }}.</dd>{% endif %}
                 {% if task.date_rule.date_kind == 'annual' %}<dt class="diary-detail-rule-label">Annual rule</dt><dd class="diary-detail-rule-value">Month {{ task.date_rule.month }}, day {{ task.date_rule.day }}, year offset {{ task.date_rule.year_offset }}.</dd>{% endif %}
                 {% if task.date_rule.fixed_date %}<dt class="diary-detail-rule-label">Original exact date</dt><dd class="diary-detail-rule-value">{{ task.date_rule.fixed_date|date:'j F Y' }}</dd>{% endif %}
+                {% if task.date_rule.date_kind == 'task' %}<dt class="diary-detail-rule-label">Task date source</dt><dd class="diary-detail-rule-value">{{ task.source_task_name }}. Day offset: {{ task.date_rule.day_offset }}. Date fixed at initialization: {{ task.task_due_date|date:'j F Y' }}. Later source changes do not move this date.</dd>{% endif %}
             </dl>
 
             {# Closed diaries remain readable but cannot accept date edits or completion. #}

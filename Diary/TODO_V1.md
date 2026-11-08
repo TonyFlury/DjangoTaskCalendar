@@ -697,6 +697,40 @@ This is a documentation-only scope record. It adds no executable symbols or veri
 
 These requirements have no assigned release and are not V1 completion conditions.
 
+- [x] **DFUT-014: Due dates relative to another task's due date.**
+  Add a template date rule that selects a source task and a signed calendar-day
+  offset from its due date. Date references are separate from completion
+  dependencies: using a task's date does not itself require that task to finish first.
+  Resolve date-reference chains in order when creating a diary or applying its
+  first template, and store the resulting diary due dates as fixed snapshots.
+  Reject missing or unresolvable source tasks and circular date references.
+  Late or early completion must not move those dates. Later manual edits to a
+  source task's due date must also leave previously calculated dates unchanged.
+  Cover models and migration, editor controls, callable APIs, fixture transfer,
+  documentation, and tests, including chained references and safe creation retries.
+  Implementation: `DateKind.TASK`, `EntrySpec.source_task_key`,
+  `date_rules.task_date_order`, `date_rules.task_relative_date`,
+  `CalendarEntry.task_due_date`, and migration `0013_task_relative_due_dates`.
+  Template and diary task forms provide independent source selectors and offsets.
+  Template copying, approval, fixture transfer, and callable additions retain and
+  validate the rule; model and database guards preserve initialized snapshots.
+  Verification: `tests/test_task_relative_dates.py`: `TaskDateGraphTests`,
+  `TaskRelativeDateTests`, `TaskRelativeDateMigrationTests`;
+  `tests/browser_template_graph.py`: `TemplateGraphBrowserTests.test_task_relative_date_controls_save_without_creating_completion_dependencies`.
+
+- [ ] **DFUT-015: Track forward impacts on tasks with related due dates.**
+  Future work following DFUT-014: identify direct and transitive tasks whose dates
+  were calculated from a source task, so managers can review the forward impacts
+  of a changed source due date or late completion.
+  Preserve the original date-reference provenance needed to explain those links
+  after diary creation. Keep date-reference relationships distinct from completion
+  dependencies. Tracking impacts must not automatically change stored due dates.
+  Review how to present original and current dates, lateness, affected tasks, and
+  any suggested dates; define permissions, completed-task handling, and audit needs
+  before implementation. Any future rescheduling needs a separately agreed policy.
+  Implementation: Deferred. No release assigned; impact display and calculation
+  details remain open.
+
 - [ ] **DFUT-009: Optional group voting for task progression.**
   Let tasks assigned to a group optionally require agreement from its members before
   progressing. Candidate policies include All, Majority, and At least N.

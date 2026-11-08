@@ -518,10 +518,11 @@ class TaskCreateView(DiarySuccessMixin, DiaryScopeMixin, View):
 
         # GET initializes an unbound form, while POST keeps the caller's submitted values.
         data = self.request.POST if submitted else None
-        form = TaskCreateForm(data, actor=self.actor, initial=initial)
+        form = TaskCreateForm(data, actor=self.actor, initial=initial, source_tasks=context['diary_data']['entries'])
         form.fields['milestone_name'].choices = [('', 'Select a milestone'),
             *Milestone.objects.filter(calendar_dates__calendar_id=key).order_by('name').values_list('name', 'label')]
-        future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False)
+        future = ReusableTaskRuleForm(data, prefix='future', use_required_attribute=False,
+                                      source_tasks=template_data['entries'] if template_data else ())
         future.fields['milestone_name'].choices = [('', 'Select a milestone'),
             *Milestone.objects.order_by('name').values_list('name', 'label')] if template_data else [('', 'Select a milestone')]
         if not context['diary_data']['template_version_key']:
@@ -529,8 +530,13 @@ class TaskCreateView(DiarySuccessMixin, DiaryScopeMixin, View):
             form.fields['add_to_template'].widget = forms.HiddenInput(attrs=form.fields['add_to_template'].widget.attrs)
             form.initial['add_to_template'] = False
             form.fields['date_kind'].choices = [(value, label) for value, label in form.fields['date_kind'].choices
-                                                if value in {'annual', 'once'}]
-            for name in ('milestone_name', 'day_offset'):
+                                                if value in {'annual', 'once', 'task'}]
+            hidden_date_fields = ['milestone_name']
+            if not any(entry['date'] is not None for entry in context['diary_data']['entries']):
+                form.fields['date_kind'].choices = [(value, label) for value, label in form.fields['date_kind'].choices
+                                                    if value != 'task']
+                hidden_date_fields.extend(('day_offset', 'source_task_key'))
+            for name in hidden_date_fields:
                 form.fields[name].disabled = True
                 form.fields[name].widget = forms.HiddenInput(attrs=form.fields[name].widget.attrs)
         context.update(creation_form=form, future_form=future, creation_manager=manager)

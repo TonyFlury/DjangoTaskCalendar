@@ -136,3 +136,27 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         self.assertGreater(driver.execute_script('return arguments[0].scrollLeft', viewport), 0)
         self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
         self.assertEqual(TemplateVersion.objects.count(), 1)
+
+    def test_task_relative_date_controls_save_without_creating_completion_dependencies(self):
+        driver = self.driver
+        start, book = self.specs[:2]
+        row = self.row(book)
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        source = row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')
+        self.assertTrue(source.is_displayed())
+        self.assertNotIn(str(book.entry_key), [option.get_attribute('value') for option in Select(source).options])
+        Select(source).select_by_value(str(start.entry_key))
+        offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        self.assertTrue(offset.is_displayed())
+        offset.clear()
+        offset.send_keys('3')
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).deselect_all()
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
+        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        version = self.template.latest_version()
+        saved = next(entry for entry in version.read()['entries'] if entry['entry_key'] == book.entry_key)
+        self.assertEqual((saved['date_kind'], saved['source_task_key'], saved['day_offset']),
+                         ('task', start.entry_key, 3))
+        self.assertEqual(saved['predecessors'], ())
+        self.assertEqual(self.row(book).find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key').get_attribute('value'),
+                         str(start.entry_key))

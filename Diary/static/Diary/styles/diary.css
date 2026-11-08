@@ -2,8 +2,9 @@
 .diary .diary-create-form { min-width: 0; }
 .diary .diary-create-task, .diary .diary-create-future { min-width: 0; }
 .diary .diary-create-field { margin-block: .75rem; }
-.diary .diary-create-control { max-width: 100%; }
+.diary .diary-create-control { display: block; max-width: 100%; }
 .diary .diary-create-label, .diary .diary-create-legend { font-weight: bold; }
+.diary .diary-create-label { display: block; margin-block-end: .25rem; }
 .diary .diary-create-help, .diary .diary-create-guidance { color: var(--diary-muted); }
 .diary .diary-create-error { color: var(--diary-late); overflow-wrap: anywhere; }
 .diary .diary-create-success { color: var(--diary-ready); }

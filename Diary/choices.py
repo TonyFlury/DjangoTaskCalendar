@@ -6,6 +6,7 @@ class DateKind(models.TextChoices):
     ANNUAL = 'annual', 'Annual date'
     RELATIVE = 'relative', 'Calculated date'
     ONCE = 'once', 'One-time date'
+    TASK = 'task', 'Days from another task'
 
 
 class OwnerKind(models.TextChoices):

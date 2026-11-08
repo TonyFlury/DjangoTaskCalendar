@@ -1,5 +1,6 @@
 """Convert entry specifications and validate proposed task ownership."""
 from dataclasses import asdict
+from uuid import UUID
 
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
@@ -16,7 +17,7 @@ class EntryMapper:
 
     SNAPSHOT_FIELDS = (
         'entry_key', 'name', 'description', 'date_kind', 'milestone_id', 'month', 'day',
-        'year_offset', 'day_offset', 'fixed_date', 'owner_kind', 'person_ref', 'role_ref',
+        'year_offset', 'day_offset', 'fixed_date', 'owner_kind', 'person_ref', 'role_ref', 'source_task_key',
     )
 
     @staticmethod
@@ -26,6 +27,11 @@ class EntryMapper:
         Raise Milestone.DoesNotExist for an unknown milestone name.
         """
         values = asdict(spec)
+        if values['source_task_key'] is not None:
+            try:
+                values['source_task_key'] = UUID(str(values['source_task_key']))
+            except (TypeError, ValueError, AttributeError) as error:
+                raise ValidationError('Supply a valid source task key.') from error
         name = values.pop('milestone_name')
 
         # Fixed-date rules have no milestone reference to resolve.

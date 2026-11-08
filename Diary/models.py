@@ -10,7 +10,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 
 from .choices import DateKind, OwnerKind, VersionStatus
-from .date_rules import next_annual_date, resolve_date
+from .date_rules import next_annual_date, resolve_date, task_date_order, task_relative_date
 
 
 # DV1-005: Ownership data and assignment checks.
@@ -23,7 +23,7 @@ def owner_shape():
 def date_shape():
     """Return database conditions for the supported task date rules."""
     common = Q(month__isnull=True, day__isnull=True, year_offset=0)
-    return (
+    return (Q(source_task_key__isnull=True) & (
         (Q(date_kind='source', fixed_date__isnull=True, day_offset=0) & common & Q(milestone__isnull=False))
         | (Q(date_kind='relative', fixed_date__isnull=True) & common & Q(milestone__isnull=False))
         | (Q(date_kind='annual', milestone__isnull=True, fixed_date__isnull=True, day_offset=0,
@@ -31,7 +31,8 @@ def date_shape():
            & ~Q(month__in=(4, 6, 9, 11), day__gt=30) & ~Q(month=2, day__gt=29))
         | Q(date_kind='once', milestone__isnull=True, month__isnull=True, day__isnull=True,
             year_offset=0, day_offset=0, fixed_date__isnull=False)
-    )
+    )) | (Q(date_kind='task', source_task_key__isnull=False, milestone__isnull=True,
+             fixed_date__isnull=True) & common)
 
 
 # DV1-001: Independent PostgreSQL data layer.
@@ -119,6 +120,8 @@ class TemplateVersion(ValidatedModel):
         super().clean()
         if not self._state.adding:
             old = type(self).objects.get(pk=self.pk)
+            if self.status == VersionStatus.APPROVED and old.status != VersionStatus.APPROVED:
+                task_date_order(self.entries.all())
             if old.status == VersionStatus.APPROVED:
                 fields = ('template_id', 'number', 'status', 'created_by_ref', 'approved_by_ref', 'approved_at')
                 if any(getattr(old, field) != getattr(self, field) for field in fields):
@@ -224,6 +227,7 @@ class EntryFields(ValidatedModel):
     year_offset = models.SmallIntegerField(default=0)
     day_offset = models.IntegerField(default=0)
     fixed_date = models.DateField(null=True, blank=True)
+    source_task_key = models.UUIDField(null=True, blank=True)
     owner_kind = models.CharField(max_length=12, choices=OwnerKind.choices, default=OwnerKind.TEAM)
     person_ref = models.CharField(max_length=200, blank=True)
     role_ref = models.CharField(max_length=200, blank=True)
@@ -246,6 +250,8 @@ class EntryFields(ValidatedModel):
         self.role_ref = self.role_ref.strip()
         if not self.name:
             raise ValidationError({'name': 'Enter an entry name.'})
+        if self.source_task_key == self.entry_key:
+            raise ValidationError({'source_task_key': 'A task cannot use its own due date.'})
         if self.date_kind == DateKind.ANNUAL and self.month is not None and self.day is not None:
             try:
                 date(2000, self.month, self.day)
@@ -265,7 +271,8 @@ class EntryFields(ValidatedModel):
         return resolve_date(kind=self.date_kind, source_dates=source_dates,
                             source=self.milestone.name if self.milestone_id else '', month=self.month, day=self.day,
                             year_offset=self.year_offset, day_offset=self.day_offset, fixed_date=self.fixed_date,
-                            annual_due_date=getattr(self, 'annual_due_date', None))
+                            annual_due_date=getattr(self, 'annual_due_date', None),
+                            task_due_date=getattr(self, 'task_due_date', None))
 
 
 class TemplateMilestone(ValidatedModel):
@@ -334,7 +341,7 @@ class TemplateEntry(EntryFields):
 # DV1-010: Basic completion record fields.
 # DV1-051: Store annual dates calculated during diary creation.
 class CalendarEntry(EntryFields):
-    """Store a diary task, its calculated annual date, and its completion record."""
+    """Store a diary task, frozen annual/task-relative dates, and its completion record."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     calendar = models.ForeignKey(EventCalendar, on_delete=models.PROTECT, related_name='entries')
     source_entry = models.ForeignKey(TemplateEntry, null=True, blank=True, on_delete=models.PROTECT,
@@ -345,6 +352,7 @@ class CalendarEntry(EntryFields):
     completed_by_ref = models.CharField(max_length=200, blank=True)
     completed_due_date = models.DateField(null=True, blank=True)
     annual_due_date = models.DateField(null=True, blank=True, editable=False)
+    task_due_date = models.DateField(null=True, blank=True, editable=False)
 
     # DV1-032: A diary-specific date override keeps the source rule unchanged.
     due_date_override = models.DateField(null=True, blank=True)
@@ -361,6 +369,10 @@ class CalendarEntry(EntryFields):
         abstract = False
         ordering = ('name',)
         constraints = EntryFields.Meta.constraints + [
+            models.CheckConstraint(
+                check=(Q(date_kind='task', task_due_date__isnull=False)
+                       | (~Q(date_kind='task') & Q(task_due_date__isnull=True))),
+                name='diary_task_due_date_snapshot'),
             models.UniqueConstraint(fields=('calendar', 'entry_key'), name='diary_calendar_entry_key_unique'),
             models.UniqueConstraint(Lower('name'), 'calendar', name='diary_calendar_entry_name_ci'),
             models.CheckConstraint(
@@ -376,6 +388,12 @@ class CalendarEntry(EntryFields):
         DV1-051: Calculate annual dates from the diary creation date on the first save.
         """
         super().clean()
+
+        if self._state.adding and self.date_kind == DateKind.TASK and self.calendar_id:
+            source = type(self).objects.filter(calendar_id=self.calendar_id, entry_key=self.source_task_key).first()
+            if source is None:
+                raise ValidationError({'source_task_key': 'Select a source task already present in this diary.'})
+            self.task_due_date = task_relative_date(source.due_date, self.day_offset)
 
         # Use the Diary time zone so creation near midnight selects the correct local date.
         if self._state.adding and self.date_kind == DateKind.ANNUAL and self.calendar_id:
@@ -395,6 +413,11 @@ class CalendarEntry(EntryFields):
 
         # New tasks have no earlier record to compare.
         old = type(self).objects.get(pk=self.pk) if not self._state.adding else None
+        if old and (old.task_due_date != self.task_due_date or
+                    ((old.date_kind == DateKind.TASK or self.date_kind == DateKind.TASK) and
+                     (old.date_kind, old.source_task_key, old.day_offset) !=
+                     (self.date_kind, self.source_task_key, self.day_offset))):
+            raise ValidationError('A task-relative date snapshot and its source rule cannot change.')
 
         # Moving a task would change its diary scope and creation-date context.
         if old and old.calendar_id != self.calendar_id:

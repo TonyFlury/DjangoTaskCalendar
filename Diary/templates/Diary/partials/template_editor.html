@@ -20,7 +20,7 @@
         {{ task_forms.management_form }}
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
         <h2 class="diary-template-section-title">Tasks</h2>
-        <p class="diary-template-guidance">Use milestone dates or annual dates. Select predecessors that must finish before each task.</p>
+        <p class="diary-template-guidance">Use milestone dates, annual dates, or dates calculated from another task. Date sources fix due dates; predecessors identify tasks that must finish first.</p>
         <section class="diary-template-graph diary-card" aria-label="Task graph" hidden>
             <h3 class="diary-template-section-title">Task connections</h3>
             <p class="diary-template-guidance">Arrows point from a prerequisite to the task that depends on it. Select a task to edit it below. This preview includes unsaved changes; save the template to keep them.</p>

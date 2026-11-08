@@ -247,7 +247,22 @@
                 }
                 task.querySelector('.diary-template-task-title').textContent = field(task, 'name').value || 'New task';
                 show(task.querySelector('.diary-template-milestone-fields'), kind === 'source' || kind === 'relative');
-                show(task.querySelector('.diary-template-relative-fields'), kind === 'relative');
+                show(task.querySelector('.diary-template-relative-fields'), kind === 'relative' || kind === 'task');
+                show(task.querySelector('.diary-template-task-date-fields'), kind === 'task');
+                const sourceSelect = field(task, 'source-task-key');
+                const sourceValue = sourceSelect.value;
+                const dateChoices = [{value: '', label: 'Select a source task', selected: !sourceValue},
+                    ...active.filter(candidate => candidate !== task).map(candidate => {
+                        const key = field(candidate, 'entry-key').value;
+                        return {value: key, label: field(candidate, 'name').value.trim() || 'Unnamed task',
+                                selected: key === sourceValue};
+                    })];
+                const currentDateChoices = Array.from(sourceSelect.options, option => ({
+                    value: option.value, label: option.text, selected: option.selected,
+                }));
+                if (JSON.stringify(currentDateChoices) !== JSON.stringify(dateChoices)) {
+                    sourceSelect.replaceChildren(...dateChoices.map(option => new Option(option.label, option.value, false, option.selected)));
+                }
                 show(task.querySelector('.diary-template-annual-fields'), kind === 'annual');
                 show(task.querySelector('.diary-template-person-fields'), owner === 'person');
                 show(task.querySelector('.diary-template-role-fields'), owner === 'role');

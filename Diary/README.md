@@ -1177,7 +1177,8 @@ Its technical field names match the date and ownership rules below.
 | `date_kind` | `DateKind` value or its string value. | Required. |
 | `description` | String. | Empty string. |
 | `milestone_name` | String. | Required for `source` and `relative`. Empty for other date kinds. |
-| `day_offset` | Integer. | Zero. Signed day count for `relative`. |
+| `day_offset` | Integer. | Zero. Signed calendar-day count for `relative` or `task`. |
+| `source_task_key` | Task UUID or UUID string. | None. Required for `DateKind.TASK`; otherwise must be absent. |
 | `month`, `day` | Integers or `None`. | Required for `annual`. Otherwise `None`. |
 | `year_offset` | Integer. | Zero. Used only for `annual`. |
 | `fixed_date` | `datetime.date` or `None`. | Required for `once`. Otherwise `None`. |
@@ -1185,6 +1186,68 @@ Its technical field names match the date and ownership rules below.
 | `person_ref` | String. | Required only for `person`. Otherwise empty. |
 | `role_ref` | String. | Required only for `role`. Otherwise empty. |
 | `entry_key` | UUID. | A new UUID. Keep it to repeat an addition safely. |
+
+### Due dates from other tasks (DFUT-014)
+
+Apply migration `0013_task_relative_due_dates` before using `DateKind.TASK`.
+This migration adds nullable fields to existing tasks; it does not recalculate
+historical dates, completion records, overrides, or notes.
+
+```python
+from Diary.api import EntrySpec
+from Diary.choices import DateKind
+
+prepare = EntrySpec('Prepare documents', DateKind.SOURCE, milestone_name='target')
+review = EntrySpec('Review documents', DateKind.TASK,
+                   source_task_key=prepare.entry_key, day_offset=3)
+submit = EntrySpec('Submit documents', DateKind.TASK,
+                   source_task_key=review.entry_key, day_offset=2)
+version = template.save_version(
+    entries=[submit, review, prepare],  # Input order does not determine calculation order.
+    predecessors={},                  # Date references do not create completion dependencies.
+    expected_version_key=current_version_key,
+)
+```
+
+When creating a diary or first applying this template, Diary orders tasks by
+date references and stores each calculated date in `CalendarEntry.task_due_date`.
+With `target` set to 10 June, review is due on 13 June and submission on 15 June.
+Offsets can be positive, zero, or negative. Annual source dates use the diary's
+original creation date, including when a template is applied later.
+
+`source_task_key` retains the source task's stable identity and `day_offset`
+retains the rule. These are separate from `predecessors`: a date reference alone
+does not block completion. Source completion, lateness, and later manual due-date
+changes never recalculate downstream snapshots. An authorized explicit override
+can change the selected task's effective due date without changing its snapshot
+or any other task. Creation/application retries also preserve saved dates.
+
+`DiaryTemplate.save_version()` and approval validate that sources are in the same
+version and that date references have no self-links or cycles. Incremental draft
+`add_entry()` calls may refer to tasks added later; the complete graph must be
+valid before approval. An unresolvable source date or date arithmetic overflow
+rejects diary initialization atomically, including initial template application.
+
+`DiaryInstance.add_entry()` and `create_task()` can also add a task-relative diary
+task. Its source must already exist in that diary and be visible to the caller.
+The new date is calculated once at insertion, using the source's effective due
+date, including an existing override or preserved completion due date.
+The diary task form offers only visible sources that currently have dates.
+The separate future-template rule selects a source from that template's latest
+version; the two source selections and offsets need not be identical.
+
+The template editor offers **Days from another task**, **Source task**, and
+**Day offset**, including newly added unsaved tasks. The source selector uses
+`.diary-template-field-source-task-key` inside `.diary-template-task-date-fields`.
+Normal form submission works without JavaScript. Date-source links are not
+completion arrows in the task graph. Fixture export/import and version copying
+retain the stable source key and offset, with validation on approval/import.
+
+Task details show the original snapshot and source name when permitted. Callable
+task detail reads mask an inaccessible source key and name. Model checks and a
+PostgreSQL trigger protect saved snapshots and date-source provenance against
+updates; ordinary due-date overrides remain supported.
+Forward-impact tracking remains deferred under DFUT-015.
 
 ### Entry mapping and ownership validation
 

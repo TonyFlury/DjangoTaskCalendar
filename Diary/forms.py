@@ -17,6 +17,7 @@ from .models import Milestone, TemplateVersion
 from .roles import access_groups, task_owner_roles
 from .template_graph import validate_template_graph
 from .identity import user_display_name
+from .date_rules import task_date_order
 
 
 class StyledForm(forms.Form):
@@ -108,11 +109,14 @@ class TemplateTaskForm(StyledForm):
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
     date_kind = forms.ChoiceField(choices=[(DateKind.SOURCE, 'Milestone date'),
                                           (DateKind.RELATIVE, 'Days from a milestone'),
+                                          (DateKind.TASK, 'Days from another task'),
                                           (DateKind.ANNUAL, 'Annual date')], label='Date rule')
     milestone_name = forms.ChoiceField(required=False, label='Milestone',
         help_text='Select a milestone made available by your site.', choices=())
+    source_task_key = forms.ChoiceField(required=False, choices=(), label='Source task',
+        help_text='Use this task’s due date when the diary is initialized. Later changes do not move this task.')
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647,
-                                   label='Day offset', help_text='Use negative days before the milestone and positive days after it.')
+                                   label='Day offset', help_text='Use negative days before the source date and positive days after it.')
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Month')
     day = forms.IntegerField(required=False, min_value=1, max_value=31, label='Day of month')
     year_offset = forms.IntegerField(required=False, min_value=-32768, max_value=32767, label='Year offset',
@@ -142,6 +146,8 @@ class TemplateTaskForm(StyledForm):
         # Milestone rules require a stable milestone name, rather than a host event date.
         if kind in {DateKind.SOURCE, DateKind.RELATIVE} and not data.get('milestone_name'):
             self.add_error('milestone_name', 'Select a milestone.')
+        if kind == DateKind.TASK and not data.get('source_task_key'):
+            self.add_error('source_task_key', 'Select a source task.')
 
         # Annual dates must be possible in a leap year, including February 29.
         if kind == DateKind.ANNUAL:
@@ -171,8 +177,10 @@ class TemplateTaskForm(StyledForm):
             values['milestone_name'] = data['milestone_name']
 
         # Relative dates use a signed day offset, including zero.
-        if kind == DateKind.RELATIVE:
+        if kind in {DateKind.RELATIVE, DateKind.TASK}:
             values['day_offset'] = data.get('day_offset') or 0
+        if kind == DateKind.TASK:
+            values['source_task_key'] = data['source_task_key']
 
         # DV1-051: Annual rules use the next matching date after diary creation.
         if kind == DateKind.ANNUAL:
@@ -228,6 +236,9 @@ class TemplateTaskFormSet(BaseFormSet):
 
             # Apply the same exclusions to server-rendered choices and browser updates.
             form.fields['predecessors'].choices = [(key, name) for key, name in choices if key not in excluded]
+            # Date references have their own graph; completion dependencies do not restrict these choices.
+            form.fields['source_task_key'].choices = [('', 'Select a source task'),
+                *((key, name) for key, name in choices if key != str(form['entry_key'].value()))]
 
     def add_fields(self, form, index):
         """Apply deletion-control classes to stored rows and the empty browser prototype."""
@@ -255,6 +266,7 @@ class TemplateTaskFormSet(BaseFormSet):
             {form.cleaned_data['entry_key']: form.cleaned_data['predecessors'] for form in forms_to_save},
         )
         self.specs = tuple(form.entry_spec() for form in forms_to_save)
+        task_date_order(self.specs)
 
     # DV1-017: Empty-group warnings during template editing.
     @cached_property
@@ -297,7 +309,7 @@ class TaskCreateForm(TemplateTaskForm):
     add_to_template = forms.BooleanField(required=False, label='Add to template for future diaries')
     expected_version_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
-    def __init__(self, *args, actor, **kwargs):
+    def __init__(self, *args, actor, source_tasks=(), **kwargs):
         """Read current eligible owners and configure controls for the authenticated caller."""
         self.actor = actor
         self.manager = access_groups()['manager'] in actor.groups
@@ -306,6 +318,9 @@ class TaskCreateForm(TemplateTaskForm):
         people = tuple((f'user:{user.pk}', user_display_name(user)) for user in users)
         super().__init__(*args, people=people, roles=sorted(task_owner_roles()), **kwargs)
         self.fields.pop('predecessors')
+        self.fields['source_task_key'].choices = [('', 'Select a source task'),
+            *((str(entry['entry_key']), entry['name']) for entry in source_tasks if entry.get('date') is not None)]
+        self.fields['source_task_key'].help_text = 'Use a visible task’s current due date once, when this task is added. Later source changes do not move this date.'
         self.fields['milestone_name'].choices = [('', 'Select a milestone'),
             *Milestone.objects.order_by('name').values_list('name', 'label')]
         self.fields['milestone_name'].help_text = 'Select an existing milestone for a milestone date rule.'
@@ -362,19 +377,23 @@ class ReusableTaskRuleForm(StyledForm):
 
     date_kind = forms.ChoiceField(label='Future date rule', choices=(
         (DateKind.SOURCE, 'Milestone date'), (DateKind.RELATIVE, 'Days from a milestone'),
+        (DateKind.TASK, 'Days from another task'),
         (DateKind.ANNUAL, 'Annual date')))
     milestone_name = forms.ChoiceField(required=False, label='Future milestone')
+    source_task_key = forms.ChoiceField(required=False, choices=(), label='Future source task')
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647, label='Future day offset')
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Future month')
     day = forms.IntegerField(required=False, min_value=1, max_value=31, label='Future day')
     year_offset = forms.IntegerField(required=False, min_value=-32768, max_value=32767, label='Future year offset')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, source_tasks=(), **kwargs):
         """Use existing milestones and stable styling classes for each future-rule control."""
         super().__init__(*args, **kwargs)
         self.fields['date_kind'].choices = [('', 'Select a future date rule'), *self.fields['date_kind'].choices]
         self.fields['milestone_name'].choices = [('', 'Select a milestone'),
                                                 *Milestone.objects.order_by('name').values_list('name', 'label')]
+        self.fields['source_task_key'].choices = [('', 'Select a source task'),
+            *((str(entry['entry_key']), entry['name']) for entry in source_tasks)]
         for name, field in self.fields.items():
             field.widget.attrs['class'] = f'diary-create-control diary-create-future-{name.replace("_", "-")}'
 
@@ -385,6 +404,8 @@ class ReusableTaskRuleForm(StyledForm):
         # Milestone rules cannot silently select an unrelated source date.
         if data.get('date_kind') in {DateKind.SOURCE, DateKind.RELATIVE} and not data.get('milestone_name'):
             self.add_error('milestone_name', 'Select a future milestone.')
+        if data.get('date_kind') == DateKind.TASK and not data.get('source_task_key'):
+            self.add_error('source_task_key', 'Select a future source task.')
 
         # A leap year permits February 29 while rejecting impossible annual dates.
         if data.get('date_kind') == DateKind.ANNUAL:
@@ -398,11 +419,13 @@ class ReusableTaskRuleForm(StyledForm):
         """Return the reusable rule with the diary task's unchanged identity, text, and owner."""
         data = self.cleaned_data
         values = {'date_kind': data['date_kind'], 'fixed_date': None, 'milestone_name': '',
-                  'month': None, 'day': None, 'day_offset': 0, 'year_offset': 0}
+                  'month': None, 'day': None, 'day_offset': 0, 'year_offset': 0, 'source_task_key': None}
 
         # Annual rules need only their explicit month, day, and optional year offset.
         if data['date_kind'] == DateKind.ANNUAL:
             values.update(month=data['month'], day=data['day'], year_offset=data.get('year_offset') or 0)
+        elif data['date_kind'] == DateKind.TASK:
+            values.update(source_task_key=data['source_task_key'], day_offset=data.get('day_offset') or 0)
 
         # Source and relative rules both keep the chosen milestone.
         else:

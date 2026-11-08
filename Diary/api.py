@@ -23,6 +23,7 @@ from .roles import validate_task_owner_roles as _validate_task_owner_roles
 from .template_graph import validate_template_graph
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
+from .date_rules import task_date_order
 
 API_VERSION = 1
 __all__ = [
@@ -71,6 +72,7 @@ class EntrySpec:
     person_ref: str = ''
     role_ref: str = ''
     entry_key: UUID = field(default_factory=uuid4)
+    source_task_key: UUID | None = None
 
 
 # DV1-047: Simple V1 access settings.
@@ -260,7 +262,11 @@ def _copy_template(calendar, version, actor):
     names = {name.casefold() for name in calendar.entries.values_list('name', flat=True)}
     keys = set(calendar.entries.values_list('entry_key', flat=True))
     copied = {}
-    for source in version.entries.all():
+    sources = list(version.entries.all())
+    by_key = {source.entry_key: source for source in sources}
+    fields_by_key = {}
+    # Reserve display names in the original order, independently of date resolution order.
+    for source in sources:
         if source.entry_key in keys:
             raise ValidationError('A template task identifier conflicts with an existing task. No template was applied.')
         fields = EntryMapper.snapshot_fields(source)
@@ -271,8 +277,11 @@ def _copy_template(calendar, version, actor):
             sequence += 1
         fields['name'] = proposed
         names.add(proposed.casefold())
+        fields_by_key[source.entry_key] = fields
+    for key in task_date_order(sources):
+        source = by_key[key]
         copied[source.pk] = CalendarEntry.objects.create(calendar=calendar, source_entry=source,
-                                                          created_by_ref=actor.reference, **fields)
+                                                          created_by_ref=actor.reference, **fields_by_key[key])
     for link in TemplateDependency.objects.filter(entry__version=version):
         EntryDependency.objects.create(entry=copied[link.entry_id], predecessor=copied[link.predecessor_id])
 
@@ -595,6 +604,7 @@ class DiaryTemplate(_BoundObject):
         if current_key != expected:
             raise ValidationError('This template changed. Reopen it before saving your changes.')
         specs = tuple(entries)
+        task_date_order(specs)
         graph = validate_template_graph((spec.entry_key for spec in specs), predecessors)
 
         # A new version follows the highest existing number, including any draft.
@@ -792,6 +802,7 @@ class DiaryTemplateVersion(_DependencyAPI):
         version = TemplateVersion.objects.select_for_update().get(pk=template_version_key)
 
         if version.status == VersionStatus.DRAFT:
+            task_date_order(version.entries.all())
             used = set(version.entries.exclude(milestone_id=None).values_list('milestone_id', flat=True))
             version.milestone_declarations.exclude(milestone_id__in=used).delete()
             for milestone_id in used:
@@ -1058,6 +1069,8 @@ class DiaryInstance(_DependencyAPI):
             if not EntryMapper.matches_spec(existing, spec):
                 raise ValidationError('The entry key already identifies a different entry.')
             return existing.entry_key
+        if spec.date_kind == DateKind.TASK:
+            self._task_entry(calendar, spec.source_task_key)
         return CalendarEntry.objects.create(calendar=calendar, created_by_ref=actor.reference,
                                             **EntryMapper.to_model_fields(spec)).entry_key
 
@@ -1192,6 +1205,10 @@ class DiaryInstance(_DependencyAPI):
                       manager=_allowed(self.actor, 'edit'), blockers=tuple(listed), blocker_token=token,
                       date_rule=EntryMapper.snapshot_fields(entry), date_rule_label=entry.get_date_kind_display(),
                       milestone_name=entry.milestone.name if entry.milestone_id else '')
+        result['source_task_name'] = visible.get(entry.source_task_key, {}).get('name', 'Unavailable source task')
+        result['task_due_date'] = entry.task_due_date
+        if result['date_rule']['source_task_key'] not in visible:
+            result['date_rule']['source_task_key'] = None
         today = _comparison_date(None)
         result['late'] = entry.completed_at is None and result['date'] is not None and result['date'] <= today
 

@@ -397,6 +397,22 @@ The caller supplies named milestone dates through the API.
 Diary uses those values without knowledge of the caller's source models or fields.
 The [Garage Sale integration document](https://github.com/TonyFlury/GarageSale/blob/integration/event-calendar/GarageSale/DIARY_INTEGRATION.md#source-dates-and-event-selection) defines that project's source-field mapping.
 
+### Task-relative dates (DFUT-014)
+
+The `task` rule stores a source task's stable key and a signed calendar-day offset.
+Its date-reference graph is independent of the completion dependency graph.
+Validate same-version sources, self-links, and cycles before approving a template.
+On diary creation or initial template application, resolve the date graph in
+source-first order and store each resulting due date. Unresolvable dates or date
+arithmetic overflow abort the operation. Annual roots retain the diary's original
+creation-date semantics.
+
+Stored dates never move because of source lateness, completion, or later manual
+source due-date edits. An explicit task override changes only that task's effective
+date. Retain source keys and offsets as provenance for deferred DFUT-015 impact
+tracking. Incremental additions to a diary calculate once from a visible existing
+source task's effective due date. Template transfers preserve stable date references.
+
 ### Fixed dates
 
 A fixed date can be an annual date or a one-time date.

@@ -16,6 +16,9 @@
         <div class="diary-template-relative-fields">
             {% include 'Diary/partials/template_field.html' with field=form.day_offset %}
         </div>
+        <div class="diary-template-task-date-fields">
+            {% include 'Diary/partials/template_field.html' with field=form.source_task_key %}
+        </div>
         <div class="diary-template-annual-fields diary-template-grid">
             {% include 'Diary/partials/template_field.html' with field=form.month %}
             {% include 'Diary/partials/template_field.html' with field=form.day %}
