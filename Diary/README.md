@@ -814,6 +814,20 @@ these are not tasks and do not change saved data. A bounded waypoint budget uses
 exterior lanes for dense graphs. Crossing-free layouts are not guaranteed for
 arbitrary dependency graphs. Edge elements expose `data-source-key` and
 `data-target-key` for the existing visible task keys.
+The graph adds read-only diamond nodes for host milestones used by active
+`source` or `relative` task rows, deduplicated by stable milestone name. Names
+and labels come from the existing `milestone_options` context. Annual and
+task-relative rules do not acquire a milestone connection from inactive fields.
+Milestone edges use `data-relation="date"`; completion edges use
+`data-relation="dependency"`. Date arrows are dashed and their accessible labels
+and tooltips explain the offset. These extra visual links do not change saved
+completion dependencies. Unused milestones are not rendered.
+
+Milestone styling hooks are `diary-graph-milestone` (focusable SVG group, carrying
+`data-milestone-name`), `diary-graph-edge-date` (dashed date relation), and
+`diary-graph-arrow-date` (date arrowhead). Milestone edge source keys use the
+`milestone:` prefix, distinct from task UUIDs. Host Diary color variables style
+both node types. Milestone labels are inserted as text, never HTML.
 
 Graph styling classes are `diary-template-graph` (panel), `diary-graph-toolbar`
 (controls), `diary-graph-zoom` (scale output), `diary-graph-status` (counts or

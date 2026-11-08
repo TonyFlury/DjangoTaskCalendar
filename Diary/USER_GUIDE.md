@@ -213,7 +213,8 @@ retain the original calculated date. Tracking downstream impacts is future work.
 
 A date source is separate from a completion predecessor. Select **Predecessors**
 as well if the task must wait for another task to finish. The template's task graph
-continues to show completion dependencies, rather than date-source links.
+shows completion dependencies and direct milestone date relations. Task-to-task
+date references are configured in the forms and are not drawn as completion arrows.
 
 ### Annual dates
 
@@ -451,8 +452,16 @@ The removal does not delete the task from an existing diary.
 ### View task connections
 
 Diary Managers can see **Task connections** above the task forms in the template
-editor. Each box is a task. Arrows point from a prerequisite to the task that
-depends on it. Tasks without connections are included. The graph arranges tasks
+editor. Each box is a task. A diamond represents a host milestone used by at least
+one task's **Milestone date** or **Days from a milestone** rule. Shared milestones
+appear once; unused milestones stay out of the graph.
+
+Solid arrows point from a completion prerequisite to the task that depends on it.
+Dashed arrows connect milestones to tasks whose dates use them. Hover a dashed
+arrow to see whether the task uses the same date or an offset before or after it.
+Milestone date relations do not block task completion. Milestones are read-only
+and show their full labels and stable names on hover or through their accessible
+labels. Tasks without connections are included. The graph arranges tasks
 automatically and shows the current form contents, including unsaved changes.
 Connected groups are laid out separately. Within a group, task order is adjusted
 to reduce crossing arrows, and longer connections use lanes around intervening
@@ -466,7 +475,9 @@ not change your task order in the forms or the saved dependencies.
   use **+**, **−**, or **Home** to zoom or fit; arrow keys scroll.
 
 Names, added tasks, removed or restored tasks, and predecessor selections update
-the preview. Unnamed tasks receive temporary labels. A preview does not save
+the preview. Changing milestone rules or offsets also updates the diamonds and
+date arrows. Removing the last reference removes its milestone from the preview.
+Unnamed tasks receive temporary labels. A preview does not save
 anything: select **Save template** to create the new version. Removing a task also
 removes its connections from the proposed version.
 

@@ -205,3 +205,10 @@
 .diary .diary-graph-node text { fill: var(--diary-text); pointer-events: none; }
 .diary .diary-graph-node:hover rect, .diary .diary-graph-node:focus rect { stroke: var(--diary-focus); stroke-width: 3; }
 .diary .diary-graph-node:focus { outline: none; }
+.diary .diary-graph-edge-date { stroke: var(--diary-muted); stroke-dasharray: 6 4; }
+.diary .diary-graph-arrow-date { fill: var(--diary-muted); }
+.diary .diary-graph-milestone { cursor: default; }
+.diary .diary-graph-milestone polygon { fill: var(--diary-surface); stroke: var(--diary-accent); stroke-width: 2; }
+.diary .diary-graph-milestone text { fill: var(--diary-text); pointer-events: none; font-size: 12px; }
+.diary .diary-graph-milestone:focus { outline: none; }
+.diary .diary-graph-milestone:focus polygon { stroke: var(--diary-focus); stroke-width: 3; }

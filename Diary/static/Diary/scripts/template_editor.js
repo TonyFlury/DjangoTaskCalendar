@@ -152,10 +152,10 @@
             }
             for (const node of component.nodes) add(node, cyclic ? 0 : node.level);
             const chains = [], bypasses = [];
-            for (const [from, to] of component.links) {
+            for (const [from, to, relation] of component.links) {
                 const span = to.level - from.level - 1;
                 // Bound work even for dense templates. Overflow edges use exterior lanes instead.
-                if (!cyclic && span > virtualBudget) { bypasses.push({from, to}); continue; }
+                if (!cyclic && span > virtualBudget) { bypasses.push({from, to, relation}); continue; }
                 const chain = [from];
                 if (!cyclic) {
                     for (let level = from.level + 1; level < to.level; level++) {
@@ -170,7 +170,7 @@
                         incoming.get(chain[i]).push(chain[i - 1]);
                     }
                 } else chain.push(to);
-                chains.push({from, to, chain});
+                chains.push({from, to, chain, relation});
             }
             if (!cyclic) layers = reduceCrossings(layers, incoming, outgoing);
             const rowWidth = layer => layer.reduce((sum, node) => sum + (node.virtual ? 20 : 216), 0) + Math.max(0, layer.length - 1) * 32;
@@ -184,7 +184,7 @@
                     x += (node.virtual ? 20 : 216) + 32;
                 }
             });
-            for (const {from, to, chain} of chains) {
+            for (const {from, to, chain, relation} of chains) {
                 let path = `M ${from.center} ${from.y + 82}`;
                 for (let i = 1; i < chain.length; i++) {
                     const previous = chain[i - 1], current = chain[i];
@@ -194,11 +194,11 @@
                     path += ` C ${previous.center} ${middle} ${current.center} ${middle} ${current.center} ${top}`;
                     if (current.virtual) path += ` L ${current.center} ${current.y + 86}`;
                 }
-                routes.push({from, to, path});
+                routes.push({from, to, path, relation});
             }
-            bypasses.forEach(({from, to}, index) => {
+            bypasses.forEach(({from, to, relation}, index) => {
                 const lane = left + componentWidth + 16 + (index % 12) * 8;
-                routes.push({from, to, path: `M ${from.center} ${from.y + 82} L ${from.center} ${from.y + 102} L ${lane} ${from.y + 102} L ${lane} ${to.y - 20} L ${to.center} ${to.y - 20} L ${to.center} ${to.y - 4}`});
+                routes.push({from, to, relation, path: `M ${from.center} ${from.y + 82} L ${from.center} ${from.y + 102} L ${lane} ${from.y + 102} L ${lane} ${to.y - 20} L ${to.center} ${to.y - 20} L ${to.center} ${to.y - 4}`});
             });
             left += componentWidth + (bypasses.length ? 40 + Math.min(12, bypasses.length) * 8 : 0) + 32;
             height = Math.max(height, layers.length * 166 + 32);
@@ -207,7 +207,7 @@
     }
 
     /** Read-only graph of the proposed form state; all mutations still use the task forms. */
-    function taskGraph(editor) {
+    function taskGraph(editor, milestones) {
         const panel = editor.querySelector('.diary-template-graph');
         if (!panel) return () => {}; // Older host template overrides can keep their existing forms.
         const viewport = panel.querySelector('.diary-graph-viewport');
@@ -215,6 +215,7 @@
         const status = panel.querySelector('.diary-graph-status');
         const zoom = panel.querySelector('.diary-graph-zoom');
         const markerId = `diary-graph-arrow-${entryKey()}`;
+        const milestoneLabels = new Map(milestones.map(milestone => [milestone.name, milestone.label]));
         let width = 1, height = 1, scale = 1, fitting = true, pending = 0, latest = [];
         const ns = 'http://www.w3.org/2000/svg';
 
@@ -255,7 +256,8 @@
         });
         let drag = null;
         viewport.addEventListener('pointerdown', event => {
-            if (event.pointerType !== 'mouse' || event.button !== 0 || event.target.closest('.diary-graph-node')) return;
+            if (event.pointerType !== 'mouse' || event.button !== 0
+                || event.target.closest('.diary-graph-node, .diary-graph-milestone')) return;
             drag = {x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop};
             viewport.setPointerCapture(event.pointerId);
             viewport.classList.add('diary-graph-dragging');
@@ -274,22 +276,40 @@
 
         function draw() {
             pending = 0;
-            const nodes = latest.map((row, index) => ({
+            const taskNodes = latest.map((row, index) => ({
                 row, index, key: field(row, 'entry-key').value,
                 name: field(row, 'name').value.trim() || `Unnamed task ${index + 1}`,
                 predecessors: Array.from(field(row, 'predecessors').selectedOptions, option => option.value),
                 level: 0, outgoing: [], remaining: 0,
             }));
-            const byKey = new Map(nodes.map(node => [node.key, node]));
+            const nodes = taskNodes.slice();
+            const byKey = new Map(taskNodes.map(node => [node.key, node]));
+            const milestoneNodes = new Map();
             const links = [];
             let invalid = byKey.size !== nodes.length;
-            for (const node of nodes) {
+            for (const node of taskNodes) {
                 for (const key of node.predecessors) {
                     const predecessor = byKey.get(key);
                     if (!predecessor) { invalid = true; continue; }
                     predecessor.outgoing.push(node);
                     node.remaining++;
-                    links.push([predecessor, node]);
+                    links.push([predecessor, node, 'dependency']);
+                }
+                const kind = field(node.row, 'date-kind').value;
+                const milestoneName = field(node.row, 'milestone-name').value;
+                if ((kind === 'source' || kind === 'relative') && milestoneName) {
+                    if (!milestoneLabels.has(milestoneName)) { invalid = true; continue; }
+                    if (!milestoneNodes.has(milestoneName)) {
+                        const milestone = {key: `milestone:${milestoneName}`, name: milestoneLabels.get(milestoneName),
+                            milestone: milestoneName, index: nodes.length, level: 0, outgoing: [], remaining: 0};
+                        milestoneNodes.set(milestoneName, milestone);
+                        nodes.push(milestone);
+                    }
+                    const milestone = milestoneNodes.get(milestoneName);
+                    milestone.outgoing.push(node);
+                    node.remaining++;
+                    node.dateOffset = kind === 'source' ? 0 : Number(field(node.row, 'day-offset').value || 0);
+                    links.push([milestone, node, 'date']);
                 }
             }
             // Kahn's traversal gives dependencies earlier rows and cannot loop on invalid input.
@@ -307,19 +327,47 @@
             svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
             svg.replaceChildren();
             const defs = element('defs');
-            const marker = element('marker', {id: markerId, viewBox: '0 0 10 10', refX: 9,
-                refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'});
-            marker.append(element('path', {d: 'M 0 0 L 10 5 L 0 10 z', class: 'diary-graph-arrow'}));
-            defs.append(marker);
+            for (const relation of ['dependency', 'date']) {
+                const marker = element('marker', {id: `${markerId}-${relation}`, viewBox: '0 0 10 10', refX: 9,
+                    refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'});
+                marker.append(element('path', {d: 'M 0 0 L 10 5 L 0 10 z',
+                    class: `diary-graph-arrow${relation === 'date' ? ' diary-graph-arrow-date' : ''}`}));
+                defs.append(marker);
+            }
             svg.append(defs);
-            for (const {from, to, path: route} of layout.routes) {
-                const path = element('path', {class: 'diary-graph-edge',
+            for (const {from, to, path: route, relation} of layout.routes) {
+                const dateRelation = relation === 'date';
+                let label = `${from.name} → ${to.name}`;
+                if (dateRelation) {
+                    const offset = to.dateOffset;
+                    const rule = !Number.isInteger(offset) ? 'Incomplete day offset'
+                        : offset === 0 ? 'Same date as milestone'
+                        : `${Math.abs(offset)} calendar days ${offset < 0 ? 'before' : 'after'} milestone`;
+                    label += `: ${rule}`;
+                }
+                const path = element('path', {class: `diary-graph-edge${dateRelation ? ' diary-graph-edge-date' : ''}`,
                     d: route, 'data-source-key': from.key, 'data-target-key': to.key,
-                    'marker-end': `url(#${markerId})`});
-                path.append(element('title', {}, `${from.name} → ${to.name}`));
+                    'data-relation': relation, 'aria-label': label,
+                    'marker-end': `url(#${markerId}-${relation})`});
+                path.append(element('title', {}, label));
                 svg.append(path);
             }
             for (const node of nodes) {
+                if (node.milestone) {
+                    const diamond = element('g', {class: 'diary-graph-milestone', tabindex: 0, role: 'img',
+                        'data-milestone-name': node.milestone, 'aria-label': `Milestone: ${node.name} (${node.milestone})`});
+                    diamond.append(element('title', {}, `${node.name} (${node.milestone})`));
+                    diamond.append(element('polygon', {points: `${node.center},${node.y} ${node.x + 216},${node.y + 41} ${node.center},${node.y + 82} ${node.x},${node.y + 41}`}));
+                    const label = element('text', {x: node.center, y: node.y + 36, 'text-anchor': 'middle'});
+                    const parts = node.name.match(/.{1,18}(?:\s|$)|.{1,18}/gu) || [node.name];
+                    parts.slice(0, 2).forEach((part, index) => {
+                        const text = index === 1 && parts.length > 2 ? `${part.trim().slice(0, 16)}…` : part.trim();
+                        label.append(element('tspan', {x: node.center, dy: index ? 18 : 0}, text));
+                    });
+                    diamond.append(label);
+                    svg.append(diamond);
+                    continue;
+                }
                 const input = field(node.row, 'name');
                 const link = element('a', {href: `#${input.id}`, class: 'diary-graph-node',
                     'data-task-key': node.key, 'aria-label': `Edit task: ${node.name}`});
@@ -340,9 +388,12 @@
                 });
                 svg.append(link);
             }
-            const summary = nodes.length ? `${nodes.length} tasks · ${links.length} connections.` : 'No tasks yet. Add a task below to start the graph.';
-            status.textContent = summary + (cyclic || invalid ? ' Check task keys and predecessor selections; this preview is not a valid dependency order.' : '');
-            viewport.hidden = !nodes.length;
+            const dateCount = links.filter(link => link[2] === 'date').length;
+            const summary = taskNodes.length
+                ? `${taskNodes.length} tasks · ${milestoneNodes.size} milestones · ${links.length - dateCount} completion connections · ${dateCount} date relations.`
+                : 'No tasks yet. Add a task below to start the graph.';
+            status.textContent = summary + (cyclic || invalid ? ' Check task keys, milestones, and predecessor selections; this preview is not a valid dependency order.' : '');
+            viewport.hidden = !taskNodes.length;
             resize();
         }
 
@@ -367,7 +418,7 @@
         const emptyRoles = new Set(JSON.parse(editor.querySelector('[id="diary-template-empty-roles"]').textContent));
         const milestones = JSON.parse(editor.querySelector('[id="diary-template-milestones"]').textContent);
         const taskLimit = Number(editor.dataset.taskLimit);
-        const updateGraph = taskGraph(editor);
+        const updateGraph = taskGraph(editor, milestones);
 
         /** Return task rows from this editor, including rows marked for deletion. */
         function tasks() {
@@ -513,6 +564,7 @@
 
             // Task names and search text update choices while retaining selected predecessors.
             if (event.target.classList.contains('diary-template-field-name')
+                || event.target.classList.contains('diary-template-field-day-offset')
                 || event.target.classList.contains('diary-template-predecessor-search')) {
                 refresh();
             }

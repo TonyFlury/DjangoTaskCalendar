@@ -3,6 +3,7 @@
 Run explicitly with Django's test command and a separate PostgreSQL test database.
 """
 import os
+from dataclasses import replace
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -239,6 +240,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
                     if option.get_attribute('value')]
 
         self.wait.until(lambda browser: values('predecessors') == expected)
+
         self.assertEqual(values('source-task-key'), expected)
         Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).select_by_value(str(end.entry_key))
         Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
@@ -260,3 +262,69 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         search.clear()
         search.send_keys(' ')
         self.wait.until(lambda browser: values('predecessors') == expected)
+
+    def show_milestone_graph(self):
+        api = DiaryAPI(actor=self.template.actor)
+        api.define_milestones(definitions={'event_date': 'Event date', 'close': 'Bookings <close>',
+                                           'unused': 'Unused milestone'})
+        specs = self.specs.copy()
+        specs[0] = replace(specs[0], date_kind=DateKind.SOURCE, milestone_name='event_date', month=None, day=None)
+        specs[1] = replace(specs[1], date_kind=DateKind.RELATIVE, milestone_name='event_date',
+                           day_offset=-7, month=None, day=None)
+        specs[2] = replace(specs[2], date_kind=DateKind.RELATIVE, milestone_name='close',
+                           day_offset=2, month=None, day=None)
+        self.version = self.template.save_version(entries=specs,
+            predecessors={specs[1].entry_key: [specs[0].entry_key], specs[2].entry_key: [specs[0].entry_key],
+                          specs[3].entry_key: [specs[1].entry_key, specs[2].entry_key]}, expected_version_key=self.version.key)
+        self.driver.refresh()
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 2)
+        return specs
+
+    def test_only_used_milestones_are_diamonds_with_separate_date_relations(self):
+        specs = self.show_milestone_graph()
+        driver = self.driver
+        self.assertEqual(self.count('.diary-graph-node'), 6)
+        self.assertEqual(self.count('.diary-graph-milestone polygon'), 2)
+        self.assertEqual(self.count('.diary-graph-milestone rect'), 0)
+        self.assertEqual(self.count('.diary-graph-milestone[data-milestone-name="event_date"]'), 1)
+        self.assertEqual(self.count('.diary-graph-milestone[data-milestone-name="unused"]'), 0)
+        self.assertEqual(self.count('.diary-graph-edge[data-relation="dependency"]'), 4)
+        self.assertEqual(self.count('.diary-graph-edge[data-relation="date"]'), 3)
+        close = driver.find_element(By.CSS_SELECTOR, '.diary-graph-milestone[data-milestone-name="close"]')
+        self.assertIn('Bookings <close>', close.get_attribute('aria-label'))
+        self.assertEqual(self.count('.diary-graph-milestone close'), 0)
+        date_path = driver.find_element(By.CSS_SELECTOR,
+            f'.diary-graph-edge-date[data-target-key="{specs[1].entry_key}"]')
+        self.assertIn('7 calendar days before milestone', date_path.get_attribute('aria-label'))
+        self.assertNotEqual(driver.execute_script('return getComputedStyle(arguments[0]).strokeDasharray', date_path), 'none')
+        close.send_keys(Keys.TAB)  # Diamonds are focusable read-only items, not editing links.
+        driver.set_window_size(390, 900)
+        driver.find_element(By.CSS_SELECTOR, '[data-graph-action="fit"]').click()
+        self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
+        self.assertEqual([item for item in driver.get_log('browser')
+                          if item['source'] == 'javascript' and item['level'] == 'SEVERE'], [])
+        self.assertEqual(TemplateVersion.objects.count(), 2)
+
+    def test_milestone_graph_updates_offsets_rules_and_deleted_tasks_without_saving(self):
+        specs = self.show_milestone_graph()
+        driver = self.driver
+        Select(self.row(specs[2]).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('annual')
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 1)
+        offset = self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('4')
+        self.wait.until(lambda browser: '4 calendar days after milestone' in browser.find_element(By.CSS_SELECTOR,
+            f'.diary-graph-edge-date[data-target-key="{specs[1].entry_key}"]').get_attribute('aria-label'))
+        self.row(specs[0]).find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
+        self.wait.until(lambda browser: self.count('.diary-graph-edge-date') == 1)
+        self.assertEqual(self.count('.diary-graph-milestone'), 1)
+        self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 0)
+        self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 1)
+        Select(self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('unused')
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone[data-milestone-name="unused"]') == 1)
+        Select(self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 0)
+        saved = next(entry for entry in self.template.latest_version().read()['entries'] if entry['entry_key'] == specs[1].entry_key)
+        self.assertEqual((saved['milestone_name'], saved['day_offset']), ('event_date', -7))
