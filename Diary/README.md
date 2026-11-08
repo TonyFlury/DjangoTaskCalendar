@@ -828,6 +828,24 @@ Milestone styling hooks are `diary-graph-milestone` (focusable SVG group, carryi
 `diary-graph-arrow-date` (date arrowhead). Milestone edge source keys use the
 `milestone:` prefix, distinct from task UUIDs. Host Diary color variables style
 both node types. Milestone labels are inserted as text, never HTML.
+`positionGraphDates()` resolves signed relative offsets within milestone/task date
+groups before layout. Distinct dates retain their order with unused days
+compressed. Within the same actual date, zero-offset sources and their tasks
+receive successive visual rows, so date connectors enter the top of each task.
+This visual separation does not add calendar days or alter stored offsets.
+Task-relative references are drawn as dashed date arrows. Completion
+links guide the relative placement of independent date groups where possible.
+Conflicting completion/date order remains visible as backwards or same-row
+completion links, without treating a valid template as cyclic or rescheduling it.
+`arrangeGraph()` routes backwards links with a start marker and same-row links
+through the gap below the row, preserving source/target metadata and arrow direction.
+This is a relative template diagram, not a calendar-day timeline or an inference
+of dates for unrelated host milestones.
+If a completion link connects the same pair of tasks as a date reference, only
+the completion link is rendered, regardless of direction. The date constraint
+remains in `dateLinks` for positioning, grouping, and the saved rule. Removing
+the completion link reveals the date arrow on the next preview refresh. Graph
+connection counts describe rendered links.
 
 Graph styling classes are `diary-template-graph` (panel), `diary-graph-toolbar`
 (controls), `diary-graph-zoom` (scale output), `diary-graph-status` (counts or

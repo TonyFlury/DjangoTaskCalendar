@@ -71,10 +71,108 @@
         return result;
     }
 
-    /** Layered layout with crossing reduction and reserved lanes for edges spanning rows. */
-    function arrangeGraph(nodes, links, cyclic) {
+    /** Preserve signed date offsets, then use completion order to position independent date groups. */
+    function positionGraphDates(nodes, links, dateLinks) {
         const neighbors = new Map(nodes.map(node => [node, []]));
-        for (const [from, to] of links) { neighbors.get(from).push(to); neighbors.get(to).push(from); }
+        const zeroOutgoing = new Map(nodes.map(node => [node, []]));
+        const zeroRemaining = new Map(nodes.map(node => [node, 0]));
+        const zeroDepth = new Map(nodes.map(node => [node, 0]));
+        let invalid = false;
+        for (const [source, task, offset] of dateLinks) {
+            if (!Number.isSafeInteger(offset)) { invalid = true; continue; }
+            neighbors.get(source).push({node: task, offset});
+            neighbors.get(task).push({node: source, offset: -offset});
+            if (offset === 0) {
+                zeroOutgoing.get(source).push(task);
+                zeroRemaining.set(task, zeroRemaining.get(task) + 1);
+            }
+        }
+        // Zero days still means the same date. Give zero-offset chains separate visual rows only.
+        const zeroReady = nodes.filter(node => zeroRemaining.get(node) === 0);
+        for (let index = 0; index < zeroReady.length; index++) {
+            const source = zeroReady[index];
+            for (const task of zeroOutgoing.get(source)) {
+                zeroDepth.set(task, Math.max(zeroDepth.get(task), zeroDepth.get(source) + 1));
+                zeroRemaining.set(task, zeroRemaining.get(task) - 1);
+                if (zeroRemaining.get(task) === 0) zeroReady.push(task);
+            }
+        }
+        const groups = [];
+        for (const node of nodes) {
+            if (node.dateGroup) continue;
+            const group = {nodes: [node], outgoing: new Map(), remaining: 0, shift: 0};
+            node.dateGroup = group;
+            node.relativeDay = 0;
+            let degree = 0;
+            for (let index = 0; index < group.nodes.length; index++) {
+                const current = group.nodes[index];
+                degree += neighbors.get(current).length;
+                for (const next of neighbors.get(current)) {
+                    const day = current.relativeDay + next.offset;
+                    if (!next.node.dateGroup) {
+                        next.node.dateGroup = group;
+                        next.node.relativeDay = day;
+                        group.nodes.push(next.node);
+                    } else if (next.node.relativeDay !== day) invalid = true;
+                }
+            }
+            if (degree / 2 >= group.nodes.length) invalid = true;
+            // Sort actual days first, then separate zero-offset sources and their same-day tasks.
+            const slots = group.nodes.map(current => ({day: current.relativeDay, depth: zeroDepth.get(current)}))
+                .sort((a, b) => a.day - b.day || a.depth - b.depth);
+            const ranks = new Map();
+            for (const {day, depth} of slots) {
+                const key = `${day}:${depth}`;
+                if (!ranks.has(key)) ranks.set(key, ranks.size);
+            }
+            for (const current of group.nodes) current.dateRank = ranks.get(`${current.relativeDay}:${zeroDepth.get(current)}`);
+            groups.push(group);
+        }
+        // Completion links are layout hints between groups, never instructions to move a calculated date.
+        for (const [from, to, relation] of links) {
+            if (relation !== 'dependency' || from.dateGroup === to.dateGroup) continue;
+            const source = from.dateGroup, target = to.dateGroup;
+            if (!source.outgoing.has(target)) {
+                const pending = [target], seen = new Set();
+                let cycle = false;
+                while (groups.length < nodes.length && pending.length) {
+                    const current = pending.pop();
+                    if (current === source) { cycle = true; break; }
+                    if (!seen.has(current)) { seen.add(current); pending.push(...current.outgoing.keys()); }
+                }
+                // Collapsing date groups can create a layout cycle even in a valid completion DAG.
+                if (cycle) continue;
+                target.remaining++;
+            }
+            const distance = from.dateRank - to.dateRank + 1;
+            source.outgoing.set(target, Math.max(source.outgoing.get(target) ?? -Infinity, distance));
+        }
+        const ready = groups.filter(group => group.remaining === 0);
+        for (let index = 0; index < ready.length; index++) {
+            const group = ready[index];
+            for (const [next, distance] of group.outgoing) {
+                next.shift = Math.max(next.shift, group.shift + distance);
+                if (--next.remaining === 0) ready.push(next);
+            }
+        }
+        const levels = [...new Set(nodes.map(node => node.dateGroup.shift + node.dateRank))].sort((a, b) => a - b);
+        const ranks = new Map(levels.map((level, index) => [level, index]));
+        for (const node of nodes) node.level = ranks.get(node.dateGroup.shift + node.dateRank);
+        return invalid;
+    }
+
+    /** Layered layout with crossing reduction and reserved lanes for edges spanning rows. */
+    function arrangeGraph(nodes, links, cyclic, dateLinks = []) {
+        const neighbors = new Map(nodes.map(node => [node, []]));
+        const pairs = new Map();
+        const pairKey = (from, to) => JSON.stringify([from.key, to.key].sort());
+        for (const [from, to] of links) {
+            const key = pairKey(from, to);
+            pairs.set(key, (pairs.get(key) || 0) + 1);
+        }
+        // Keep a date arrow distinct when the same tasks also have a completion link.
+        const portShift = (from, to, relation) => pairs.get(pairKey(from, to)) > 1 ? (relation === 'date' ? 8 : -8) : 0;
+        for (const [from, to] of [...links, ...dateLinks]) { neighbors.get(from).push(to); neighbors.get(to).push(from); }
         const seen = new Set(), components = [];
         for (const node of nodes) {
             if (seen.has(node)) continue;
@@ -151,27 +249,31 @@
                 outgoing.set(vertex, []);
             }
             for (const node of component.nodes) add(node, cyclic ? 0 : node.level);
-            const chains = [], bypasses = [];
+            const chains = [], bypasses = [], sameRows = [];
             for (const [from, to, relation] of component.links) {
-                const span = to.level - from.level - 1;
+                if (!cyclic && from.level === to.level) { sameRows.push({from, to, relation}); continue; }
+                const reversed = !cyclic && from.level > to.level;
+                const low = reversed ? to : from, high = reversed ? from : to;
+                const span = high.level - low.level - 1;
                 // Bound work even for dense templates. Overflow edges use exterior lanes instead.
-                if (!cyclic && span > virtualBudget) { bypasses.push({from, to, relation}); continue; }
-                const chain = [from];
+                if (!cyclic && span > virtualBudget) { bypasses.push({from, to, low, high, relation, reversed}); continue; }
+                const chain = [low];
                 if (!cyclic) {
-                    for (let level = from.level + 1; level < to.level; level++) {
+                    for (let level = low.level + 1; level < high.level; level++) {
                         const waypoint = {virtual: true};
                         add(waypoint, level);
                         chain.push(waypoint);
                         virtualBudget--;
                     }
-                    chain.push(to);
+                    chain.push(high);
                     for (let i = 1; i < chain.length; i++) {
                         outgoing.get(chain[i - 1]).push(chain[i]);
                         incoming.get(chain[i]).push(chain[i - 1]);
                     }
-                } else chain.push(to);
-                chains.push({from, to, chain, relation});
+                } else chain.push(high);
+                chains.push({from, to, chain, relation, reversed});
             }
+            for (let level = 0; level < layers.length; level++) layers[level] ||= [];
             if (!cyclic) layers = reduceCrossings(layers, incoming, outgoing);
             const rowWidth = layer => layer.reduce((sum, node) => sum + (node.virtual ? 20 : 216), 0) + Math.max(0, layer.length - 1) * 32;
             const componentWidth = Math.max(...layers.map(rowWidth)) + 48;
@@ -184,21 +286,33 @@
                     x += (node.virtual ? 20 : 216) + 32;
                 }
             });
-            for (const {from, to, chain, relation} of chains) {
-                let path = `M ${from.center} ${from.y + 82}`;
+            for (const {from, to, chain, relation, reversed} of chains) {
+                const low = chain[0];
+                const shift = portShift(from, to, relation);
+                const x = vertex => vertex.center + (vertex.virtual ? 0 : shift);
+                let path = `M ${x(low)} ${low.y + (reversed ? 86 : 82)}`;
                 for (let i = 1; i < chain.length; i++) {
                     const previous = chain[i - 1], current = chain[i];
-                    const top = current.y - 4, bottom = previous.y + (previous.virtual ? 86 : 82);
+                    const top = current.y - 4;
+                    const bottom = previous.y + (previous.virtual || (i === 1 && reversed) ? 86 : 82);
                     const middle = (bottom + top) / 2;
                     // Change horizontal position only in the gap between task rows.
-                    path += ` C ${previous.center} ${middle} ${current.center} ${middle} ${current.center} ${top}`;
-                    if (current.virtual) path += ` L ${current.center} ${current.y + 86}`;
+                    path += ` C ${x(previous)} ${middle} ${x(current)} ${middle} ${x(current)} ${top}`;
+                    if (current.virtual) path += ` L ${x(current)} ${current.y + 86}`;
                 }
-                routes.push({from, to, path, relation});
+                routes.push({from, to, path, relation, reversed});
             }
-            bypasses.forEach(({from, to, relation}, index) => {
+            bypasses.forEach(({from, to, low, high, relation, reversed}, index) => {
                 const lane = left + componentWidth + 16 + (index % 12) * 8;
-                routes.push({from, to, relation, path: `M ${from.center} ${from.y + 82} L ${from.center} ${from.y + 102} L ${lane} ${from.y + 102} L ${lane} ${to.y - 20} L ${to.center} ${to.y - 20} L ${to.center} ${to.y - 4}`});
+                const shift = portShift(from, to, relation);
+                const lowX = low.center + shift, highX = high.center + shift;
+                routes.push({from, to, relation, reversed, path: `M ${lowX} ${low.y + (reversed ? 86 : 82)} L ${lowX} ${low.y + 102} L ${lane} ${low.y + 102} L ${lane} ${high.y - 20} L ${highX} ${high.y - 20} L ${highX} ${high.y - 4}`});
+            });
+            sameRows.forEach(({from, to, relation}, index) => {
+                const lane = from.y + 102 + (index % 5) * 6;
+                const shift = portShift(from, to, relation);
+                const fromX = from.center + shift, toX = to.center + shift;
+                routes.push({from, to, relation, path: `M ${fromX} ${from.y + 82} L ${fromX} ${lane} L ${toX} ${lane} L ${toX} ${to.y + 86}`});
             });
             left += componentWidth + (bypasses.length ? 40 + Math.min(12, bypasses.length) * 8 : 0) + 32;
             height = Math.max(height, layers.length * 166 + 32);
@@ -286,6 +400,7 @@
             const byKey = new Map(taskNodes.map(node => [node.key, node]));
             const milestoneNodes = new Map();
             const links = [];
+            const dateLinks = [];
             let invalid = byKey.size !== nodes.length;
             for (const node of taskNodes) {
                 for (const key of node.predecessors) {
@@ -310,6 +425,16 @@
                     node.remaining++;
                     node.dateOffset = kind === 'source' ? 0 : Number(field(node.row, 'day-offset').value || 0);
                     links.push([milestone, node, 'date']);
+                    dateLinks.push([milestone, node, node.dateOffset]);
+                } else if (kind === 'task') {
+                    const sourceKey = field(node.row, 'source-task-key').value;
+                    const source = byKey.get(sourceKey);
+                    if (source) {
+                        node.dateOffset = Number(field(node.row, 'day-offset').value || 0);
+                        dateLinks.push([source, node, node.dateOffset]);
+                        links.push([source, node, 'date']);
+                    }
+                    else if (sourceKey) invalid = true;
                 }
             }
             // Kahn's traversal gives dependencies earlier rows and cannot loop on invalid input.
@@ -321,7 +446,14 @@
                 }
             }
             const cyclic = ready.length !== nodes.length;
-            const layout = arrangeGraph(nodes, links, cyclic);
+            if (!cyclic) invalid = positionGraphDates(nodes, links, dateLinks) || invalid;
+            const pair = (from, to) => JSON.stringify([from.key, to.key].sort());
+            const dependencyPairs = new Set(links.filter(link => link[2] === 'dependency')
+                .map(([from, to]) => pair(from, to)));
+            // Suppress duplicate visual date links, retaining every date constraint for positioning.
+            const visibleLinks = links.filter(([from, to, relation]) => relation !== 'date'
+                || !dependencyPairs.has(pair(from, to)));
+            const layout = arrangeGraph(nodes, visibleLinks, cyclic, dateLinks);
             width = layout.width;
             height = layout.height;
             svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -335,20 +467,21 @@
                 defs.append(marker);
             }
             svg.append(defs);
-            for (const {from, to, path: route, relation} of layout.routes) {
+            for (const {from, to, path: route, relation, reversed} of layout.routes) {
                 const dateRelation = relation === 'date';
                 let label = `${from.name} → ${to.name}`;
                 if (dateRelation) {
                     const offset = to.dateOffset;
+                    const sourceKind = from.milestone ? 'milestone' : 'source task';
                     const rule = !Number.isInteger(offset) ? 'Incomplete day offset'
-                        : offset === 0 ? 'Same date as milestone'
-                        : `${Math.abs(offset)} calendar days ${offset < 0 ? 'before' : 'after'} milestone`;
+                        : offset === 0 ? `Same date as ${sourceKind}`
+                        : `${Math.abs(offset)} calendar days ${offset < 0 ? 'before' : 'after'} ${sourceKind}`;
                     label += `: ${rule}`;
                 }
                 const path = element('path', {class: `diary-graph-edge${dateRelation ? ' diary-graph-edge-date' : ''}`,
                     d: route, 'data-source-key': from.key, 'data-target-key': to.key,
                     'data-relation': relation, 'aria-label': label,
-                    'marker-end': `url(#${markerId}-${relation})`});
+                    [reversed ? 'marker-start' : 'marker-end']: `url(#${markerId}-${relation})`});
                 path.append(element('title', {}, label));
                 svg.append(path);
             }
@@ -388,9 +521,9 @@
                 });
                 svg.append(link);
             }
-            const dateCount = links.filter(link => link[2] === 'date').length;
+            const dateCount = visibleLinks.filter(link => link[2] === 'date').length;
             const summary = taskNodes.length
-                ? `${taskNodes.length} tasks · ${milestoneNodes.size} milestones · ${links.length - dateCount} completion connections · ${dateCount} date relations.`
+                ? `${taskNodes.length} tasks · ${milestoneNodes.size} milestones · ${visibleLinks.length - dateCount} completion connections · ${dateCount} date relations.`
                 : 'No tasks yet. Add a task below to start the graph.';
             status.textContent = summary + (cyclic || invalid ? ' Check task keys, milestones, and predecessor selections; this preview is not a valid dependency order.' : '');
             viewport.hidden = !taskNodes.length;

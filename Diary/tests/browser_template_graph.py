@@ -4,6 +4,7 @@ Run explicitly with Django's test command and a separate PostgreSQL test databas
 """
 import os
 from dataclasses import replace
+from datetime import date
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -20,7 +21,7 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from Diary.api import Actor, DiaryAPI, EntrySpec
 from Diary.choices import DateKind
-from Diary.models import TemplateVersion
+from Diary.models import CalendarEntry, TemplateVersion
 
 
 @override_settings(DIARY_MANAGER='Planners', DIARY_USER='Participants', DIARY_TASK_OWNER_ROLES=())
@@ -328,3 +329,124 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 0)
         saved = next(entry for entry in self.template.latest_version().read()['entries'] if entry['entry_key'] == specs[1].entry_key)
         self.assertEqual((saved['milestone_name'], saved['day_offset']), ('event_date', -7))
+
+    def milestone_y(self, name):
+        return self.driver.execute_script('return arguments[0].querySelector("polygon").getBBox().y',
+            self.driver.find_element(By.CSS_SELECTOR, f'.diary-graph-milestone[data-milestone-name="{name}"]'))
+
+    def task_y(self, spec):
+        return float(self.node(spec).find_element(By.TAG_NAME, 'rect').get_attribute('y'))
+
+    def test_offsets_position_negative_before_and_nonnegative_after_the_milestone(self):
+        specs = self.show_milestone_graph()
+        start, book, invite, review, independent, _ = specs
+        Select(self.row(invite).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('event_date')
+        Select(self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('relative')
+        Select(self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('event_date')
+        offset = self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('-2')
+        Select(self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        Select(self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(book.entry_key))
+        offset = self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('3')
+        # -7, (-7 + 3), -2, zero and +2 must retain their relative order.
+        self.wait.until(lambda browser: self.task_y(book) < self.task_y(review) < self.task_y(independent)
+                         < self.milestone_y('event_date') < self.task_y(invite))
+        self.assertGreater(self.task_y(start), self.milestone_y('event_date'))
+        self.assertLess(self.task_y(start), self.task_y(invite))
+        self.assertNotIn('not a valid', self.driver.find_element(By.CSS_SELECTOR, '.diary-graph-status').text)
+        backwards = self.driver.find_element(By.CSS_SELECTOR,
+            f'.diary-graph-edge[data-source-key="{start.entry_key}"][data-target-key="{book.entry_key}"]')
+        self.assertTrue(backwards.get_attribute('marker-start'))
+        self.assertEqual(self.count('.diary-graph-edge[data-relation="dependency"]'), 4)
+
+        # Editing an offset changes placement, including tasks whose dates reference this task.
+        offset = self.row(book).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('8')
+        self.wait.until(lambda browser: self.milestone_y('event_date') < self.task_y(invite)
+                         < self.task_y(book) < self.task_y(review))
+        offset.clear()
+        offset.send_keys('0')
+        self.wait.until(lambda browser: self.task_y(book) > self.milestone_y('event_date'))
+        self.assertEqual(TemplateVersion.objects.count(), 2)
+
+    def test_milestones_are_positioned_relative_to_their_tasks_not_forced_to_a_start_row(self):
+        specs = self.show_milestone_graph()
+        start, book, invite, *_ = specs
+        Select(self.row(invite).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('source')
+        self.wait.until(lambda browser: self.milestone_y('close') > self.milestone_y('event_date'))
+        self.assertGreater(self.task_y(start), self.milestone_y('event_date'))
+        self.assertGreater(self.task_y(invite), self.milestone_y('close'))
+        self.assertLess(self.task_y(book), self.milestone_y('event_date'))
+        self.assertNotIn('not a valid', self.driver.find_element(By.CSS_SELECTOR, '.diary-graph-status').text)
+
+    def test_zero_offset_chains_enter_task_tops_without_changing_actual_due_dates(self):
+        specs = self.show_milestone_graph()
+        start, book, _, review, before, after = specs
+
+        def set_date_source(task, source, days):
+            row = self.row(task)
+            Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+            Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(source.entry_key))
+            offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+            offset.clear()
+            offset.send_keys(str(days))
+
+        set_date_source(book, start, 0)
+        set_date_source(review, book, 0)
+        set_date_source(before, book, -1)
+        set_date_source(after, book, 1)
+        self.wait.until(lambda browser: self.task_y(before) < self.milestone_y('event_date')
+                         < self.task_y(start) < self.task_y(book) < self.task_y(review) < self.task_y(after))
+        for source_key, task in [('milestone:event_date', start), (str(start.entry_key), book), (str(book.entry_key), review)]:
+            relation = 'date' if source_key.startswith('milestone:') else 'dependency'
+            edge = self.driver.find_element(By.CSS_SELECTOR,
+                f'.diary-graph-edge[data-relation="{relation}"][data-source-key="{source_key}"][data-target-key="{task.entry_key}"]')
+            self.assertTrue(edge.get_attribute('marker-end'))
+            self.assertFalse(edge.get_attribute('marker-start'))
+            end = self.driver.execute_script('const p = arguments[0].getPointAtLength(arguments[0].getTotalLength()); return {x: p.x, y: p.y}', edge)
+            self.assertAlmostEqual(end['y'], self.task_y(task) - 4, delta=.1)
+            if relation == 'date':
+                self.assertIn('Same date as', edge.get_attribute('aria-label'))
+            else:
+                self.assertEqual(self.count(f'.diary-graph-edge-date[data-source-key="{source_key}"][data-target-key="{task.entry_key}"]'), 0)
+
+        self.driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
+        self.wait.until(lambda browser: 'Version 3' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        version = self.template.latest_version()
+        saved = {entry['entry_key']: entry for entry in version.read()['entries']}
+        self.assertEqual(saved[book.entry_key]['day_offset'], 0)
+        self.assertEqual(saved[review.entry_key]['day_offset'], 0)
+        diary = DiaryAPI(actor=self.template.actor).create_diary(name='Same-day graph', template_version_key=version.key,
+            milestone_dates={'event_date': date(2027, 6, 10), 'close': date(2027, 6, 1)})
+        dates = {entry.entry_key: entry.due_date for entry in CalendarEntry.objects.filter(calendar_id=diary.key)}
+        for task in (start, book, review):
+            self.assertEqual(dates[task.entry_key], date(2027, 6, 10))
+        self.assertEqual(dates[before.entry_key], date(2027, 6, 9))
+        self.assertEqual(dates[after.entry_key], date(2027, 6, 11))
+
+    def test_completion_arrow_replaces_date_arrow_without_losing_date_positioning(self):
+        specs = self.show_milestone_graph()
+        start, book, *_ = specs
+        row = self.row(book)
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(start.entry_key))
+        offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('0')
+        date_selector = f'.diary-graph-edge-date[data-source-key="{start.entry_key}"][data-target-key="{book.entry_key}"]'
+        dependency_selector = f'.diary-graph-edge[data-relation="dependency"][data-source-key="{start.entry_key}"][data-target-key="{book.entry_key}"]'
+        self.wait.until(lambda browser: self.count(date_selector) == 0 and self.task_y(book) > self.task_y(start))
+        self.assertEqual(self.count(dependency_selector), 1)
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).deselect_all()
+        self.wait.until(lambda browser: self.count(date_selector) == 1 and self.count(dependency_selector) == 0)
+
+        # Even an opposite-direction completion dependency takes visual priority; the date still places Book below Start.
+        Select(self.row(start).find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).select_by_value(str(book.entry_key))
+        reverse_dependency = f'.diary-graph-edge[data-relation="dependency"][data-source-key="{book.entry_key}"][data-target-key="{start.entry_key}"]'
+        self.wait.until(lambda browser: self.count(date_selector) == 0 and self.count(reverse_dependency) == 1)
+        self.assertGreater(self.task_y(book), self.task_y(start))
+        self.assertNotIn('not a valid', self.driver.find_element(By.CSS_SELECTOR, '.diary-graph-status').text)

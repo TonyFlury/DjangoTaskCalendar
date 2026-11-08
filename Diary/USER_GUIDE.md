@@ -213,8 +213,8 @@ retain the original calculated date. Tracking downstream impacts is future work.
 
 A date source is separate from a completion predecessor. Select **Predecessors**
 as well if the task must wait for another task to finish. The template's task graph
-shows completion dependencies and direct milestone date relations. Task-to-task
-date references are configured in the forms and are not drawn as completion arrows.
+shows completion dependencies as solid arrows and date references from milestones
+or other tasks as dashed arrows.
 
 ### Annual dates
 
@@ -457,12 +457,28 @@ one task's **Milestone date** or **Days from a milestone** rule. Shared mileston
 appear once; unused milestones stay out of the graph.
 
 Solid arrows point from a completion prerequisite to the task that depends on it.
-Dashed arrows connect milestones to tasks whose dates use them. Hover a dashed
+When the same two tasks have both a completion and a date relationship, only the
+solid completion arrow is drawn. The date relationship still controls positioning
+and remains in the saved rule. Removing the completion link reveals the date arrow.
+Dashed arrows connect milestones or source tasks to tasks whose dates use them. Hover a dashed
 arrow to see whether the task uses the same date or an offset before or after it.
 Milestone date relations do not block task completion. Milestones are read-only
 and show their full labels and stable names on hover or through their accessible
 labels. Tasks without connections are included. The graph arranges tasks
 automatically and shows the current form contents, including unsaved changes.
+Vertical positions follow known date relationships: negative offsets put a task
+above its source; zero and positive offsets put the task below it, with the
+date arrow entering the top of the task. Zero-offset chains get successive
+visual rows, while retaining the same actual due date. Task-relative date chains
+also influence these positions.
+Milestones are placed with their related tasks rather than in a fixed starting row.
+Spacing shows relative order, not the number of calendar days between rows.
+The template does not supply actual dates for unrelated host milestones;
+completion dependencies guide placement between independent date groups.
+
+Date relationships keep priority when a completion prerequisite has a later due
+date than its dependent task. The solid completion arrow then points back toward
+the earlier task; it is retained, and no due dates or dependencies are changed.
 Connected groups are laid out separately. Within a group, task order is adjusted
 to reduce crossing arrows, and longer connections use lanes around intervening
 task boxes. Some dependency patterns still require crossings; the layout does
