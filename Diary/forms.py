@@ -59,7 +59,7 @@ class TemplateForm(StyledForm):
     """Collect template metadata and the version the manager opened."""
 
     name = forms.CharField(max_length=160, label='Template name')
-    description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
+    description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
     expected_version_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
     def __init__(self, *args, editing=False, **kwargs):
@@ -101,6 +101,17 @@ class PersonalDiaryFilterForm(forms.Form):
             field.widget.attrs['class'] = f'diary-personal-control diary-personal-filter-{name.replace("_", "-")}'
 
 
+class DateRuleSelect(forms.Select):
+    """Present milestone rules once, preserving legacy SOURCE submissions and APIs."""
+
+    def format_value(self, value):
+        return super().format_value(DateKind.RELATIVE if value == DateKind.SOURCE else value)
+
+    def optgroups(self, name, value, attrs=None):
+        return [group for group in super().optgroups(name, value, attrs)
+                if not group[1] or group[1][0]['value'] != DateKind.SOURCE]
+
+
 class TemplateTaskForm(StyledForm):
     """Collect one reusable task, its ownership, and its proposed predecessor keys."""
 
@@ -108,15 +119,16 @@ class TemplateTaskForm(StyledForm):
     name = forms.CharField(max_length=160, label='Task name')
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
     date_kind = forms.ChoiceField(choices=[(DateKind.SOURCE, 'Milestone date'),
-                                          (DateKind.RELATIVE, 'Days from a milestone'),
-                                          (DateKind.TASK, 'Days from another task'),
-                                          (DateKind.ANNUAL, 'Annual date')], label='Date rule')
+                                          (DateKind.RELATIVE, 'Date source: milestone'),
+                                          (DateKind.TASK, 'Date source: task'),
+                                          (DateKind.ANNUAL, 'Annual date')], label='Due date', widget=DateRuleSelect,
+                                       initial=DateKind.RELATIVE)
     milestone_name = forms.ChoiceField(required=False, label='Milestone',
         help_text='Select a milestone made available by your site.', choices=())
     source_task_key = forms.ChoiceField(required=False, choices=(), label='Source task',
         help_text='Use this task’s due date when the diary is initialized. Later changes do not move this task.')
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647,
-                                   label='Day offset', help_text='Use negative days before the source date and positive days after it.')
+                                   label='Days from date source', help_text='0 = same date; negative = before; positive = after.')
     month = forms.IntegerField(required=False, min_value=1, max_value=12, label='Month')
     day = forms.IntegerField(required=False, min_value=1, max_value=31, label='Day of month')
     year_offset = forms.IntegerField(required=False, min_value=-32768, max_value=32767, label='Year offset',
@@ -124,7 +136,7 @@ class TemplateTaskForm(StyledForm):
     owner_kind = forms.ChoiceField(choices=OwnerKind.choices, initial=OwnerKind.TEAM, label='Owner type')
     person_ref = forms.ChoiceField(choices=(), required=False, label='Person')
     role_ref = forms.ChoiceField(choices=(), required=False, label='Ownership group')
-    predecessors = forms.MultipleChoiceField(required=False, choices=(), label='Predecessors',
+    predecessors = forms.MultipleChoiceField(required=False, choices=(), label='Completion prerequisites',
                                              widget=forms.SelectMultiple(attrs={'size': 5}),
                                              help_text='Select tasks that must finish first. Hold Ctrl or Command to select several tasks.')
 
@@ -381,9 +393,9 @@ class ReusableTaskRuleForm(StyledForm):
     """Define future date fields while keeping the diary task's identity and owner."""
 
     date_kind = forms.ChoiceField(label='Future date rule', choices=(
-        (DateKind.SOURCE, 'Milestone date'), (DateKind.RELATIVE, 'Days from a milestone'),
-        (DateKind.TASK, 'Days from another task'),
-        (DateKind.ANNUAL, 'Annual date')))
+        (DateKind.SOURCE, 'Milestone date'), (DateKind.RELATIVE, 'Date source: milestone'),
+        (DateKind.TASK, 'Date source: task'),
+        (DateKind.ANNUAL, 'Annual date')), widget=DateRuleSelect)
     milestone_name = forms.ChoiceField(required=False, label='Future milestone')
     source_task_key = forms.ChoiceField(required=False, choices=(), label='Future source task')
     day_offset = forms.IntegerField(required=False, min_value=-2147483648, max_value=2147483647, label='Future day offset')

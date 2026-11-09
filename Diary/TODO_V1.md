@@ -162,6 +162,17 @@ The final sections record confirmed decisions and deferred Diary features.
   Future implementations will address occurrence selection for diaries that span more than 12 months.
   Requirement: the user request for creation without a year and fixed-date calculations.
 
+- [x] **DV1-056: Due dates based on previous tasks.**
+  Implement [DFUT-014](../TODO.md#diary-feature-backlog): a task can take its due date from another task's due date with a signed calendar-day offset, independently of completion dependencies.
+  Resolve task date chains in source-first order when the diary is created or tasks are first applied, regardless of template order.
+  Reject missing, invalid, self-referencing, or cyclic date sources and unresolvable dates.
+  Store the resolved due date and its source provenance. Late completion or a later edit to the source task must not move dependent due dates; an explicit override changes only the selected task.
+  Support task-relative dates in template and diary forms, the callable API, template version copying, and fixture transfer.
+  Implementation: [date_rules.py](date_rules.py), [api.py](api.py), [models.py](models.py), [forms.py](forms.py), and [migration 0013](migrations/0013_task_relative_due_dates.py).
+  Verification: [task-relative date tests](tests/test_task_relative_dates.py) and [graph browser tests](tests/browser_template_graph.py).
+  Documentation: [Due dates from other tasks](README.md#due-dates-from-other-tasks-dfut-014).
+  Boundary: Tracking forward impacts remains a future requirement under DFUT-015 in the repository TODO.
+
 ## Access and validation work
 
 - [x] **DV1-053: Template-sourced predecessor choices.**
@@ -516,6 +527,18 @@ The final sections record confirmed decisions and deferred Diary features.
 
 ## Presentation and release checks
 
+- [x] **DV1-055: Graphical template view for Diary Managers.**
+  Show template tasks as boxes, completion dependencies as solid arrows, and task or milestone date relations as dashed arrows.
+  Show referenced host milestones as shared diamonds; omit milestones with no date relations.
+  Position tasks and milestones according to signed date offsets and task-relative chains. Zero offsets enter the top of the task, while retaining the actual same-day due date.
+  When a completion dependency and date relation connect the same task pair, display only the solid dependency arrow while retaining the date relation for positioning.
+  Reduce crossings with connected subgraphs and routing lanes. Provide zoom, pan, fit, keyboard access to task forms, and creation/subgraph ordering of task choices.
+  Preserve the existing forms without JavaScript and the host styling integration.
+  Implementation: [template editor script](static/Diary/scripts/template_editor.js): `taskGraph`, `arrangeGraph`, `positionGraphDates`, and `orderedTaskChoices`.
+  Verification: [graph browser tests](tests/browser_template_graph.py) and [template editor tests](tests/test_template_editor.py).
+  Documentation: [View task connections](USER_GUIDE.md#view-task-connections) and [template page styling](README.md#template-page-styling).
+  Boundary: This is a view with links to editing forms and relative date positioning, rather than a calendar-day scale. Direct graphical editing remains under DFUT-011 in the [repository TODO](../TODO.md#diary-feature-backlog).
+
 - [x] **DV1-039: Production task highlighting.**
   Give Late tasks a red shadowed border.
   Give Blocked tasks an amber shadowed border when a direct predecessor is late.
@@ -614,6 +637,23 @@ The final sections record confirmed decisions and deferred Diary features.
   Design: [Implemented milestone boundary](../docs/design/diary-v1-remaining-work.md#dv1-043-implemented-milestone-boundary).
   Requirement: [D7].
 
+- [ ] **DV1-057: Review and clean up the V1 user interface.**
+  Review the user and manager journeys for diary selection, task lists and filters, task creation and editing, ownership, completion, notes, template application, and the template graph.
+  Make labels, terminology, help, validation messages, navigation, and actions consistent.
+  Correct field and date-input alignment, spacing, wrapping, overflow, and redundant content.
+  Clearly distinguish completion predecessors from date sources, and diary-only edits from changes to future templates.
+  Review complex graph readability, milestone and task labels, connector meaning, zero offsets, and zoom/pan controls.
+  Check desktop and narrow layouts, keyboard access, focus, accessible labels, empty/error states, and forms without JavaScript.
+  Preserve host styling hooks, permissions, privacy, and server-side validation throughout the cleanup.
+  Completion: Record the review, resolve the agreed V1 issues, update affected help pages, and record browser verification with screenshots or equivalent evidence.
+  Status: Open. Existing individual UI fixes do not complete this review.
+  Template editor review implemented: graph-first navigation, a compact responsive task dialog with Save task / Cancel, a separate Save template action, and a collapsed searchable task finder with removal/restoration access.
+  Date controls combine task due dates and milestone dates into one source picker with a shared signed offset, including zero. Annual rules remain separate. Tasks retain ownership and completion; milestones remain host-supplied dates. Existing API date kinds remain supported.
+  Implementation: [template editor](templates/Diary/partials/template_editor.html), [editor script](static/Diary/scripts/template_editor.js), [styles](static/Diary/styles/diary.css), and [date rule forms](forms.py).
+  Verification: [graph and dialog browser checks](tests/browser_template_graph.py), [template creation browser checks](tests/browser_template_editor.py), and [server / no-JavaScript checks](tests/test_template_editor.py).
+  Remaining: Complete the review of the other user and manager journeys listed above.
+  Related: DV1-041, DV1-042, DV1-045, DV1-055, and DV1-056.
+
 - [ ] **DV1-044: Regression and concurrency verification.**
   Scope: Test cases and verification only. This item adds no product interface.
   Cover privacy, configured groups, membership checks, selectors, template saves, task additions, and completion operations.
@@ -695,200 +735,10 @@ This is a documentation-only scope record. It adds no executable symbols or veri
 
 ## Future requirements
 
-These requirements have no assigned release and are not V1 completion conditions.
-
-- [x] **DFUT-014: Due dates relative to another task's due date.**
-  Add a template date rule that selects a source task and a signed calendar-day
-  offset from its due date. Date references are separate from completion
-  dependencies: using a task's date does not itself require that task to finish first.
-  Resolve date-reference chains in order when creating a diary or applying its
-  first template, and store the resulting diary due dates as fixed snapshots.
-  Reject missing or unresolvable source tasks and circular date references.
-  Late or early completion must not move those dates. Later manual edits to a
-  source task's due date must also leave previously calculated dates unchanged.
-  Cover models and migration, editor controls, callable APIs, fixture transfer,
-  documentation, and tests, including chained references and safe creation retries.
-  Implementation: `DateKind.TASK`, `EntrySpec.source_task_key`,
-  `date_rules.task_date_order`, `date_rules.task_relative_date`,
-  `CalendarEntry.task_due_date`, and migration `0013_task_relative_due_dates`.
-  Template and diary task forms provide independent source selectors and offsets.
-  Template copying, approval, fixture transfer, and callable additions retain and
-  validate the rule; model and database guards preserve initialized snapshots.
-  Verification: `tests/test_task_relative_dates.py`: `TaskDateGraphTests`,
-  `TaskRelativeDateTests`, `TaskRelativeDateMigrationTests`;
-  `tests/browser_template_graph.py`: `TemplateGraphBrowserTests.test_task_relative_date_controls_save_without_creating_completion_dependencies`.
-
-- [ ] **DFUT-015: Track forward impacts on tasks with related due dates.**
-  Future work following DFUT-014: identify direct and transitive tasks whose dates
-  were calculated from a source task, so managers can review the forward impacts
-  of a changed source due date or late completion.
-  Preserve the original date-reference provenance needed to explain those links
-  after diary creation. Keep date-reference relationships distinct from completion
-  dependencies. Tracking impacts must not automatically change stored due dates.
-  Review how to present original and current dates, lateness, affected tasks, and
-  any suggested dates; define permissions, completed-task handling, and audit needs
-  before implementation. Any future rescheduling needs a separately agreed policy.
-  Implementation: Deferred. No release assigned; impact display and calculation
-  details remain open.
-
-- [ ] **DFUT-009: Optional group voting for task progression.**
-  Let tasks assigned to a group optionally require agreement from its members before
-  progressing. Candidate policies include All, Majority, and At least N.
-  Decide whether members submit approval only or approve/reject votes, and how
-  rejection affects task status and dependent tasks. Define when dependants remain
-  blocked and exactly what agreement permits progression.
-  Review voter eligibility, membership changes, denominator and quorum rules,
-  abstentions, ties, empty groups, impossible thresholds, vote changes, reopening,
-  manager overrides, privacy, audit history, retries, and concurrent voting.
-  Distinguish a member's vote from completion of the shared task.
-  Implementation: Not started. No release assigned; policy and state transitions need design.
-
-- [ ] **DFUT-010: Decision tasks with conditional branches.**
-  Support a yes/no decision task whose outcome activates one of two different
-  successor tasks. Define how an outcome is recorded, who may decide, and how
-  unselected branches are represented and excluded from normal blocking rules.
-  Review branch convergence, shared successors, changing or reopening a decision,
-  already completed branch work, and interaction with group voting and loops.
-  Preserve the distinction between a decision outcome and task completion.
-  Implementation: Not started. No release assigned; branching semantics need design.
-
-- [ ] **DFUT-011: Graphical task graph editor.**
-  Provide a graphical editor for tasks and their relationships.
-  Decide its scope for templates versus existing diaries, editing permissions,
-  versioning, layout, keyboard accessibility, and an equivalent non-graphical workflow.
-  Review representations for dependencies, decision branches, voting requirements,
-  and deliberate loops. Server-side validation remains authoritative.
-  Coordinate with DFUT-004 for any editing of dependencies in existing diaries;
-  a graphical interface does not itself authorize live graph changes.
-  Partial implementation: the manager template editor has a read-only SVG preview
-  in `templates/Diary/partials/template_editor.html`, `static/Diary/scripts/template_editor.js`:
-  `taskGraph`, and `static/Diary/styles/diary.css`: `.diary-template-graph`.
-  It previews unsaved tasks and dependencies with automatic layout, zoom, pan,
-  keyboard access, and links to the existing task forms.
-  Verification: `tests/browser_template_graph.py`: `TemplateGraphBrowserTests`;
-  `tests/test_template_editor.py`: `TemplateEditorTests.test_graph_preview_uses_existing_manager_editor_and_does_not_write`.
-  Remaining: direct graphical editing, live diary scope, and representations for
-  future decisions, votes, and workflow loops. No release assigned for that work.
-
-- [ ] **DFUT-012: Task data capture through arbitrary forms.**
-  Allow a task to capture data using an arbitrary form. Decide how forms are
-  supplied or defined, including whether the host provides Django forms, stored
-  schemas, or another mechanism; no form framework is selected yet.
-  Review validation, storage and ownership of submissions, permissions, sensitive
-  data, audit history, attachments, form versioning, and template portability.
-  Define whether valid submission is required for progression, whether drafts and
-  later edits are supported, and how hosts retrieve data and receive notifications.
-  Implementation: Not started. No release assigned; form and data contracts need design.
-
-- [ ] **DFUT-013: Deliberate task reactivation and workflow loops.**
-  Allow tasks to reactivate previous tasks as explicitly designed workflow loops.
-  Review graph validation so deliberate loops are supported and loops without exit
-  options are highlighted. Define what constitutes an exit and which cases should
-  produce warnings or prevent saving; structural and conditional exits may differ.
-  Decide how reactivation affects completion history, task state, dependent tasks,
-  votes, decisions, captured data, and repeated workflow passes. Preserve an audit
-  trail and define safeguards against unintended or uncontrolled repetition.
-  Review existing readiness calculations, traversal, completion, and Close all;
-  current assumptions about acyclic dependencies cannot simply be removed.
-  Implementation: Not started. No release assigned; execution and exit semantics need design.
-
-DFUT-009 through DFUT-013 require a coordinated workflow design review before
-implementation. They are not publication gates. Review their interaction with
-DFUT-007 signals, existing diary snapshots, callable APIs, management commands,
-template transfer, migration, and backward compatibility.
-
-- [ ] **DFUT-008: Task prioritisation fields.**
-  Add fields that let tasks express priority. The field set, allowed values,
-  defaults, and meaning remain to be designed; do not assume a particular scale
-  or scoring scheme.
-  Review priority on template tasks and diary tasks, inheritance when creating
-  diaries, diary-specific overrides, editing permissions, and migration of existing
-  tasks. Define how priority affects display, sorting, filtering, callable APIs,
-  management commands, and template transfer. Keep priority distinct from due dates,
-  lateness, and dependency readiness. Consider whether priority changes belong in
-  the future signal contract (DFUT-007).
-  Implementation: Not started. No release assigned; this is not a publication gate.
-  Agree the field model and user-facing behaviour before application changes.
-
-- [ ] **DFUT-007: Standard signals for task progression and changes.**
-  Confirmed mechanism: use Django Signals (`django.dispatch.Signal`). This is a
-  requirement, not an open choice of event framework.
-  Provide a documented, standard set of Django signals that hosts can subscribe to
-  when tasks progress, including completion and ownership changes.
-  Design the complete event set before implementation; consider due-date changes,
-  chain completion, and any future progression states without committing to them yet.
-  Cover supported task mutations consistently across callable APIs, class views,
-  and management commands, rather than relying on view success hooks alone.
-  Review signal names, senders, stable payloads (diary/task identifiers, actor and
-  relevant changes), privacy, transaction commit timing, rollback, retries,
-  idempotent operations, receiver failures, and ordering. Decide whether chain
-  completion produces individual task events, an aggregate event, or both.
-  Define the relationship to existing host view hooks and document delivery
-  guarantees; do not imply durable or exactly-once event delivery from Django signals.
-  Implementation: Not started. No release assigned; this is not a publication gate.
-  Record the agreed signal contract and verification plan before application changes.
-
-- [ ] **DFUT-006: Host-defined milestone catalogues for different templates in one database.**
-  Support multiple templates in the same database with the host supplying different
-  sets of available milestones for different templates. Multiple templates already
-  exist; this requirement concerns separating their available milestone catalogues.
-  Managers must see the catalogue applicable to the template they are editing,
-  without a separate manual requirement-selection step. Required dates continue to
-  follow task usage; hosts may supply extra unused milestone data, which Diary ignores.
-  A substantial design review is required before implementation. Review catalogue
-  identity and ownership, template/version binding, milestone key and label collisions,
-  host configuration and authorization, editor choices, discovery APIs, management
-  commands, fixture transfer, and migration of the current shared catalogue.
-  Decide how catalogue changes affect existing versions and diary snapshots, and
-  how existing integrations retain their behavior. Do not assume that catalogues
-  require separate databases or that this introduces a full tenancy model.
-  Implementation: Not started. No release assigned; this is not a publication gate.
-  Design decisions remain open. Record the agreed design before making application changes.
-
-- [ ] **DFUT-001: Independent diary creation UI.**
-  Let an authorized user create a diary from an approved template through Diary's own UI.
-  Prompt for the diary name and the selected template's relevant milestone dates.
-  Use the existing instance creation API and preserve safe retries without duplicate diaries.
-  Require no Garage Sale event or other host business record.
-  Define the permitted role and access to the newly created diary before implementation.
-  Implementation: Not started. No UI classes, functions, or routes implement this requirement.
-  Design: [Independent diary creation UI](../docs/design/diary-instance-creation-ui.md).
-  Existing API: [api.py](api.py): `DiaryAPI.create_diary`, `DiaryInstance.create`, `DiaryTemplateVersion.required_milestones`.
-
-- [ ] **DFUT-002: Multiple DiaryUser access groups.**
-  Let `DIARY_USER` specify a set of groups, with DiaryUser access through membership in any configured group.
-  Support ownership groups with no common members or shared access group.
-  Preserve manager permissions and the caller's permitted diary keys.
-  Update setting validation, startup checks, API access checks, and person ownership eligibility when implementing this requirement.
-  Implementation: Deferred. The current setting accepts one group name and rejects collections.
-  Remaining: Implement collection support and verify separate ownership groups without common members.
-  Design: [Multiple Diary user groups](../docs/design/diary-user-groups.md).
-  Documentation only. No executable implementation or verification is complete for this requirement.
-
-- [ ] **DFUT-003: Future date-window filtering in all diary views.**
-  Let users select a future due-date window for incomplete tasks in every diary view.
-  Preserve task access rules and the selected permitted diary scope.
-  Implementation: Deferred. No production controls or executable verification implement this requirement.
-  Remaining: Define date boundaries and filter interactions before implementing the controls and task selection.
-  Design: [Future date-window filtering](../docs/design/diary-v1-remaining-work.md#dfut-003-future-date-window-filtering).
-  Documentation only. This requirement has no assigned release and is not a V1 completion condition.
-
-- [ ] **DFUT-004: Controlled dependency editing in existing diaries.**
-  Consider a more flexible dependency editor for a later release.
-  No relaxed editing policy or release number is approved.
-  Keep the V1 dependency freeze until a later implementation explicitly replaces it.
-  Implementation: Not started. No supported operation edits dependencies in an existing diary.
-  Remaining: Define permissions, permitted changes, completion handling, history, cycle checks, concurrent saves, and closed-diary behavior.
-  Design: [Future live dependency editing](../docs/design/diary-v1-remaining-work.md#dfut-004-live-diary-dependency-editing).
-  Documentation only. This backlog record adds no executable editing interface.
-
-- [ ] **DFUT-005: Installable Python package.**
-  Distribute Diary as an installable Python package after V1.
-  Keep the package independent of Garage Sale business models and integration code.
-  Implementation: Not started. No distribution metadata, build, publication workflow, or installation verification implements this requirement.
-  Remaining: Define package names, supported versions, distribution location, release policy, and migration compatibility.
-  Design: [Diary installable Python package](../docs/design/diary-python-package.md).
-  Documentation only. No later release number is assigned, and this item is not a V1 completion condition.
+The complete DFUT list is maintained in the [repository TODO](../TODO.md#diary-feature-backlog).
+DFUT identifiers and existing statuses are retained there; requirements are not duplicated here.
+The implemented graphical view is recorded under DV1-055, and task-relative dates under DV1-056.
+The remaining full graphical editor stays in the backlog as DFUT-011.
 
 ## Review limits
 

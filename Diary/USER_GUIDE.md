@@ -176,12 +176,11 @@ Only the fields for the selected rule are necessary.
 | Date rule | Fields to complete | Result |
 | --- | --- | --- |
 | One-time date | **One-time date**. | One exact due date for this diary task. |
-| Milestone date | **Milestone**. | The same date as the selected milestone. |
-| Days from a milestone | **Milestone** and **Day offset**. | A calculated date before or after the milestone. |
+| Date source: milestone | **Milestone** and **Days from date source**. | The milestone date plus the offset; zero means the same date. |
 | Annual date | **Month**, **Day of month**, and **Year offset** when necessary. | One date calculated from the diary's creation date. |
-| Days from another task | **Source task** and **Day offset**. | A date calculated once from another task's due date. |
+| Date source: task | **Source task** and **Days from date source**. | A date calculated once from another task's due date, including a zero offset. |
 
-A negative **Day offset** means days before the milestone.
+A negative **Days from date source** value means days before the milestone.
 A positive value means days after it.
 Zero means the milestone date itself.
 For example, minus seven means seven days before the milestone.
@@ -193,8 +192,8 @@ Older diaries may still have missing dates; ask your site administrator for help
 
 ### Dates from another task
 
-Select **Days from another task**, choose a **Source task**, and enter the signed
-**Day offset**. Zero uses the same date; positive values mean after it, and negative
+Select **Date source: task**, choose a **Source task**, and enter the signed
+**Days from date source** value. Zero uses the same date; positive values mean after it, and negative
 values mean before it. The source cannot be the task itself.
 
 In a template, Diary resolves chains when creating a diary or first applying its
@@ -424,13 +423,17 @@ There is no separate approval step.
 2. Select **Create template**.
 3. Enter **Template name**.
 4. Enter **Description** if necessary.
-5. Select **Add task** to add a task row.
-6. Complete the task fields in that row.
-7. Add more task rows as required.
+5. Select **Add task** to open the task editor.
+6. Complete the task fields and select **Save task** to accept them into the draft.
+7. Add more tasks as required, or select a task in the graph to edit it.
 8. Select **Save template**.
 
-In this editor, **Add task** adds a form row without saving the template.
-**Save template** saves the complete set of task rows.
+**Save task** changes only the draft on this page. **Cancel** or Escape discards
+the current task edits; canceling a new task removes it from the draft.
+**Save template** saves the complete draft as a new approved template version.
+Unsaved drafts are lost when you leave or reload the page.
+Without JavaScript or dialog support, task forms remain on the page and
+**Save template** saves them together.
 The template name stays fixed after creation.
 
 ### Change an existing template
@@ -438,7 +441,7 @@ The template name stays fixed after creation.
 1. Open the template page.
 2. Select the template name.
 3. Examine the version number and status.
-4. Change the required task rows.
+4. Select a task in the graph, make your changes, and select **Save task**.
 5. Select **Save template**.
 
 The editor opens the highest version, including a draft when present.
@@ -446,14 +449,17 @@ The save creates and approves another version.
 Older versions and existing diary tasks stay unchanged.
 
 **Remove task** removes a row from the proposed new version.
+Accept the removal with **Save task**, or undo it with **Cancel**.
+Expand **Find tasks / restore removed tasks** to search by name or reopen a removed
+task and select **Restore task**. This finder is an alternative to graph navigation.
 When that button is unavailable, the row can provide a **Delete** checkbox.
 The removal does not delete the task from an existing diary.
 
 ### View task connections
 
-Diary Managers can see **Task connections** above the task forms in the template
+Diary Managers use **Task connections** as the main navigation in the template
 editor. Each box is a task. A diamond represents a host milestone used by at least
-one task's **Milestone date** or **Days from a milestone** rule. Shared milestones
+one task's date rule. Shared milestones
 appear once; unused milestones stay out of the graph.
 
 Solid arrows point from a completion prerequisite to the task that depends on it.
@@ -484,7 +490,7 @@ to reduce crossing arrows, and longer connections use lanes around intervening
 task boxes. Some dependency patterns still require crossings; the layout does
 not change your task order in the forms or the saved dependencies.
 
-- Select a box to move to that task's name field for editing.
+- Select a box to open its compact task editor, initially focused on the task name.
 - Use **+** and **−** to zoom, or **Fit to screen** to show the whole graph.
 - Scroll inside the graph, or drag its background with a mouse, to move around.
 - Use Tab to reach a task and Enter to edit it. With the graph background focused,
@@ -497,12 +503,21 @@ Unnamed tasks receive temporary labels. A preview does not save
 anything: select **Save template** to create the new version. Removing a task also
 removes its connections from the proposed version.
 
-Use the existing task forms to change task content and predecessors. Connections
+Use the task dialog to change task content and completion prerequisites. Connections
 cannot be dragged or edited on the graph. The forms remain available with
 JavaScript disabled, and show full names and predecessor selections when the graph
 is too large to read at fit size. Existing diary copies are unaffected by this preview.
 
 ### Template dates and predecessors
+
+In the task dialog, choose **From a date source**, then pick a milestone or task
+from **Date source**. Both use **Days from date source**: zero means the same
+date, negative values mean before, and positive values mean after. Alternatively,
+choose **Annual date**. Existing milestone rules with no offset display as zero.
+Tasks and milestones have the same role when supplying a date. A task also has
+an owner and completion state and can be a completion prerequisite; a milestone
+is a host-supplied date and has no task completion state. Date relations alone
+never block completion. Calculated dates remain fixed when source tasks are late.
 
 Template tasks use reusable date rules.
 They do not use one-time dates.

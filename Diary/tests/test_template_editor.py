@@ -174,6 +174,25 @@ class TemplateEditorTests(TestCase):
                                         expected_version_key=None, milestone_names=('target',))
         return template, version
 
+    def test_legacy_milestone_date_renders_as_one_zero_offset_rule_without_javascript(self):
+        self.spec = replace(self.spec, date_kind=DateKind.SOURCE, day_offset=0)
+        template, version = self.create_template()
+        url = reverse('Diary:template-edit', kwargs={'template_name': 'Reusable plan'})
+        response = self.client.get(url)
+        rule = str(response.context['task_forms'].forms[0]['date_kind'])
+        self.assertNotIn('value="source"', rule)
+        self.assertIn('value="relative" selected', rule)
+        self.assertContains(response, 'Days from date source')
+        self.assertEqual(template.latest_version().key, version.key)
+        # A non-JavaScript submit uses the same rule with a zero offset.
+        payload = self.payload(version=version.key)
+        payload['tasks-0-date_kind'] = DateKind.RELATIVE
+        payload['tasks-0-day_offset'] = '0'
+        self.assertEqual(self.client.post(url, payload).status_code, 302)
+        saved = template.latest_version().read()['entries'][0]
+        self.assertEqual((saved['date_kind'], saved['milestone_name'], saved['day_offset']),
+                         (DateKind.RELATIVE, 'target', 0))
+
     def payload(self, specs=None, version=None, name='Reusable plan'):
         """Return a complete formset POST with stable task identities."""
 

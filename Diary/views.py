@@ -158,7 +158,7 @@ class TemplateEditorView(DiarySuccessMixin, LoginRequiredMixin, ContextMixin, Vi
             task_data['tasks-TOTAL_FORMS'] = str(total + 1)
             task_data[f'tasks-{total}-entry_key'] = str(uuid4())
             task_data[f'tasks-{total}-owner_kind'] = 'team'
-            task_data[f'tasks-{total}-date_kind'] = 'source'
+            task_data[f'tasks-{total}-date_kind'] = 'relative'
             tasks = TaskFormSet(task_data, prefix='tasks', initial=list(self.data['entries']),
                                 milestones=self.milestone_choices())
             return self.render_editor(header, tasks)

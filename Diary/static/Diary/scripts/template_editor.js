@@ -516,8 +516,7 @@
                 link.append(label);
                 link.addEventListener('click', event => {
                     event.preventDefault();
-                    node.row.scrollIntoView({block: 'center'});
-                    input.focus({preventScroll: true});
+                    node.row.dispatchEvent(new CustomEvent('diary:edit-task', {bubbles: true}));
                 });
                 svg.append(link);
             }
@@ -552,10 +551,115 @@
         const milestones = JSON.parse(editor.querySelector('[id="diary-template-milestones"]').textContent);
         const taskLimit = Number(editor.dataset.taskLimit);
         const updateGraph = taskGraph(editor, milestones);
+        const rows = Array.from(list.querySelectorAll('.diary-template-task'));
+        const dialog = editor.querySelector('.diary-template-dialog');
+        const enhanced = typeof dialog.showModal === 'function';
+        const index = editor.querySelector('.diary-template-task-index');
+        const indexButtons = editor.querySelector('.diary-template-task-buttons');
+        const search = editor.querySelector('.diary-template-task-search');
+        let editing = null, snapshot = [], isNew = false, returnFocus = null;
+
+        /** Keep canceled edits, including removed source choices, out of the draft. */
+        function capture() {
+            return rows.flatMap(row => Array.from(row.querySelectorAll('input, select, textarea'))
+                .filter(control => !control.matches('.diary-template-date-mode, .diary-template-date-source'))
+                .map(control => ({
+                    control, value: control.value, checked: control.checked,
+                    options: control.options ? Array.from(control.options, option => ({
+                        value: option.value, text: option.text, selected: option.selected,
+                    })) : null,
+                })));
+        }
+
+        function closeTask(accept) {
+            if (!editing) return;
+            const discardNew = !accept && isNew;
+            if (!accept) {
+                for (const saved of snapshot) {
+                    if (saved.options) saved.control.replaceChildren(...saved.options.map(option =>
+                        new Option(option.text, option.value, false, option.selected)));
+                    else saved.control.value = saved.value;
+                    saved.control.checked = saved.checked;
+                }
+                for (const control of editing.querySelectorAll('.diary-template-date-mode, .diary-template-date-source')) {
+                    delete control.dataset.rule;
+                }
+            }
+            if (discardNew) {
+                rows.splice(rows.indexOf(editing), 1);
+                editing.remove();
+                total.value = String(Number(total.value) - 1);
+            } else {
+                list.append(editing);
+                show(editing, false);
+            }
+            editing = null;
+            dialog.close();
+            refresh();
+            message.textContent = accept ? 'Task saved to draft. Save template to persist the new version.' : 'Task edits canceled.';
+            if (returnFocus && returnFocus.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
+            else editor.querySelector('.diary-template-add').focus();
+        }
+
+        function openTask(task, adding = false) {
+            if (!enhanced || editing) return;
+            returnFocus = document.activeElement;
+            snapshot = capture();
+            isNew = adding;
+            editing = task;
+            dialog.querySelector('.diary-template-dialog-content').append(task);
+            show(task, true);
+            dialog.showModal();
+            field(task, 'name').focus();
+        }
+
+        editor.addEventListener('diary:edit-task', event => {
+            if (enhanced) openTask(event.target);
+            else {
+                event.target.scrollIntoView({block: 'center'});
+                field(event.target, 'name').focus({preventScroll: true});
+            }
+        });
+        editor.querySelector('.diary-template-task-save').addEventListener('click', () => {
+            if (!editing) return;
+            const invalid = Array.from(editing.querySelectorAll('input, select, textarea'))
+                .find(control => !control.disabled && !control.checkValidity());
+            if (invalid) { invalid.reportValidity(); return; }
+            closeTask(true);
+        });
+        editor.querySelector('.diary-template-task-cancel').addEventListener('click', () => closeTask(false));
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeTask(false); });
+        // Enter accepts the task, rather than inadvertently publishing a template version.
+        dialog.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && event.target.matches('input:not([type="search"])')) {
+                event.preventDefault();
+                editor.querySelector('.diary-template-task-save').click();
+            }
+        });
+        form.addEventListener('invalid', event => {
+            const row = event.target.closest('.diary-template-task');
+            if (row && enhanced) { event.preventDefault(); openTask(row); }
+        }, true);
+        form.addEventListener('submit', event => {
+            if (editing) { event.preventDefault(); return; }
+        });
+        search.addEventListener('input', updateIndex);
+        function updateIndex() {
+            indexButtons.replaceChildren();
+            for (const row of rows) {
+                const name = field(row, 'name').value || 'Unnamed task';
+                if (!name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())) continue;
+                const button = document.createElement('button');
+                button.type = 'button'; button.className = 'diary-button';
+                button.textContent = name + (field(row, 'delete').checked ? ' (removed — edit to restore)' : '');
+                button.addEventListener('click', () => openTask(row));
+                indexButtons.append(button);
+            }
+        }
 
         /** Return task rows from this editor, including rows marked for deletion. */
         function tasks() {
-            return Array.from(list.querySelectorAll('.diary-template-task'));
+            return rows;
         }
 
         /**
@@ -623,8 +727,62 @@
                     sourceSelect.replaceChildren(...dateChoices.map(option => new Option(option.label, option.value, false, option.selected)));
                 }
                 show(task.querySelector('.diary-template-annual-fields'), kind === 'annual');
+                if (enhanced) {
+                    // One date-source picker uses the same offset for tasks and milestones.
+                    show(field(task, 'date-kind').closest('.diary-template-field'), false);
+                    show(task.querySelector('.diary-template-milestone-fields'), false);
+                    show(task.querySelector('.diary-template-task-date-fields'), false);
+                    const mode = task.querySelector('.diary-template-date-mode');
+                    const source = task.querySelector('.diary-template-date-source');
+                    const modeValue = kind === 'annual' ? 'annual' : 'relative';
+                    if (mode.dataset.rule !== modeValue) {
+                        mode.value = modeValue;
+                        mode.dataset.rule = modeValue;
+                    }
+                    const proposed = document.createElement('select');
+                    proposed.append(new Option('Select a date source', ''));
+                    const selectedSource = kind === 'task' ? `task:${sourceValue}` : `milestone:${previousMilestone}`;
+                    for (const [label, options] of [
+                        ['Milestone dates', milestones.map(item => [`milestone:${item.name}`, item.label])],
+                        ['Task due dates', dateOrder.filter(row => row !== task).map(row =>
+                            [`task:${field(row, 'entry-key').value}`, field(row, 'name').value || 'Unnamed task'])],
+                    ]) {
+                        const group = document.createElement('optgroup'); group.label = label;
+                        for (const [value, label] of options) group.append(new Option(label, value, false, value === selectedSource));
+                        proposed.append(group);
+                    }
+                    const options = select => Array.from(select.options, option => [option.value, option.text]);
+                    // A name blur must not detach the option currently being chosen with a mouse.
+                    if (JSON.stringify(options(source)) !== JSON.stringify(options(proposed))) {
+                        const previous = source.value;
+                        source.replaceChildren(...proposed.childNodes);
+                        source.value = previous;
+                    }
+                    if (source.dataset.rule !== selectedSource) {
+                        source.value = selectedSource;
+                        source.dataset.rule = selectedSource;
+                    }
+                    if (source.selectedIndex < 0) source.value = '';
+                    show(source.closest('.diary-template-field'), kind !== 'annual');
+                    const errors = [field(task, 'date-kind'), field(task, 'milestone-name'), sourceSelect]
+                        .map(control => control.closest('.diary-template-field').querySelector('.diary-field-errors'))
+                        .filter(Boolean).map(error => error.textContent.trim());
+                    task.querySelector('.diary-template-date-errors').textContent = errors.join(' ');
+                }
                 show(task.querySelector('.diary-template-person-fields'), owner === 'person');
                 show(task.querySelector('.diary-template-role-fields'), owner === 'role');
+                if (enhanced) {
+                    task.querySelector('.diary-template-date-source').required = !deleted && kind !== 'annual';
+                    for (const [name, required] of [['month', kind === 'annual'], ['day', kind === 'annual'],
+                        ['person-ref', owner === 'person'], ['role-ref', owner === 'role']]) {
+                        field(task, name).required = !deleted && required;
+                    }
+                    const month = Number(field(task, 'month').value), day = Number(field(task, 'day').value);
+                    const annualDate = new Date(Date.UTC(2000, month - 1, day));
+                    field(task, 'day').setCustomValidity(!deleted && kind === 'annual' && month && day
+                        && (annualDate.getUTCMonth() !== month - 1 || annualDate.getUTCDate() !== day)
+                        ? 'Enter a valid month and day.' : '');
+                }
                 const warning = task.querySelector('.diary-template-owner-warning');
                 warning.textContent = '';
 
@@ -668,13 +826,47 @@
                 }
             }
             updateGraph(active);
+            updateIndex();
         }
 
         /** Enable removal controls while retaining the server checkbox fallback. */
         function prepare(task) {
+            const kind = field(task, 'date-kind');
+            // Legacy milestone dates are displayed as the one milestone rule with zero offset.
+            if (kind.value === 'source') {
+                kind.value = 'relative';
+                field(task, 'day-offset').value = '0';
+            }
             show(task.querySelector('.diary-template-remove'), true);
             show(task.querySelector('.diary-template-delete-field'), false);
             show(task.querySelector('.diary-template-predecessor-filter'), true);
+            if (enhanced) {
+                const controls = document.createElement('div');
+                controls.className = 'diary-template-date-controls';
+                for (const [className, labelText, options] of [
+                    ['mode', 'Due date', [['relative', 'From a date source'], ['annual', 'Annual date']]],
+                    ['source', 'Date source', []],
+                ]) {
+                    const wrapper = document.createElement('div'); wrapper.className = 'diary-template-field';
+                    const label = document.createElement('label'); label.className = 'diary-field-label'; label.textContent = labelText;
+                    const select = document.createElement('select'); select.className = `diary-input diary-template-date-${className}`;
+                    select.id = `${field(task, 'name').id}-date-${className}`; label.htmlFor = select.id;
+                    for (const [value, text] of options) select.add(new Option(text, value));
+                    wrapper.append(label, select); controls.append(wrapper);
+                }
+                const errors = document.createElement('p'); errors.className = 'diary-field-errors diary-template-date-errors';
+                errors.setAttribute('role', 'alert'); controls.append(errors);
+                field(task, 'date-kind').closest('.diary-template-field').before(controls);
+                controls.addEventListener('change', () => {
+                    const mode = controls.querySelector('.diary-template-date-mode').value;
+                    const value = controls.querySelector('.diary-template-date-source').value;
+                    const taskSource = value.startsWith('task:');
+                    kind.value = mode === 'annual' ? 'annual' : taskSource ? 'task' : 'relative';
+                    if (mode !== 'annual') field(task, taskSource ? 'source-task-key' : 'milestone-name').value = value.slice(value.indexOf(':') + 1);
+                    refresh();
+                });
+                show(task, false);
+            }
         }
 
         for (const task of tasks()) {
@@ -717,13 +909,20 @@
             const task = holder.content.querySelector('.diary-template-task');
             field(task, 'entry-key').value = entryKey();
             list.append(holder.content);
+            rows.push(task);
             total.value = String(index + 1);
             prepare(task);
             refresh();
-            field(task, 'name').focus();
+            if (enhanced) openTask(task, true);
+            else field(task, 'name').focus();
             message.textContent = 'New task added. Save template to apply the new version.';
         });
         refresh();
+        if (enhanced) {
+            show(index, true);
+            const errorRow = rows.find(row => row.querySelector('.diary-field-error, .diary-form-error'));
+            if (errorRow) openTask(errorRow);
+        }
     }
 
     for (const editor of document.querySelectorAll('.diary-template-editor')) {

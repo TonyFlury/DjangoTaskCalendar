@@ -113,7 +113,8 @@ The standard Django authentication, group, and permission system is a framework 
 Its current models have no foreign keys to other project apps.
 The host supplies event references, dates, person references, and role names.
 All foreign keys in Diary point to Diary models.
-All database operations use PostgreSQL.
+All database operations currently use PostgreSQL.
+The [DB-001 requirement](../TODO.md#database-independence-and-testing) tracks database independence, including SQLite migration compatibility and automated testing alongside PostgreSQL. SQLite support is not yet verified.
 
 A reference is an opaque string, such as `GarageSale:event:17` or `user:42`.
 The host must use a stable namespace for these references.
@@ -797,6 +798,19 @@ Include only one editor fragment in each document.
 All classes below use the `.diary` namespace.
 Existing class names and CSS variables remain unchanged.
 The editor adds no CSS variables.
+
+The graph is the primary task navigation. With native dialog support, task forms
+open in `.diary-template-dialog`, using a compact responsive grid and a sticky
+`.diary-template-dialog-footer`. **Save task** accepts changes into the local draft;
+Cancel or Escape restores the previous task values. **Save template** posts the
+complete formset through the existing transactional save. Drafts do not survive
+reloads. `.diary-template-task-index` provides a collapsed searchable alternative
+and access to removed tasks. Without JavaScript or native dialog support, the
+inline forms and server add/save actions remain available.
+The dialog combines tasks and milestones in `.diary-template-date-source`; both
+use the existing signed day offset. The underlying API date kinds and stored
+milestones remain compatible. Legacy `source` rules render as milestone-relative
+rules with zero offset; no schema migration is needed.
 
 The manager-only editor also provides a read-only SVG task graph. It is rendered
 from the current task form rows by `taskGraph()` in `template_editor.js`; it does

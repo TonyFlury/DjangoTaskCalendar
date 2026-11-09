@@ -8,7 +8,9 @@ It calculates task dates and identifies ready, blocked, late, and completed work
 Tasks can belong to a person, a configured group, or the whole team.
 The application provides permission-checked Python APIs, Django pages, reusable templates, and validated template fixture transfer.
 
-PostgreSQL is required for development, tests, and production.
+PostgreSQL is currently required for development, tests, and production.
+Database independence is a package goal. [DB-001](TODO.md#database-independence-and-testing) requires SQLite support and automated testing alongside PostgreSQL; SQLite support is not yet verified.
+The [version support requirements](TODO.md#framework-and-database-version-support) also require automated testing and documented support for modern Django and PostgreSQL releases. The package currently pins Django to 5.0; broader compatibility remains to be verified.
 The Python application name remains `Diary`.
 Host applications own event lifecycle rules, user-group configuration, permitted diary scope, and integration presentation.
 GarageSale integration code is not included in this repository.

@@ -15,16 +15,20 @@
         <div class="diary-card diary-template-metadata">
             {% include 'Diary/partials/template_field.html' with field=header_form.name %}
             {% include 'Diary/partials/template_field.html' with field=header_form.description %}
-            <p class="diary-template-guidance">Milestones are configured by your site administrator. Choose from the available milestones when creating tasks. Required dates are determined automatically from your tasks.</p>
+            <p class="diary-template-guidance">Tasks and milestones can both supply a due date. Tasks have owners and completion status; milestones are dates supplied by your site when a diary is created.</p>
         </div>
         {{ task_forms.management_form }}
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
         <h2 class="diary-template-section-title">Tasks</h2>
         <p class="diary-template-guidance">Use milestone dates, annual dates, or dates calculated from another task. Date sources fix due dates; predecessors identify tasks that must finish first.</p>
+        <div class="diary-actions">
+            <button class="diary-button diary-template-add" type="submit" name="action" value="add_task" formnovalidate>Add task</button>
+            <button class="diary-button diary-button-primary diary-template-save" type="submit" name="action" value="save">Save template</button>
+        </div>
         <section class="diary-template-graph diary-card" aria-label="Task graph" hidden>
             <h3 class="diary-template-section-title">Task connections</h3>
-            <p class="diary-template-guidance">Boxes are tasks; diamonds are milestones used by task date rules. Solid arrows show completion prerequisites. Dashed arrows show date relations from milestones or tasks; hover an arrow for its day offset. Select a task to edit it below. This preview includes unsaved changes; save the template to keep them.</p>
-            <p class="diary-template-guidance">Negative offsets place tasks above their source. Zero and positive offsets place tasks below it, with date arrows entering at the top. A zero offset still means the same due date. Positions are schematic, not a calendar-day scale. Completion arrows can point back toward an earlier due date when dependencies and dates differ.</p>
+            <p class="diary-template-guidance">Select a task to edit it. Boxes are tasks; diamonds are milestone dates. Solid arrows show completion prerequisites; dashed arrows show date sources. Save task accepts edits into this draft; Save template publishes the complete version.</p>
+            <details><summary>Date positioning</summary><p class="diary-template-guidance">Negative offsets place tasks above their source; zero and positive offsets place tasks below it. Zero means the same due date. Positions are schematic, not a calendar-day scale. Hover a date arrow for its offset. A solid completion arrow replaces a date arrow between the same tasks.</p></details>
             <div class="diary-actions diary-graph-toolbar" role="group" aria-label="Graph controls">
                 <button class="diary-button" type="button" data-graph-action="out" aria-label="Zoom out">−</button>
                 <output class="diary-graph-zoom" aria-label="Graph zoom">100%</output>
@@ -35,17 +39,28 @@
             <div class="diary-graph-viewport" tabindex="0" role="region" aria-label="Task connections. Scroll or drag the background to pan. Use plus and minus to zoom, Home to fit.">
                 <svg class="diary-graph-canvas" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Tasks, milestones, completion prerequisites and date relations"></svg>
             </div>
-            <p class="diary-template-guidance">Scroll or drag the background to move around. Keyboard: Tab to a task and press Enter to edit; focus the graph background and use +, −, or Home for zoom. The task forms below provide the same tasks and predecessor selections.</p>
+            <p class="diary-template-guidance">Drag or scroll to pan. Tab to a task and press Enter to edit. On the graph background, use +, −, or Home to zoom or fit.</p>
         </section>
         <noscript><p class="diary-template-guidance">Enable JavaScript to see the task graph. You can still edit tasks and their predecessors using the forms below.</p></noscript>
         <div class="diary-template-task-list">
             {% for form in task_forms %}{% include 'Diary/partials/template_task.html' %}{% endfor %}
         </div>
+        <dialog class="diary-template-dialog" aria-label="Task editor">
+            <div class="diary-template-dialog-content"></div>
+            <div class="diary-template-dialog-footer">
+                <p class="diary-template-guidance">Save task updates this draft. Save template publishes the new version.</p>
+                <div class="diary-actions">
+                    <button class="diary-button diary-button-primary diary-template-task-save" type="button">Save task</button>
+                    <button class="diary-button diary-template-task-cancel" type="button">Cancel</button>
+                </div>
+            </div>
+        </dialog>
+        <details class="diary-template-task-index" hidden>
+            <summary>Find tasks / restore removed tasks</summary>
+            <label>Find a task <input class="diary-input diary-template-task-search" type="search"></label>
+            <div class="diary-template-task-buttons"></div>
+        </details>
         <p class="diary-template-live-message" aria-live="polite"></p>
-        <div class="diary-actions">
-            <button class="diary-button diary-template-add" type="submit" name="action" value="add_task" formnovalidate>Add task</button>
-            <button class="diary-button diary-button-primary diary-template-save" type="submit" name="action" value="save">Save template</button>
-        </div>
     </form>
 
     <template class="diary-template-empty-task">{% include 'Diary/partials/template_task.html' with form=task_forms.empty_form %}</template>

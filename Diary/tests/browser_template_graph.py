@@ -1,4 +1,4 @@
-"""Real-browser checks for the manager's read-only template graph.
+"""Real-browser checks for the manager's template graph and task dialog.
 
 Run explicitly with Django's test command and a separate PostgreSQL test database.
 """
@@ -62,9 +62,96 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
     def node(self, spec):
         return self.driver.find_element(By.CSS_SELECTOR, f'.diary-graph-node[data-task-key="{spec.entry_key}"]')
 
+    def save_task(self):
+        if self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'):
+            self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
+            self.assertFalse(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'),
+                self.driver.execute_script("return Array.from(document.querySelectorAll(':invalid'), el => [el.name, el.validationMessage])"))
+
     def row(self, spec):
-        return self.driver.find_element(By.CSS_SELECTOR,
+        row = self.driver.find_element(By.CSS_SELECTOR,
             f'.diary-template-task:has(.diary-template-field-entry-key[value="{spec.entry_key}"])')
+        if not row.is_displayed():
+            self.save_task()
+            finder = self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-index')
+            if not finder.get_attribute('open'):
+                finder.find_element(By.TAG_NAME, 'summary').click()
+            name = row.find_element(By.CSS_SELECTOR, '.diary-template-field-name').get_attribute('value')
+            next(button for button in finder.find_elements(By.TAG_NAME, 'button')
+                 if button.text == name or button.text == name + ' (removed — edit to restore)').click()
+        return row
+
+    def choose_date(self, row, kind):
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-date-mode')).select_by_value(
+            'annual' if kind == 'annual' else 'relative')
+        if kind == 'annual':
+            for field, value in [('month', '6'), ('day', '1')]:
+                control = row.find_element(By.CSS_SELECTOR, '.diary-template-field-' + field)
+                if not control.get_attribute('value'):
+                    control.send_keys(value)
+        if kind != 'annual':
+            picker = Select(row.find_element(By.CSS_SELECTOR, '.diary-template-date-source'))
+            prefix = 'task:' if kind == 'task' else 'milestone:'
+            picker.select_by_value(next(option.get_attribute('value') for option in picker.options
+                                        if option.get_attribute('value').startswith(prefix)))
+        if kind == 'source':
+            offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+            offset.clear()
+            offset.send_keys('0')
+
+    def test_dialog_cancel_draft_save_and_shared_date_sources(self):
+        driver = self.driver
+        start, book = self.specs[:2]
+        self.assertFalse(any(row.is_displayed() for row in driver.find_elements(By.CSS_SELECTOR, '.diary-template-task')))
+        row = self.row(book)
+        name = row.find_element(By.CSS_SELECTOR, '.diary-template-field-name')
+        name.clear()
+        name.send_keys('Discard this edit')
+        name.send_keys(Keys.ESCAPE)
+        self.wait.until(lambda browser: self.node(book).get_attribute('aria-label') == 'Edit task: Book venue')
+        self.assertEqual(TemplateVersion.objects.count(), 1)
+
+        row = self.row(start)
+        row.find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-task-cancel').click()
+        self.wait.until(lambda browser: self.count('.diary-graph-node') == 6)
+        self.assertEqual([option.get_attribute('value') for option in Select(
+            self.row(book).find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).all_selected_options],
+            [str(start.entry_key)])
+        self.save_task()
+
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'))
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-task-cancel').click()
+        self.wait.until(lambda browser: self.count('.diary-graph-node') == 6)
+        self.assertEqual(driver.find_element(By.NAME, 'tasks-TOTAL_FORMS').get_attribute('value'), '6')
+
+        row = self.row(book)
+        self.choose_date(row, 'task')
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('task:' + str(start.entry_key))
+        offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
+        offset.clear()
+        offset.send_keys('0')
+        name = row.find_element(By.CSS_SELECTOR, '.diary-template-field-name')
+        name.clear()
+        name.send_keys('Saved in draft')
+        driver.set_window_size(390, 900)
+        self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
+        self.assertTrue(driver.execute_script('const d = document.querySelector("dialog"); return d.scrollWidth <= d.clientWidth + 1'))
+        self.assertTrue(driver.execute_script('const r = document.querySelector(".diary-template-task-save").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight'))
+        if os.environ.get('DIARY_DIALOG_SCREENSHOT'):
+            driver.save_screenshot(os.environ['DIARY_DIALOG_SCREENSHOT'])
+        self.save_task()
+        self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'))
+        self.assertEqual(TemplateVersion.objects.count(), 1, 'Task save must not publish the template')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
+        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        saved = next(entry for entry in self.template.latest_version().read()['entries'] if entry['entry_key'] == book.entry_key)
+        self.assertEqual((saved['name'], saved['date_kind'], saved['source_task_key'], saved['day_offset']),
+                         ('Saved in draft', DateKind.TASK, start.entry_key, 0))
+        self.assertEqual([item for item in driver.get_log('browser')
+                          if item['source'] == 'javascript' and item['level'] == 'SEVERE'], [])
 
     def test_graph_layout_form_updates_keyboard_and_narrow_screen(self):
         driver = self.driver
@@ -100,6 +187,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
         self.wait.until(lambda browser: self.count('.diary-graph-node') == 6)
 
+        self.save_task()
         # Zoom and pan stay inside the graph; fitting works after a viewport resize.
         driver.find_element(By.CSS_SELECTOR, '[data-graph-action="in"]').click()
         before = driver.find_element(By.CSS_SELECTOR, '.diary-graph-zoom').get_attribute('value')
@@ -125,8 +213,23 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
         self.wait.until(lambda browser: self.count('.diary-graph-node') == 1)
         self.assertIn('Unnamed task', driver.find_element(By.CSS_SELECTOR, '.diary-graph-node').get_attribute('aria-label'))
+        name = driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog .diary-template-field-name')
+        name.send_keys('First task')
+        self.choose_date(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog .diary-template-task'), 'annual')
+        self.save_task()
         # Add enough proposed tasks to require zoom/scroll, without creating database records.
-        driver.execute_script('for (let i = 0; i < 24; i++) document.querySelector(".diary-template-add").click()')
+        driver.execute_script('''
+            for (let i = 0; i < 24; i++) {
+                document.querySelector('.diary-template-add').click();
+                const row = document.querySelector('.diary-template-dialog .diary-template-task');
+                row.querySelector('.diary-template-field-name').value = 'Added task ' + i;
+                const mode = row.querySelector('.diary-template-date-mode');
+                mode.value = 'annual'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+                row.querySelector('.diary-template-field-month').value = '6';
+                row.querySelector('.diary-template-field-day').value = '1';
+                document.querySelector('.diary-template-task-save').click();
+            }
+        ''')
         self.wait.until(lambda browser: self.count('.diary-graph-node') == 25)
         driver.find_element(By.CSS_SELECTOR, '[data-graph-action="in"]').click()
         viewport = driver.find_element(By.CSS_SELECTOR, '.diary-graph-viewport')
@@ -143,16 +246,17 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         driver = self.driver
         start, book = self.specs[:2]
         row = self.row(book)
-        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
-        source = row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')
+        self.choose_date(row, 'task')
+        source = row.find_element(By.CSS_SELECTOR, '.diary-template-date-source')
         self.assertTrue(source.is_displayed())
-        self.assertNotIn(str(book.entry_key), [option.get_attribute('value') for option in Select(source).options])
-        Select(source).select_by_value(str(start.entry_key))
+        self.assertNotIn('task:' + str(book.entry_key), [option.get_attribute('value') for option in Select(source).options])
+        Select(source).select_by_value('task:' + str(start.entry_key))
         offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
         self.assertTrue(offset.is_displayed())
         offset.clear()
         offset.send_keys('3')
         Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).deselect_all()
+        self.save_task()
         driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
         self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
         version = self.template.latest_version()
@@ -244,8 +348,8 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
 
         self.assertEqual(values('source-task-key'), expected)
         Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).select_by_value(str(end.entry_key))
-        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
-        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(middle.entry_key))
+        self.choose_date(target_row, 'task')
+        Select(target_row.find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('task:' + str(middle.entry_key))
         name = self.row(root).find_element(By.CSS_SELECTOR, '.diary-template-field-name')
         name.clear()
         name.send_keys('Renamed source')
@@ -257,6 +361,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
                          [str(end.entry_key)])
         self.assertEqual(target_row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key').get_attribute('value'),
                          str(middle.entry_key))
+        self.row(target)
         search = target_row.find_element(By.CSS_SELECTOR, '.diary-template-predecessor-search')
         search.send_keys('no match')
         self.assertEqual(values('predecessors'), [str(end.entry_key)])
@@ -309,7 +414,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
     def test_milestone_graph_updates_offsets_rules_and_deleted_tasks_without_saving(self):
         specs = self.show_milestone_graph()
         driver = self.driver
-        Select(self.row(specs[2]).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('annual')
+        self.choose_date(self.row(specs[2]), 'annual')
         self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 1)
         offset = self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
         offset.clear()
@@ -323,9 +428,9 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 0)
         self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
         self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 1)
-        Select(self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('unused')
+        Select(self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('milestone:' + 'unused')
         self.wait.until(lambda browser: self.count('.diary-graph-milestone[data-milestone-name="unused"]') == 1)
-        Select(self.row(specs[1]).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
+        self.choose_date(self.row(specs[1]), 'task')
         self.wait.until(lambda browser: self.count('.diary-graph-milestone') == 0)
         saved = next(entry for entry in self.template.latest_version().read()['entries'] if entry['entry_key'] == specs[1].entry_key)
         self.assertEqual((saved['milestone_name'], saved['day_offset']), ('event_date', -7))
@@ -340,14 +445,14 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
     def test_offsets_position_negative_before_and_nonnegative_after_the_milestone(self):
         specs = self.show_milestone_graph()
         start, book, invite, review, independent, _ = specs
-        Select(self.row(invite).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('event_date')
-        Select(self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('relative')
-        Select(self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-milestone-name')).select_by_value('event_date')
+        Select(self.row(invite).find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('milestone:' + 'event_date')
+        self.choose_date(self.row(independent), 'relative')
+        Select(self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('milestone:' + 'event_date')
         offset = self.row(independent).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
         offset.clear()
         offset.send_keys('-2')
-        Select(self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
-        Select(self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(book.entry_key))
+        self.choose_date(self.row(review), 'task')
+        Select(self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('task:' + str(book.entry_key))
         offset = self.row(review).find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
         offset.clear()
         offset.send_keys('3')
@@ -376,7 +481,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
     def test_milestones_are_positioned_relative_to_their_tasks_not_forced_to_a_start_row(self):
         specs = self.show_milestone_graph()
         start, book, invite, *_ = specs
-        Select(self.row(invite).find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('source')
+        self.choose_date(self.row(invite), 'source')
         self.wait.until(lambda browser: self.milestone_y('close') > self.milestone_y('event_date'))
         self.assertGreater(self.task_y(start), self.milestone_y('event_date'))
         self.assertGreater(self.task_y(invite), self.milestone_y('close'))
@@ -389,8 +494,8 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
 
         def set_date_source(task, source, days):
             row = self.row(task)
-            Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
-            Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(source.entry_key))
+            self.choose_date(row, 'task')
+            Select(row.find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('task:' + str(source.entry_key))
             offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
             offset.clear()
             offset.send_keys(str(days))
@@ -414,6 +519,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
             else:
                 self.assertEqual(self.count(f'.diary-graph-edge-date[data-source-key="{source_key}"][data-target-key="{task.entry_key}"]'), 0)
 
+        self.save_task()
         self.driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
         self.wait.until(lambda browser: 'Version 3' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
         version = self.template.latest_version()
@@ -432,8 +538,8 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         specs = self.show_milestone_graph()
         start, book, *_ = specs
         row = self.row(book)
-        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-date-kind')).select_by_value('task')
-        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-source-task-key')).select_by_value(str(start.entry_key))
+        self.choose_date(row, 'task')
+        Select(row.find_element(By.CSS_SELECTOR, '.diary-template-date-source')).select_by_value('task:' + str(start.entry_key))
         offset = row.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset')
         offset.clear()
         offset.send_keys('0')

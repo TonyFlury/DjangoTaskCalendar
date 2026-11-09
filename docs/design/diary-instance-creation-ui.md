@@ -4,7 +4,7 @@ Requirement identifier: **DFUT-001**.
 Status: future requirement, not implemented.
 Release: not assigned.
 
-This document supports [DFUT-001 in the Diary checklist](../../Diary/TODO_V1.md#future-requirements).
+This document supports [DFUT-001 in the repository TODO](../../TODO.md#diary-feature-backlog).
 It does not add work to V1.
 
 ## Confirmed requirement

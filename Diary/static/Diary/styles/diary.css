@@ -110,8 +110,27 @@
 .diary .diary-template-warnings { border: 2px solid #a66300; border-radius: var(--diary-radius); padding: .75rem; }
 .diary .diary-template-task-deleted { border-style: dashed; }
 .diary .diary-template-hidden { display: none; }
+.diary .diary-template-dialog { color: var(--diary-text); background: var(--diary-surface); border: 1px solid var(--diary-border); border-radius: var(--diary-radius); width: min(52rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); box-sizing: border-box; padding: 1rem; overflow: auto; }
+.diary .diary-template-dialog::backdrop { background: rgb(0 0 0 / .4); }
+.diary .diary-template-dialog-footer { position: sticky; bottom: -1rem; background: var(--diary-surface); border-top: 1px solid var(--diary-border); margin-top: .5rem; padding-block: .5rem; }
+.diary .diary-template-dialog-footer .diary-template-guidance { margin-block: 0 .5rem; font-size: .875rem; }
+.diary .diary-template-dialog .diary-template-task { margin: 0; padding: 0; border: 0; }
+.diary .diary-template-dialog .diary-template-task-title { margin: 0; font-size: 1.25rem; }
+.diary .diary-template-dialog .diary-template-task-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
+.diary .diary-template-dialog .diary-template-field { margin-block: .25rem; min-width: 0; }
+.diary .diary-template-dialog .diary-field-label { margin-block: .25rem; }
+.diary .diary-template-dialog .diary-field-help { font-size: .875rem; }
+.diary .diary-template-dialog .diary-template-date-controls,
+.diary .diary-template-dialog .diary-template-annual-fields { grid-column: 1 / -1; }
+.diary .diary-template-date-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
+.diary .diary-template-date-errors { grid-column: 1 / -1; margin: 0; }
+.diary .diary-template-task-buttons { display: flex; flex-wrap: wrap; gap: .5rem; padding-block: .5rem; }
+.diary .diary-template-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
+.diary .diary-template-metadata > p { grid-column: 1 / -1; }
 @media (max-width: 40rem) {
     .diary .diary-template-task-header { align-items: stretch; flex-direction: column; gap: .25rem; }
+    .diary .diary-template-dialog .diary-template-task-fields,
+    .diary .diary-template-date-controls, .diary .diary-template-metadata { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* DV1-022, DV1-039, DV1-041, DV1-052: Manager diary controls and task states. */
