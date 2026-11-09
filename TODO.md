@@ -256,6 +256,30 @@ template transfer, migration, and backward compatibility.
   Implementation: Deferred. No release assigned; impact display and calculation
   details remain open.
 
+- [ ] **DFUT-016: Subgraph visibility in the graphical navigator.**
+  Allow the user to select a task or milestone and show only that item and its
+  dependent subgraph. Include directly and transitively dependent tasks reached
+  through completion dependencies or date-source relationships, preserving the
+  direction and meaning of each relationship.
+  Hide unrelated tasks, milestones, and connections while this view is active.
+  Clearly identify the selected root and provide an action to restore the full graph.
+  Filtering changes visibility only; it must not change tasks, dependencies, or due
+  dates, and must preserve existing permissions and keyboard navigation.
+  Implementation: Not started. No release assigned.
+
+- [ ] **DFUT-017: Navigation graph rearrangement and retained positions.**
+  Allow users to move tasks and milestones in the graphical navigator and retain
+  their chosen positions when the graph is reopened or the page is reloaded.
+  Provide a Reset layout action that clears the saved positions and restores the
+  automatic layout. Keep connections attached to their items when positions change.
+  Moving items changes presentation only; it must not change dates, offsets,
+  completion dependencies, or date-source relationships.
+  Define whether layouts belong to an individual user or are shared, their scope
+  across templates and versions, and how new or removed items affect saved layouts.
+  Coordinate retained positions and reset behavior with DFUT-016 subgraph filtering.
+  Preserve permissions and provide keyboard-accessible movement and reset controls.
+  Implementation: Not started. No release assigned.
+
 ## Scope
 
 GarageSale event creation, settings, URL adapters, page wrappers, and dashboard integration belong to the host repository.
