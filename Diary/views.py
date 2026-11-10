@@ -31,6 +31,7 @@ from .models import CalendarEntry, CalendarTemplate, EventCalendar, Milestone, T
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
+from .calendar_navigation import calendar_return_state
 
 logger = logging.getLogger(__name__)
 
@@ -600,6 +601,14 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
     template_name = 'Diary/task_detail.html'
     entry_key = None
 
+    def get_success_url(self, *, result):
+        """Retain a verified calendar return link after an existing task write."""
+        token, _ = calendar_return_state(self.request)
+        if token and self.success_url is None:
+            return self.request.path + '?' + urlencode({'diary_key': result.diary_key, 'calendar_return': token})
+        url = super().get_success_url(result=result)
+        return url + ('&' if '?' in url else '?') + urlencode({'calendar_return': token}) if token else url
+
     def get(self, request, entry_key=None, *args, **kwargs):
         """Show task details and open predecessors without changing records."""
         return self.respond(entry_key)
@@ -621,6 +630,8 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
     def respond(self, entry_key, *, submitted=False):
         """Resolve task scope, apply an action, and retain input when a save fails."""
         context = {**self.view_context, 'task': None, 'detail_error': ''}
+        token, return_url = calendar_return_state(self.request)
+        context.update(calendar_return_token=token, calendar_return_url=return_url)
         try:
             entry_key = self.selected_entry_key(entry_key)
             key = self.selected_key()

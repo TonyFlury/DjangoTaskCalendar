@@ -3,6 +3,7 @@
 <section class="diary diary-personal" aria-label="My Diary">
     <h1 class="diary-heading diary-personal-heading">My Diary{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
     <p class="diary-personal-description">Tasks assigned to you or your current groups.</p>
+    {% if calendar_url %}<nav class="diary-actions" aria-label="Task calendar"><a class="diary-button" href="{{ calendar_url }}{% if '?' in calendar_url %}&amp;{% else %}?{% endif %}view=week&amp;mode=personal{% if diary_data %}&amp;diary_key={{ diary_data.key }}{% endif %}">Week</a><a class="diary-button" href="{{ calendar_url }}{% if '?' in calendar_url %}&amp;{% else %}?{% endif %}view=month&amp;mode=personal{% if diary_data %}&amp;diary_key={{ diary_data.key }}{% endif %}">Month</a></nav>{% endif %}
     {# DV1-029, DV1-030, DV1-033: The host can supply a task_create_url with its trusted creation scope. #}
     {% url 'Diary:task-create' as default_task_create_url %}
     <nav class="diary-create-navigation" aria-label="Task creation"><a class="diary-button diary-create-link" href="{{ task_create_url|default:default_task_create_url }}{% if diary_data %}{% if not diary_ui.trusted_scope %}?diary_key={{ diary_data.key }}{% endif %}{% endif %}">Add task</a></nav>

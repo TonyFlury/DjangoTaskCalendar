@@ -1,6 +1,7 @@
 {# DV1-023, DV1-032, DV1-035, DV1-036, DV1-037, DV1-038: Scoped task editing and completion. #}
 <section class="diary diary-detail" aria-label="Task details">
     <h1 class="diary-heading diary-detail-heading">Task details</h1>
+    {% if calendar_return_url %}<a class="diary-button diary-calendar-return" href="{{ calendar_return_url }}">Back to calendar</a>{% endif %}
 
     {# Selection errors have no task content. Save errors keep the inspected task and submitted forms visible. #}
     {% if detail_error %}<p class="diary-detail-error" role="alert">{{ detail_error }}</p>{% endif %}

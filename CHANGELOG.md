@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Implemented DFUT-018 weekly/monthly task calendars with a shared period API,
+  responsive day/agenda views, manager/personal filters, late/undated panels,
+  bounded previews and pagination, private-safe counts, and signed task-return links.
+  Existing dates, task actions, identity pairs, and list defaults are preserved.
+
 - Extended all five task signals with `diary_key` and `template_version_key`.
   Pair the non-null scope key with the existing `task` UUID to distinguish reused
   task keys across diaries and template versions. Existing payload fields remain.

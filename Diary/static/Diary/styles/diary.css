@@ -260,3 +260,53 @@
 .diary .diary-graph-milestone text { fill: var(--diary-text); pointer-events: none; font-size: 12px; }
 .diary .diary-graph-milestone:focus { outline: none; }
 .diary .diary-graph-milestone:focus polygon { stroke: var(--diary-focus); stroke-width: 3; }
+
+/* DFUT-018: Calendar cards retain the host palette and fit inside narrow layouts. */
+.diary-task-calendar { min-width: 0; }
+.diary .diary-calendar-toolbar, .diary .diary-calendar-date-form { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
+.diary .diary-calendar-toolbar-end { display: flex; gap: .5rem; margin-inline-start: auto; }
+.diary .diary-calendar-toolbar .diary-toolbar-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; width: var(--diary-toolbar-button-width, 2.75rem); height: var(--diary-toolbar-button-height, 2.75rem); padding: .5rem; }
+.diary .diary-calendar-filters-open { --diary-toolbar-label: "Calendar filters"; }
+.diary .diary-calendar-help-open { --diary-toolbar-label: "Calendar help"; }
+.diary .diary-calendar-toolbar-end .diary-toolbar-tooltip { left: auto; right: 0; }
+.diary-task-calendar[data-calendar-view="list"] .diary-calendar-weekdays { display: none; }
+.diary .diary-calendar-period { font-size: 1.125rem; margin: 0 .5rem; }
+.diary .diary-calendar-date-form label { margin: 0; }
+.diary .diary-calendar-view-tabs { margin-block: .5rem; flex-direction: row; }
+.diary .diary-calendar-view-tabs [aria-current] { background: var(--diary-accent); color: var(--diary-accent-text); }
+.diary .diary-calendar-weekdays, .diary .diary-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--diary-calendar-gap, .4rem); }
+.diary .diary-calendar-weekdays { margin-block: .5rem; font-weight: bold; font-size: .875rem; }
+.diary .diary-calendar-day { border: 1px solid var(--diary-border); border-radius: var(--diary-radius); min-width: 0; padding: .4rem; min-height: var(--diary-calendar-day-height, 10rem); overflow-wrap: anywhere; }
+.diary .diary-calendar-day h3 { margin: 0; font-size: 1rem; }
+.diary .diary-calendar-day-count, .diary .diary-calendar-status, .diary .diary-calendar-owner, .diary .diary-calendar-diary-name, .diary .diary-calendar-today-label { display: block; font-size: .8rem; }
+.diary .diary-calendar-outside-month { background: var(--diary-background); }
+.diary .diary-calendar-outside-month h3 { color: var(--diary-muted); }
+.diary .diary-calendar-day-open { color: var(--diary-accent); }
+.diary .diary-calendar-outside-month .diary-calendar-day-open { color: var(--diary-muted); }
+.diary .diary-calendar-is-today { outline: 2px solid var(--diary-accent); outline-offset: -2px; }
+.diary .diary-calendar-selected { border-color: var(--diary-accent); }
+.diary .diary-calendar-day-tasks { list-style: none; margin: .5rem 0; padding: 0; }
+.diary .diary-calendar-task { min-width: 0; margin-block: .5rem; padding: .35rem; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-surface); overflow-wrap: anywhere; }
+.diary .diary-calendar-task-link { display: -webkit-box; -webkit-line-clamp: var(--diary-calendar-name-lines, 3); -webkit-box-orient: vertical; overflow: hidden; font-weight: bold; color: var(--diary-accent); }
+.diary .diary-calendar-day-panel .diary-calendar-task-link { display: block; overflow: visible; }
+.diary .diary-calendar-late { box-shadow: 0 0 .25rem var(--diary-late); border-color: var(--diary-late); }
+.diary .diary-calendar-blocked-late { box-shadow: 0 0 .25rem var(--diary-blocked); border-color: var(--diary-blocked); }
+.diary .diary-calendar-blocked { border-style: dashed; }
+.diary .diary-calendar-completed { border-color: var(--diary-completed); }
+.diary .diary-calendar-ownership-warning { display: block; color: var(--diary-late); font-size: .8rem; }
+.diary .diary-calendar-list { display: block; }
+.diary .diary-calendar-list .diary-calendar-day { margin-block: .5rem; min-height: 0; }
+.diary .diary-calendar-more, .diary .diary-calendar-open-week { display: block; margin-block: .5rem; font-size: .875rem; color: var(--diary-accent); }
+.diary .diary-calendar-dialog { color: var(--diary-text); background: var(--diary-surface); border: 1px solid var(--diary-border); border-radius: var(--diary-radius); width: min(46rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 1rem; overflow: auto; }
+.diary .diary-calendar-dialog::backdrop { background: rgb(0 0 0 / .4); }
+.diary .diary-calendar-dialog h2 { margin-top: 0; }
+.diary .diary-calendar-error { color: var(--diary-late); }
+.diary .diary-calendar-mobile-label { display: none; }
+.diary .diary-calendar-toolbar [hidden], .diary .diary-calendar-help-content [hidden], .diary .diary-calendar-filters-content [hidden] { display: none; }
+@media (max-width: 60rem) {
+    .diary .diary-calendar-grid { grid-template-columns: minmax(0, 1fr); }
+    .diary .diary-calendar-weekdays { display: none; }
+    .diary .diary-calendar-day { min-height: 0; }
+    .diary .diary-calendar-mobile-label { display: inline; }
+    .diary .diary-calendar-date-form { width: 100%; }
+}

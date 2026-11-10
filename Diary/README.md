@@ -786,6 +786,12 @@ python manage.py test Diary.tests.browser_template_editor --settings=your_projec
 Select test settings that use a separate PostgreSQL test database.
 The browser check creates its own users and templates in that database.
 
+### Weekly and monthly task views
+
+Weekly/monthly task pages, calendar settings, and host/API setup are documented in
+[Calendar views](CALENDAR_VIEWS.md). The host must supply trusted diary scope to
+the calendar and task-detail routes, as with the existing list views.
+
 ### Task change signals
 
 DFUT-007 provides five Django signals in `Diary.signals`:

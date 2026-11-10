@@ -439,6 +439,19 @@ class DiaryAPI:
         """Return configured task ownership role names as a frozenset."""
         return _task_owner_roles()
 
+    def task_period(self, *, view='week', anchor_date=None, diary_key=None, mode='personal',
+                    include_completed=False, show_blocked=True, include_whole_team=False,
+                    query='', owner='', selected_day=None, page=1, late_page=1, undated_page=1,
+                    period=None, today=None, directory=None):
+        """DFUT-018: Return authorised day buckets and bounded previews for a week or month.
+        Every task retains its diary key. Calendar selection never changes stored dates.
+        """
+        from .task_calendar import task_period
+        return task_period(self, view=view, anchor_date=anchor_date, diary_key=diary_key, mode=mode,
+            include_completed=include_completed, show_blocked=show_blocked, include_whole_team=include_whole_team,
+            query=query, owner=owner, selected_day=selected_day, page=page, late_page=late_page,
+            undated_page=undated_page, period=period, today=today, directory=directory)
+
     # DV1-002: Named milestone API.
     @transaction.atomic
     def define_milestones(self, *, definitions):
@@ -1466,30 +1479,30 @@ class DiaryInstance(_DependencyAPI):
         Return an empty tuple for a closed diary.
         """
 
+        calendar, tasks = self._calendar_tasks(today=today)
+        return () if calendar['closed'] else tuple(item for item in tasks if item['completed_at'] is None)
+
+    def _calendar_tasks(self, *, today=None):
+        """Calculate full-graph status once before privacy filtering, including completion history.
+        Calendar selection may subsequently filter dates without losing out-of-period blockers.
+        """
         today = _comparison_date(today)
         calendar = self._read(filter_visibility=False)
-
-        # A closed diary keeps its records but contributes no active tasks.
-        if calendar['closed']:
-            return ()
         # Aggregate blocker lateness without returning private dates, text, or keys.
         late_keys = {entry['entry_key'] for entry in calendar['entries']
                      if entry['completed_at'] is None and entry['date'] is not None and entry['date'] <= today}
         result = []
         for entry in calendar['entries']:
 
-            # Completion removes a task from active work without deleting its stored entry.
-            if entry['completed_at'] is not None:
-                continue
-
             # Readiness identifies blocking predecessors independently of the separate lateness calculation.
             # Tasks due today are late, while tasks without a due date are not late.
-            result.append({**entry, 'state': 'ready' if entry['ready'] else 'blocked',
-                           'late': entry['date'] is not None and entry['date'] <= today,
+            completed = entry['completed_at'] is not None
+            result.append({**entry, 'state': 'completed' if completed else 'ready' if entry['ready'] else 'blocked',
+                           'late': not completed and entry['date'] is not None and entry['date'] <= today,
                            'blocked_late': any(key in late_keys for key in entry['blocking_predecessors']),
                            'diary_key': calendar['key'], 'diary_name': calendar['name'],
                            'date_not_set': entry['date'] is None})
-        return tuple(sorted(_visible_entries(self.actor, result), key=lambda item: (not item['late'], item['date'] or date.max,
+        return calendar, tuple(sorted(_visible_entries(self.actor, result), key=lambda item: (not item['late'], item['date'] or date.max,
                                                       item['name'].casefold(), str(item['entry_key']))))
 
     # DV1-007: Task reads for one diary.

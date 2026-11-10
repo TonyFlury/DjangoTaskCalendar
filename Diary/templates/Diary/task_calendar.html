@@ -1,0 +1,5 @@
+{% extends diary_base_template|default:"Diary/base.html" %}
+{% load static %}
+{% block diary_title %}Task calendar{% if calendar.diary %} — {{ calendar.diary.name }}{% endif %}{% endblock %}
+{% block diary_content %}{% include 'Diary/partials/task_calendar.html' %}{% endblock %}
+{% block diary_scripts %}<script src="{% static 'Diary/scripts/task_calendar.js' %}" defer></script>{% endblock %}

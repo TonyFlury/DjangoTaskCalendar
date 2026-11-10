@@ -279,6 +279,19 @@ template transfer, migration, and backward compatibility.
   Preserve permissions and provide keyboard-accessible movement and reset controls.
   Implementation: Not started. No release assigned.
 
+- [x] **DFUT-018: Weekly and monthly task views.**
+  Add weekly and monthly presentations of instantiated diary task due dates,
+  with personal/manager scope, day expansion, filters, late/undated attention
+  panels, responsive agendas, and links to existing task actions.
+  Preserve date snapshots, private-task visibility, and unique diary/task identity.
+  Design: [Weekly and monthly task views](docs/design/weekly-monthly-task-views.md).
+  Implementation: `DiaryAPI.task_period`, shared task status, host-extensible calendar
+  page/JSON views, responsive templates, day/filter/help dialogs, and signed task-return links.
+  Documentation: [Calendar views](Diary/CALENDAR_VIEWS.md).
+  Verification: `Diary/tests/test_task_calendar.py` and `Diary/tests/browser_task_calendar.py`.
+  Defaults: Monday first, blocked tasks shown, manager mode limited to one selected diary.
+  This extends the future backlog and does not change the agreed V1 list-view scope.
+
 ## Scope
 
 GarageSale event creation, settings, URL adapters, page wrappers, and dashboard integration belong to the host repository.

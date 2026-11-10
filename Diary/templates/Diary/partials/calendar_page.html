@@ -1,0 +1,8 @@
+<ul class="diary-calendar-day-tasks">
+    {% for task in page.tasks %}{% include 'Diary/partials/calendar_task.html' %}{% empty %}<li>No matching tasks.</li>{% endfor %}
+</ul>
+<nav class="diary-actions diary-calendar-pagination" aria-label="{{ label }} pages">
+    {% if page.previous_url %}<a class="diary-button" href="{{ page.previous_url }}">Previous tasks</a>{% endif %}
+    <span>Page {{ page.page }} of {{ page.pages }}</span>
+    {% if page.next_url %}<a class="diary-button" href="{{ page.next_url }}">Next tasks</a>{% endif %}
+</nav>

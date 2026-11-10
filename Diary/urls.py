@@ -3,12 +3,16 @@ from django.urls import path
 
 from .views import (DiaryDataView, ManagerDiaryView, PersonalDiaryView, TaskCreateView,
                     TaskDetailView, TemplateApplyView, TemplateCreateView, TemplateEditorView)
+from .calendar_views import TaskCalendarView, TaskCalendarDataView
 
 app_name = 'Diary'
 
 # DV1-024: Template chooser and selected-template routes.
 # DV1-018: Required HTML routes exist. Template-to-diary copying is not required.
 urlpatterns = [
+    path('calendar/', TaskCalendarView.as_view(), name='task-calendar'),
+    path('data/calendar/', TaskCalendarDataView.as_view(), name='data-calendar'),
+    path('diaries/<uuid:diary_key>/calendar/', TaskCalendarView.as_view(), name='diary-task-calendar'),
     # Query-free selections for package pages. Hosts can use fixed URLs with trusted context instead.
     path('diaries/<uuid:diary_key>/', PersonalDiaryView.as_view(), name='diary-personal'),
     path('diaries/<uuid:diary_key>/manager/', ManagerDiaryView.as_view(), name='diary-manager'),

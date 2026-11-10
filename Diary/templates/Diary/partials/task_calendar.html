@@ -1,0 +1,83 @@
+<section class="diary diary-task-calendar" aria-labelledby="diary-calendar-heading" data-calendar-view="{{ calendar.view }}">
+    <h1 class="diary-heading" id="diary-calendar-heading">{% if calendar.mode == 'manager' %}Manager calendar{% else %}My task calendar{% endif %}{% if calendar.diary %} — {{ calendar.diary.name }}{% endif %}</h1>
+    {% if calendar_error %}<p class="diary-calendar-error" role="alert">{{ calendar_error }}</p>{{ calendar_form.errors }}{% else %}
+    {% if calendar.diary.closed %}<p class="diary-calendar-archived" role="status">Archived diary. Stored tasks remain visible; existing restrictions on task changes still apply.</p>{% endif %}
+    <nav class="diary-actions diary-calendar-view-tabs" aria-label="Task presentation">
+        {% for tab in calendar_tabs %}<a class="diary-button" href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.name }}</a>{% endfor %}
+    </nav>
+    <div class="diary-calendar-toolbar" role="group" aria-label="Calendar navigation">
+        <a class="diary-button diary-calendar-previous" href="{{ calendar_previous_url }}" aria-label="Previous {{ calendar.period }}" title="Previous {{ calendar.period }}">‹</a>
+        <a class="diary-button diary-calendar-today" href="{{ calendar_today_url }}">Today</a>
+        <a class="diary-button diary-calendar-next" href="{{ calendar_next_url }}" aria-label="Next {{ calendar.period }}" title="Next {{ calendar.period }}">›</a>
+        <h2 class="diary-calendar-period">{% if calendar.period == 'month' %}{{ calendar.anchor_date|date:'F Y' }}{% else %}{{ calendar.start|date:'j M Y' }} – {{ calendar.last_date|date:'j M Y' }}{% endif %}</h2>
+        <form class="diary-calendar-date-form" method="get">
+            {% for name, value in calendar_date_state.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+            <label for="diary-calendar-date">Go to date</label><input class="diary-input" id="diary-calendar-date" type="date" name="date" value="{{ calendar.anchor_date|date:'Y-m-d' }}" required>
+            <button class="diary-button" type="submit">Go</button>
+        </form>
+        <div class="diary-calendar-toolbar-end">
+            <button class="diary-button diary-toolbar-button diary-toolbar-settings diary-calendar-filters-open" type="button" hidden aria-controls="diary-calendar-filter-dialog" aria-label="Calendar filters"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <button class="diary-button diary-toolbar-button diary-toolbar-help diary-calendar-help-open" type="button" hidden aria-controls="diary-calendar-help-dialog" aria-label="Calendar help"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+        </div>
+    </div>
+    <p class="diary-calendar-summary" role="status">{{ calendar.count }} matching tasks in the displayed dates.{% if calendar_filtered %} Filters active.{% endif %} {% if calendar.view == 'month' %}<span class="diary-calendar-mobile-label">Month agenda on narrow screens.</span>{% endif %}</p>
+    <section class="diary-calendar-filters-content" aria-labelledby="diary-calendar-filter-heading">
+        <h2 id="diary-calendar-filter-heading">Calendar filters</h2>
+        <form method="get" class="diary-calendar-filter-form">
+            {% for name, value in calendar_filter_state.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+            {% for field in calendar_filters %}{% include 'Diary/partials/template_field.html' %}{% endfor %}
+            <p class="diary-muted">Manager mode requires a selected permitted diary. Owner filtering applies only in manager mode.</p>
+            <div class="diary-actions"><button class="diary-button diary-button-primary" type="submit">Apply filters</button><a class="diary-button" href="{{ calendar_reset_url }}">Reset filters</a><button class="diary-button" type="button" data-calendar-close hidden>Cancel</button></div>
+        </form>
+    </section>
+    <div class="diary-calendar-weekdays" aria-hidden="true">{% for weekday in calendar.weekdays %}<span>{{ weekday }}</span>{% endfor %}</div>
+    <div class="diary-calendar-grid diary-calendar-{{ calendar.view }}" aria-label="{{ calendar.period|capfirst }} task dates">
+        {% for day in calendar.days %}
+        <section class="diary-calendar-day{% if day.today %} diary-calendar-is-today{% endif %}{% if day.outside_month %} diary-calendar-outside-month{% endif %}{% if day.selected %} diary-calendar-selected{% endif %}" data-calendar-date="{{ day.date|date:'Y-m-d' }}" aria-label="{{ day.date|date:'l j F Y' }}">
+            <h3><a class="diary-calendar-day-open" href="{{ day.url }}" aria-label="Tasks for {{ day.date|date:'l j F Y' }}">{{ day.date|date:'D j M' }}</a>{% if day.today %}<span class="diary-calendar-today-label">Today</span>{% endif %}</h3>
+            <span class="diary-calendar-day-count">{{ day.count }} task{{ day.count|pluralize }}</span>
+            <ul class="diary-calendar-day-tasks">{% for task in day.tasks %}{% include 'Diary/partials/calendar_task.html' %}{% empty %}<li class="diary-muted">No tasks</li>{% endfor %}</ul>
+            {% if day.more %}<a class="diary-calendar-more" href="{{ day.url }}">+{{ day.more }} more · View all {{ day.count }} tasks</a>{% endif %}
+            {% if calendar.period == 'month' %}<a class="diary-calendar-open-week" href="{{ day.week_url }}">Open this week</a>{% endif %}
+        </section>
+        {% endfor %}
+    </div>
+    <nav class="diary-actions diary-calendar-attention" aria-label="Tasks outside the calendar">
+        <a class="diary-button" href="{{ calendar_late_url }}">Late outside this period: {{ calendar.late.count }}</a>
+        <a class="diary-button" href="{{ calendar_undated_url }}">Date not set: {{ calendar.undated.count }}</a>
+    </nav>
+    {% if calendar_show_day %}
+    <section class="diary-calendar-day-panel" aria-labelledby="diary-calendar-day-heading">
+        <h2 id="diary-calendar-day-heading">{{ calendar.day.date|date:'l j F Y' }} · {{ calendar.day.count }} tasks</h2>
+        {% include 'Diary/partials/calendar_page.html' with page=calendar.day label='Day tasks' %}
+        <a class="diary-button" href="{{ calendar_close_url }}" data-calendar-close-link>Back to calendar</a>
+    </section>
+    {% endif %}
+    {% if calendar_show_late %}
+    <section class="diary-calendar-day-panel" aria-labelledby="diary-calendar-late-heading">
+        <h2 id="diary-calendar-late-heading">Late outside this period · {{ calendar.late.count }} tasks</h2>
+        {% include 'Diary/partials/calendar_page.html' with page=calendar.late label='Late tasks' %}
+        <a class="diary-button" href="{{ calendar_close_url }}" data-calendar-close-link>Back to calendar</a>
+    </section>
+    {% endif %}
+    {% if calendar_show_undated %}
+    <section class="diary-calendar-day-panel" aria-labelledby="diary-calendar-undated-heading">
+        <h2 id="diary-calendar-undated-heading">Date not set · {{ calendar.undated.count }} tasks</h2>
+        {% include 'Diary/partials/calendar_page.html' with page=calendar.undated label='Undated tasks' %}
+        <a class="diary-button" href="{{ calendar_close_url }}" data-calendar-close-link>Back to calendar</a>
+    </section>
+    {% endif %}
+    <section class="diary-calendar-help-content" aria-labelledby="diary-calendar-help-heading">
+        <h2 id="diary-calendar-help-heading">Task calendar help</h2>
+        <p>Week and Month show resolved task due dates. List uses the same period and filters. Select a date or a more link to expand that day, then open task details to add notes or perform permitted actions. Use Back to calendar in task details to return here.</p>
+        <p>Blocked tasks are shown by default. Personal mode includes your own tasks and ownership groups; whole-team tasks are optional. Manager mode requires a selected permitted diary. Only visible, matching tasks are counted.</p>
+        <p>Late includes open tasks due today. Late tasks outside the displayed dates and tasks without dates have separate panels. Completed tasks, when enabled, appear on their recorded due date, not their completion day. Annual rules do not repeat tasks.</p>
+        <p>Task-relative dates stay fixed when a source task is late. Calendar navigation does not change any dates. Narrow screens use a chronological agenda. Previous/Next, Today, date selection, filters and day links work without JavaScript.</p>
+        <p>Dates and Today use {{ calendar.time_zone }}. Week order follows the host's calendar setting.</p>
+        <button class="diary-button" type="button" data-calendar-close hidden>Close help</button>
+    </section>
+    <dialog class="diary-calendar-dialog" id="diary-calendar-filter-dialog" aria-labelledby="diary-calendar-filter-heading"></dialog>
+    <dialog class="diary-calendar-dialog" id="diary-calendar-help-dialog" aria-labelledby="diary-calendar-help-heading"></dialog>
+    <dialog class="diary-calendar-dialog diary-calendar-task-day-dialog" aria-label="Expanded task date"></dialog>
+    {% endif %}
+</section>

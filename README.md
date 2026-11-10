@@ -29,8 +29,10 @@ No published package name, supported-version matrix, or release installation pro
 - [Management command help](docs/management-commands/README.md)
 - [Developer guide](Diary/README.md)
 - [User guide](Diary/USER_GUIDE.md)
+- [Weekly and monthly task calendars](Diary/CALENDAR_VIEWS.md)
 - [V1 implementation checklist](Diary/TODO_V1.md)
 - [Design record](docs/design/event-calendar.md)
+- [Weekly and monthly task view proposal](docs/design/weekly-monthly-task-views.md)
 
 These documents preserve the implementation record from the original project.
 Their conversion into a complete standalone documentation set remains open in [TODO.md](TODO.md).

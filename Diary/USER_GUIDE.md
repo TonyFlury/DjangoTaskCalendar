@@ -634,6 +634,10 @@ An unavailable task message does not prove that a task exists.
 
 ## Understand the current limits
 
+Weekly and monthly task pages are available where your host site exposes them.
+See [Weekly and monthly task calendars](CALENDAR_VIEWS.md#using-the-calendar) for
+navigation, filters, expanded days, and returning after task actions.
+
 The current web pages have these limits:
 
 - Personal due-date edits apply only to your own diary additions.
@@ -647,7 +651,7 @@ The current web pages have these limits:
 - Creating or closing a diary depends on your website's separate process.
 - A template can be applied once to an open diary without a template. Additional copying or replacement in an already templated diary is unavailable.
 - **My Diary** lists assigned tasks. The full diary list is a manager page.
-- Reminders, exports, a calendar month view, and future date-window filters are unavailable.
+- Reminders, exports, and general date-window filters in the original list pages are unavailable.
 
 Annual-date selection has a further limit for diaries that last more than 12 months.
 The selected occurrence can be too early for the intended task.
