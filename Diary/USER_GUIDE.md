@@ -421,8 +421,8 @@ There is no separate approval step.
 
 1. Open the template page supplied by your site administrator.
 2. Select **Create template**.
-3. Enter **Template name**.
-4. Enter **Description** if necessary.
+3. In the **Settings** dialog, which opens automatically, enter **Template name**.
+4. Enter **Description** if necessary, then select **Save settings**.
 5. Select **Add task** to open the task editor.
 6. Complete the task fields and select **Save task** to accept them into the draft.
 7. Add more tasks as required, or select a task in the graph to edit it.
@@ -430,6 +430,8 @@ There is no separate approval step.
 
 **Save task** changes only the draft on this page. **Cancel** or Escape discards
 the current task edits; canceling a new task removes it from the draft.
+**Save settings** also changes only the page draft. Its **Cancel** button or
+Escape restores the title and description from before the dialog was opened.
 **Save template** saves the complete draft as a new approved template version.
 Unsaved drafts are lost when you leave or reload the page.
 Without JavaScript or dialog support, task forms remain on the page and
@@ -440,13 +442,19 @@ The template name stays fixed after creation.
 
 1. Open the template page.
 2. Select the template name.
-3. Examine the version number and status.
+3. Open **Settings** to examine the version number and status, then close it.
 4. Select a task in the graph, make your changes, and select **Save task**.
 5. Select **Save template**.
 
 The editor opens the highest version, including a draft when present.
 The save creates and approves another version.
 Older versions and existing diary tasks stay unchanged.
+
+Settings stays closed when you open an existing template. Use **Settings** at the
+right of the navigator toolbar to edit the description; the template name stays
+fixed. Select **Save settings**, then **Save template** to publish the changes.
+Use **Help** beside Settings for guidance on saving, date rules, arrows, zoom,
+and keyboard controls. Close help to return to the navigator.
 
 **Remove task** removes a row from the proposed new version.
 Accept the removal with **Save task**, or undo it with **Cancel**.
@@ -492,6 +500,12 @@ not change your task order in the forms or the saved dependencies.
 
 - Select a box to open its compact task editor, initially focused on the task name.
 - Use **+** and **−** to zoom, or **Fit to screen** to show the whole graph.
+- The toolbar starts with **Add task**, followed by a vertical separator and
+  zoom controls. **Settings** and **Help** are aligned to the right.
+  Buttons use icons; hover over an icon to see its action name. Screen readers
+  announce the same names.
+- Zoom enlarges the contents inside the panel; it does not enlarge the panel.
+  Use its horizontal and vertical scrollbars to reach zoomed content.
 - Scroll inside the graph, or drag its background with a mouse, to move around.
 - Use Tab to reach a task and Enter to edit it. With the graph background focused,
   use **+**, **−**, or **Home** to zoom or fit; arrow keys scroll.

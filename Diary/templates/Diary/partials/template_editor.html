@@ -1,11 +1,9 @@
 {# Partial DV1-041: Namespaced editor content for complete or embedded pages. #}
-<section class="diary diary-template-editor" aria-labelledby="diary-template-heading" data-task-limit="{{ task_forms.max_num }}">
+<section class="diary diary-template-editor" aria-labelledby="diary-template-heading" data-task-limit="{{ task_forms.max_num }}" data-creating="{{ creating|yesno:'true,false' }}">
     <nav class="diary-actions diary-template-navigation" aria-label="Template navigation">
         <a class="diary-button diary-template-back" href="{% url 'Diary:template-list' %}">All templates</a>
     </nav>
     <h1 class="diary-heading" id="diary-template-heading">{% if creating %}Create template{% else %}Edit {{ template_data.name }}{% endif %}</h1>
-    <p class="diary-template-version">{% if template_data.number %}Version {{ template_data.number }} · {{ template_data.status }}.{% else %}No saved version.{% endif %} Save creates and approves a new version.</p>
-    <p class="diary-template-guidance">Existing diaries keep their tasks and dependencies. Template names stay fixed after creation.</p>
     {% if ownership_warnings %}<aside class="diary-template-warnings" aria-label="Ownership warnings" role="status"><ul class="diary-warning-list">{% for warning in ownership_warnings %}<li class="diary-warning">{{ warning }}</li>{% endfor %}</ul></aside>{% endif %}
     <form class="diary-template-form" method="post" action="{{ diary_form_url }}">
         {% csrf_token %}{% include "Diary/partials/form_fields.html" %}
@@ -13,39 +11,68 @@
         {% if header_form.expected_version_key.errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.expected_version_key.errors %}<li class="diary-form-error">Version: {{ error }}</li>{% endfor %}</ul>{% endif %}
         {% if header_form.non_field_errors %}<ul class="diary-form-errors" role="alert">{% for error in header_form.non_field_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
         <div class="diary-card diary-template-metadata">
+            <p class="diary-template-version">{% if template_data.number %}Version {{ template_data.number }} · {{ template_data.status }}.{% else %}No saved version.{% endif %}</p>
             {% include 'Diary/partials/template_field.html' with field=header_form.name %}
             {% include 'Diary/partials/template_field.html' with field=header_form.description %}
-            <p class="diary-template-guidance">Tasks and milestones can both supply a due date. Tasks have owners and completion status; milestones are dates supplied by your site when a diary is created.</p>
         </div>
         {{ task_forms.management_form }}
         {% if task_forms.non_form_errors %}<ul class="diary-form-errors" role="alert">{% for error in task_forms.non_form_errors %}<li class="diary-form-error">{{ error }}</li>{% endfor %}</ul>{% endif %}
-        <h2 class="diary-template-section-title">Tasks</h2>
-        <p class="diary-template-guidance">Use milestone dates, annual dates, or dates calculated from another task. Date sources fix due dates; predecessors identify tasks that must finish first.</p>
-        <div class="diary-actions">
-            <button class="diary-button diary-template-add" type="submit" name="action" value="add_task" formnovalidate>Add task</button>
-            <button class="diary-button diary-button-primary diary-template-save" type="submit" name="action" value="save">Save template</button>
+        <div class="diary-actions diary-graph-toolbar" role="toolbar" aria-label="Template navigator">
+            <button class="diary-button diary-template-add diary-toolbar-button diary-toolbar-add" type="submit" name="action" value="add_task" formnovalidate aria-label="Add task"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <span class="diary-graph-toolbar-separator" aria-hidden="true"></span>
+            <div class="diary-graph-zoom-controls" role="group" aria-label="Graph zoom controls" hidden>
+                <button class="diary-button diary-toolbar-button diary-toolbar-zoom-out" type="button" data-graph-action="out" aria-label="Zoom out"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+                <output class="diary-graph-zoom" aria-label="Graph zoom">100%</output>
+                <button class="diary-button diary-toolbar-button diary-toolbar-zoom-in" type="button" data-graph-action="in" aria-label="Zoom in"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+                <button class="diary-button diary-toolbar-button diary-toolbar-fit" type="button" data-graph-action="fit" aria-label="Fit to screen"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            </div>
+            <span class="diary-graph-toolbar-separator" aria-hidden="true"></span>
+            <button class="diary-button diary-button-primary diary-template-save diary-toolbar-button diary-toolbar-save" type="submit" name="action" value="save" aria-label="Save template"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <div class="diary-graph-toolbar-end" hidden>
+                <button class="diary-button diary-template-settings diary-toolbar-button diary-toolbar-settings" type="button" aria-controls="diary-template-settings-dialog" aria-expanded="false" aria-label="Settings"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+                <button class="diary-button diary-template-help diary-toolbar-button diary-toolbar-help" type="button" aria-controls="diary-template-help-dialog" aria-expanded="false" aria-label="Help"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            </div>
         </div>
         <section class="diary-template-graph diary-card" aria-label="Task graph" hidden>
-            <h3 class="diary-template-section-title">Task connections</h3>
-            <p class="diary-template-guidance">Select a task to edit it. Boxes are tasks; diamonds are milestone dates. Solid arrows show completion prerequisites; dashed arrows show date sources. Save task accepts edits into this draft; Save template publishes the complete version.</p>
-            <details><summary>Date positioning</summary><p class="diary-template-guidance">Negative offsets place tasks above their source; zero and positive offsets place tasks below it. Zero means the same due date. Positions are schematic, not a calendar-day scale. Hover a date arrow for its offset. A solid completion arrow replaces a date arrow between the same tasks.</p></details>
-            <div class="diary-actions diary-graph-toolbar" role="group" aria-label="Graph controls">
-                <button class="diary-button" type="button" data-graph-action="out" aria-label="Zoom out">−</button>
-                <output class="diary-graph-zoom" aria-label="Graph zoom">100%</output>
-                <button class="diary-button" type="button" data-graph-action="in" aria-label="Zoom in">+</button>
-                <button class="diary-button" type="button" data-graph-action="fit">Fit to screen</button>
-            </div>
+            <h2 class="diary-template-section-title">Task connections</h2>
             <p class="diary-graph-status" role="status" aria-live="polite"></p>
             <div class="diary-graph-viewport" tabindex="0" role="region" aria-label="Task connections. Scroll or drag the background to pan. Use plus and minus to zoom, Home to fit.">
                 <svg class="diary-graph-canvas" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Tasks, milestones, completion prerequisites and date relations"></svg>
             </div>
-            <p class="diary-template-guidance">Drag or scroll to pan. Tab to a task and press Enter to edit. On the graph background, use +, −, or Home to zoom or fit.</p>
         </section>
+        <div class="diary-template-help-content">
+            <h2>Template navigator help</h2>
+            <h3>Editing and saving</h3>
+            <p>Select a task box to open its editor. Add task opens a new task. Save task and Save settings accept edits into this page's draft; Save template creates and approves a new version. Unsaved drafts are lost when you leave or reload the page. Existing diaries keep their tasks and dependencies. Template names stay fixed after creation.</p>
+            <h3>Date sources and completion</h3>
+            <p>Tasks and milestones can both supply a due date. Tasks have owners and completion status; milestones are dates supplied by your site when a diary is created. Choose a date source with a signed offset, including zero, or an annual date. Date sources fix due dates; completion prerequisites identify tasks that must finish first. Later source changes or late completion do not move calculated dates.</p>
+            <h3>Connections and positioning</h3>
+            <p>Boxes are tasks; diamonds are milestone dates. Solid arrows show completion prerequisites; dashed arrows show date sources. Hover a date arrow for its offset. A solid completion arrow replaces a date arrow between the same tasks.</p>
+            <p>Negative offsets place tasks above their source; zero and positive offsets place tasks below it, with date arrows entering at the top. Zero means the same due date. Positions are schematic, not a calendar-day scale. Completion arrows can point back toward earlier due dates. The layout reduces crossings but complex graphs can still have them.</p>
+            <h3>Zoom, navigation and accessibility</h3>
+            <p>Use + and − to zoom or Fit to screen to show the complete graph. Drag or scroll inside the navigator to pan. Zoom changes the contents, not the panel size. Tab to a task and press Enter to edit. On the graph background, use +, −, or Home to zoom or fit; arrow keys scroll.</p>
+            <p>Use Find tasks / restore removed tasks below the graph to search by name or restore a removed task. Cancel or Escape discards current dialog edits. Without JavaScript or dialog support, use the inline forms.</p>
+        </div>
+        <dialog class="diary-template-dialog diary-template-settings-dialog" id="diary-template-settings-dialog" aria-labelledby="diary-template-settings-heading">
+            <h2 id="diary-template-settings-heading">Template settings</h2>
+            <div class="diary-template-settings-content"></div>
+            <div class="diary-template-dialog-footer">
+                <p class="diary-template-guidance">Save settings updates this draft. Save template publishes the new version.</p>
+                <div class="diary-actions">
+                    <button class="diary-button diary-button-primary diary-template-settings-save" type="button">Save settings</button>
+                    <button class="diary-button diary-template-settings-cancel" type="button">Cancel</button>
+                </div>
+            </div>
+        </dialog>
+        <dialog class="diary-template-dialog diary-template-help-dialog" id="diary-template-help-dialog" aria-label="Template navigator help">
+            <div class="diary-template-help-container"></div>
+            <div class="diary-template-dialog-footer diary-actions"><button class="diary-button diary-template-help-close" type="button">Close help</button></div>
+        </dialog>
         <noscript><p class="diary-template-guidance">Enable JavaScript to see the task graph. You can still edit tasks and their predecessors using the forms below.</p></noscript>
         <div class="diary-template-task-list">
             {% for form in task_forms %}{% include 'Diary/partials/template_task.html' %}{% endfor %}
         </div>
-        <dialog class="diary-template-dialog" aria-label="Task editor">
+        <dialog class="diary-template-dialog diary-template-task-dialog" aria-label="Task editor">
             <div class="diary-template-dialog-content"></div>
             <div class="diary-template-dialog-footer">
                 <p class="diary-template-guidance">Save task updates this draft. Save template publishes the new version.</p>

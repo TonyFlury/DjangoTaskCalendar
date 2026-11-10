@@ -797,7 +797,7 @@ Include only one editor fragment in each document.
 
 All classes below use the `.diary` namespace.
 Existing class names and CSS variables remain unchanged.
-The editor adds no CSS variables.
+The toolbar's optional CSS properties are documented under Host toolbar overrides below.
 
 The graph is the primary task navigation. With native dialog support, task forms
 open in `.diary-template-dialog`, using a compact responsive grid and a sticky
@@ -807,6 +807,58 @@ complete formset through the existing transactional save. Drafts do not survive
 reloads. `.diary-template-task-index` provides a collapsed searchable alternative
 and access to removed tasks. Without JavaScript or native dialog support, the
 inline forms and server add/save actions remain available.
+The `.diary-graph-toolbar` contains Add task, a vertical separator, zoom controls,
+Save template, and right-aligned Settings/Help actions in `.diary-graph-toolbar-end`.
+Metadata moves into `.diary-template-settings-dialog`, automatically opened for a
+new template and otherwise closed unless a field error requires attention.
+Save settings accepts title/description edits into the draft; Cancel or Escape
+restores the previous values. `.diary-template-help-dialog` contains the navigator
+guidance. All dialogs remain in the existing form and preserve server validation.
+`.diary-graph-viewport` has a viewport-relative height and contains both scrollbars.
+Zoom sets explicit pixel dimensions on the SVG while the panel size remains fixed;
+host styles should preserve the canvas's unconstrained maximum width and the
+viewport's overflow behavior so both edges remain reachable.
+
+#### Host toolbar overrides
+
+Toolbar actions have stable classes: `diary-toolbar-add`, `diary-toolbar-zoom-out`,
+`diary-toolbar-zoom-in`, `diary-toolbar-fit`, `diary-toolbar-save`,
+`diary-toolbar-settings`, and `diary-toolbar-help`. Load host CSS after Diary CSS.
+Each button accepts `--diary-toolbar-icon` (a CSS image, including a full-color
+SVG or PNG URL), `--diary-toolbar-label` (a quoted string), and
+`--diary-toolbar-tooltip` (a quoted string, defaulting to the label).
+Icons appear by default; wording appears in a styled hover or keyboard-focus
+tooltip. Native `title` attributes are not used, so host CSS controls the tooltip.
+
+```css
+/* Both classes belong to the same editor root; no descendant space here. */
+.diary.diary-template-editor {
+    width: 95%;
+    max-width: none; /* Override Diary's default 75rem cap. */
+}
+
+.diary .diary-toolbar-settings {
+    --diary-toolbar-icon: url("../images/template-settings.svg");
+    --diary-toolbar-label: "Template settings";
+    --diary-toolbar-tooltip: "Change the template title and description";
+}
+
+/* Optional icon-and-text skin; omit these rules to retain icon-only buttons. */
+.diary .diary-graph-toolbar {
+    --diary-toolbar-label-display: inline;
+    --diary-toolbar-button-width: auto;
+    --diary-toolbar-icon-size: 1.5rem;
+}
+```
+
+Additional shared properties are `--diary-toolbar-button-height`,
+`--diary-toolbar-icon-display` (use `none` for text-only buttons), and
+`--diary-toolbar-tooltip-display`. The `.diary-toolbar-icon`,
+`.diary-toolbar-label`, and `.diary-toolbar-tooltip` classes expose the individual
+parts for direct styling. Button actions and accessible `aria-label` names remain
+in the HTML; CSS changes presentation, not those semantics. Hosts needing different
+accessible wording should override the template as well. Relative image URLs are
+resolved from the host stylesheet, not the page URL.
 The dialog combines tasks and milestones in `.diary-template-date-source`; both
 use the existing signed day offset. The underlying API date kinds and stored
 milestones remain compatible. Legacy `source` rules render as milestone-relative

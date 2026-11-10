@@ -63,9 +63,9 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         return self.driver.find_element(By.CSS_SELECTOR, f'.diary-graph-node[data-task-key="{spec.entry_key}"]')
 
     def save_task(self):
-        if self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'):
+        if self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog').get_attribute('open'):
             self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
-            self.assertFalse(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'),
+            self.assertFalse(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog').get_attribute('open'),
                 self.driver.execute_script("return Array.from(document.querySelectorAll(':invalid'), el => [el.name, el.validationMessage])"))
 
     def row(self, spec):
@@ -99,6 +99,125 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
             offset.clear()
             offset.send_keys('0')
 
+    def test_host_css_controls_toolbar_icons_labels_and_tooltips(self):
+        driver = self.driver
+        button = driver.find_element(By.CSS_SELECTOR, '.diary-toolbar-settings')
+        label = button.find_element(By.CSS_SELECTOR, '.diary-toolbar-label')
+        tooltip = button.find_element(By.CSS_SELECTOR, '.diary-toolbar-tooltip')
+        self.assertFalse(label.is_displayed())
+        self.assertFalse(tooltip.is_displayed())
+        self.assertFalse(button.get_attribute('title'))
+        driver.execute_script('''
+            const style = document.createElement('style');
+            style.textContent = `
+                .diary .diary-toolbar-settings {
+                    --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' id='host-icon'/%3E");
+                    --diary-toolbar-label: "Host settings";
+                    --diary-toolbar-tooltip: "Host settings help";
+                }
+                .diary .diary-graph-toolbar {
+                    --diary-toolbar-label-display: inline;
+                    --diary-toolbar-button-width: auto;
+                }
+            `;
+            document.head.append(style);
+        ''')
+        self.assertTrue(label.is_displayed())
+        self.assertEqual(driver.execute_script('return getComputedStyle(arguments[0], "::before").content', label),
+                         '"Host settings"')
+        icon = button.find_element(By.CSS_SELECTOR, '.diary-toolbar-icon')
+        self.assertIn('host-icon', driver.execute_script('return getComputedStyle(arguments[0]).backgroundImage', icon))
+        ActionChains(driver).move_to_element(button).perform()
+        self.assertTrue(tooltip.is_displayed())
+        self.assertEqual(driver.execute_script('return getComputedStyle(arguments[0], "::before").content', tooltip),
+                         '"Host settings help"')
+        self.assertEqual(button.get_attribute('aria-label'), 'Settings')
+        icon.click()
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-dialog').get_attribute('open'))
+
+    def test_settings_help_and_creation_defaults(self):
+        driver = self.driver
+        settings = driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-dialog')
+        self.assertFalse(settings.get_attribute('open'))
+        self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata').is_displayed())
+        viewport = driver.find_element(By.CSS_SELECTOR, '.diary-graph-viewport')
+        self.assertLess(viewport.rect['y'], 350, 'Navigator should be visible near the top of an edit page')
+        if os.environ.get('DIARY_NAVIGATOR_SCREENSHOT'):
+            driver.save_screenshot(os.environ['DIARY_NAVIGATOR_SCREENSHOT'])
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings').click()
+        description = driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata textarea')
+        original = description.get_attribute('value')
+        description.send_keys('Discard settings')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-cancel').click()
+        self.assertEqual(description.get_attribute('value'), original)
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings').click()
+        description.send_keys('Accepted settings')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-save').click()
+        self.assertFalse(settings.get_attribute('open'))
+        self.assertEqual(TemplateVersion.objects.count(), 1)
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-help').click()
+        help_dialog = driver.find_element(By.CSS_SELECTOR, '.diary-template-help-dialog')
+        self.assertTrue(help_dialog.get_attribute('open'))
+        self.assertIn('Date sources and completion', help_dialog.text)
+        self.assertIn('Zoom, navigation and accessibility', help_dialog.text)
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-help-close').click()
+        self.assertEqual(driver.switch_to.active_element, driver.find_element(By.CSS_SELECTOR, '.diary-template-help'))
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
+        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
+        self.assertEqual(self.template.editor_data()['description'], original + 'Accepted settings')
+
+        driver.get(self.live_server_url + '/diary/templates/new/')
+        settings = driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-dialog')
+        self.assertTrue(settings.get_attribute('open'))
+        if os.environ.get('DIARY_SETTINGS_SCREENSHOT'):
+            driver.save_screenshot(os.environ['DIARY_SETTINGS_SCREENSHOT'])
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-save').click()
+        self.assertTrue(settings.get_attribute('open'), 'A new template requires a name')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-cancel').click()
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
+        self.assertTrue(settings.get_attribute('open'), 'Template validation must reveal hidden settings')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata input').send_keys('New settings')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-save').click()
+        self.assertEqual(TemplateVersion.objects.count(), 2)
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings').click()
+        name = driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata input')
+        name.clear()
+        name.send_keys('Canceled settings')
+        name.send_keys(Keys.ESCAPE)
+        self.assertEqual(name.get_attribute('value'), 'New settings')
+
+    def test_zoom_keeps_panel_fixed_and_both_sides_scrollable(self):
+        driver = self.driver
+        for width in (1400, 1024, 768, 390):
+            with self.subTest(width=width):
+                driver.set_window_size(width, 1000)
+                driver.find_element(By.CSS_SELECTOR, '[data-graph-action="fit"]').click()
+                panel = driver.find_element(By.CSS_SELECTOR, '.diary-template-graph')
+                viewport = driver.find_element(By.CSS_SELECTOR, '.diary-graph-viewport')
+                before = panel.rect
+                driver.execute_script('''
+                    const button = document.querySelector('[data-graph-action="in"]');
+                    for (let i = 0; i < 25 && !button.disabled; i++) button.click();
+                ''')
+                self.assertAlmostEqual(panel.rect['width'], before['width'], delta=1)
+                self.assertAlmostEqual(panel.rect['height'], before['height'], delta=1)
+                bounds = driver.execute_script('''
+                    const v = arguments[0], s = v.querySelector('svg');
+                    v.scrollLeft = 0;
+                    const left = s.getBoundingClientRect().left - v.getBoundingClientRect().left;
+                    v.scrollLeft = v.scrollWidth;
+                    return {left, right: s.getBoundingClientRect().right - v.getBoundingClientRect().right,
+                            scrollable: v.scrollWidth > v.clientWidth,
+                            pageFits: document.documentElement.scrollWidth <= innerWidth};
+                ''', viewport)
+                self.assertTrue(bounds['scrollable'])
+                self.assertGreaterEqual(bounds['left'], 0, 'Left edge must remain reachable')
+                self.assertLessEqual(bounds['right'], 1, 'Right edge must remain reachable')
+                self.assertTrue(bounds['pageFits'])
+                toolbar = driver.find_element(By.CSS_SELECTOR, '.diary-graph-toolbar')
+                tools = driver.find_element(By.CSS_SELECTOR, '.diary-graph-toolbar-end')
+                self.assertAlmostEqual(tools.rect['x'] + tools.rect['width'], toolbar.rect['x'] + toolbar.rect['width'], delta=2)
+
     def test_dialog_cancel_draft_save_and_shared_date_sources(self):
         driver = self.driver
         start, book = self.specs[:2]
@@ -122,7 +241,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
 
         driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
         driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
-        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'))
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog').get_attribute('open'))
         driver.find_element(By.CSS_SELECTOR, '.diary-template-task-cancel').click()
         self.wait.until(lambda browser: self.count('.diary-graph-node') == 6)
         self.assertEqual(driver.find_element(By.NAME, 'tasks-TOTAL_FORMS').get_attribute('value'), '6')
@@ -138,15 +257,15 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         name.send_keys('Saved in draft')
         driver.set_window_size(390, 900)
         self.assertTrue(driver.execute_script('return document.documentElement.scrollWidth <= innerWidth'))
-        self.assertTrue(driver.execute_script('const d = document.querySelector("dialog"); return d.scrollWidth <= d.clientWidth + 1'))
+        self.assertTrue(driver.execute_script('const d = document.querySelector(".diary-template-task-dialog"); return d.scrollWidth <= d.clientWidth + 1'))
         self.assertTrue(driver.execute_script('const r = document.querySelector(".diary-template-task-save").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight'))
         if os.environ.get('DIARY_DIALOG_SCREENSHOT'):
             driver.save_screenshot(os.environ['DIARY_DIALOG_SCREENSHOT'])
         self.save_task()
-        self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'))
+        self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog').get_attribute('open'))
         self.assertEqual(TemplateVersion.objects.count(), 1, 'Task save must not publish the template')
         driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
-        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
         saved = next(entry for entry in self.template.latest_version().read()['entries'] if entry['entry_key'] == book.entry_key)
         self.assertEqual((saved['name'], saved['date_kind'], saved['source_task_key'], saved['day_offset']),
                          ('Saved in draft', DateKind.TASK, start.entry_key, 0))
@@ -208,20 +327,23 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
     def test_empty_unnamed_and_larger_graph(self):
         driver = self.driver
         driver.get(self.live_server_url + '/diary/templates/new/')
+        driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-cancel').click()
         self.wait.until(lambda browser: 'No tasks yet' in browser.find_element(By.CSS_SELECTOR, '.diary-graph-status').text)
         self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-graph-viewport').is_displayed())
+        self.assertEqual(driver.find_element(By.CSS_SELECTOR, '.diary-graph-zoom').get_attribute('value'), '100%')
+        self.assertFalse(driver.find_element(By.CSS_SELECTOR, '[data-graph-action="in"]').is_enabled())
         driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
         self.wait.until(lambda browser: self.count('.diary-graph-node') == 1)
         self.assertIn('Unnamed task', driver.find_element(By.CSS_SELECTOR, '.diary-graph-node').get_attribute('aria-label'))
-        name = driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog .diary-template-field-name')
+        name = driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog .diary-template-field-name')
         name.send_keys('First task')
-        self.choose_date(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog .diary-template-task'), 'annual')
+        self.choose_date(self.driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog .diary-template-task'), 'annual')
         self.save_task()
         # Add enough proposed tasks to require zoom/scroll, without creating database records.
         driver.execute_script('''
             for (let i = 0; i < 24; i++) {
                 document.querySelector('.diary-template-add').click();
-                const row = document.querySelector('.diary-template-dialog .diary-template-task');
+                const row = document.querySelector('.diary-template-task-dialog .diary-template-task');
                 row.querySelector('.diary-template-field-name').value = 'Added task ' + i;
                 const mode = row.querySelector('.diary-template-date-mode');
                 mode.value = 'annual'; mode.dispatchEvent(new Event('change', {bubbles: true}));
@@ -258,7 +380,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
         Select(row.find_element(By.CSS_SELECTOR, '.diary-template-field-predecessors')).deselect_all()
         self.save_task()
         driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
-        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        self.wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
         version = self.template.latest_version()
         saved = next(entry for entry in version.read()['entries'] if entry['entry_key'] == book.entry_key)
         self.assertEqual((saved['date_kind'], saved['source_task_key'], saved['day_offset']),
@@ -275,7 +397,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
                           for index, sources in graph.items()}, expected_version_key=self.version.key)
         self.driver.refresh()
         self.wait.until(lambda browser: self.count('.diary-graph-node') == len(specs)
-                         and 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+                         and 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
         return specs
 
     def test_layout_removes_avoidable_crossings_in_connected_branches(self):
@@ -521,7 +643,7 @@ class TemplateGraphBrowserTests(StaticLiveServerTestCase):
 
         self.save_task()
         self.driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
-        self.wait.until(lambda browser: 'Version 3' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+        self.wait.until(lambda browser: 'Version 3' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
         version = self.template.latest_version()
         saved = {entry['entry_key']: entry for entry in version.read()['entries']}
         self.assertEqual(saved[book.entry_key]['day_offset'], 0)

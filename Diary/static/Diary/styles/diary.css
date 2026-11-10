@@ -212,14 +212,40 @@
 .diary .diary-note-form textarea { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }
 
 /* DFUT-011 preview: inherit the host's Diary palette, with scrolling inside the graph. */
-.diary .diary-template-graph { min-width: 0; max-width: 100%; }
-.diary .diary-graph-toolbar { align-items: center; }
+.diary .diary-template-form { min-width: 0; max-width: 100%; }
+.diary .diary-template-graph { min-width: 0; width: 100%; max-width: 100%; overflow: hidden; margin-block: .5rem; }
+.diary .diary-template-graph > .diary-template-section-title { margin-block: 0 .25rem; font-size: 1.125rem; }
+.diary .diary-template-navigation { margin-block: 0 .5rem; }
+.diary .diary-template-version { margin-block: .25rem .5rem; }
+.diary .diary-graph-toolbar { align-items: center; flex-direction: row; gap: .5rem; margin-block: .5rem; }
+/* Per-action CSS variables let hosts replace graphics and presentation text. */
+.diary .diary-toolbar-add { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M14%202H5v20h14V7z%20M14%202v5h5%20M8%2014h8%20M12%2010v8%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Add task"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-zoom-out { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M5%2012h14%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Zoom out"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-zoom-in { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M5%2012h14%20M12%205v14%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Zoom in"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-fit { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M9%203H3v6%20M15%203h6v6%20M3%2015v6h6%20M21%2015v6h-6%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Fit to screen"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-save { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22white%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M4%203h13l4%204v14H3V3z%20M7%203v6h10V3%20M7%2021v-8h10v8%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Save template"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-settings { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Cpath%20d%3D%22M4%207h4%20M12%207h8%20M4%2017h8%20M16%2017h4%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%227%22%20r%3D%222%22%2F%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2217%22%20r%3D%222%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Settings"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-help { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20viewBox%3D%220%200%2024%2024%22%20aria-hidden%3D%22true%22%20focusable%3D%22false%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M9%209a3%203%200%200%201%206%200c0%202-3%202-3%204%20M12%2016h.01%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Help"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-graph-toolbar .diary-toolbar-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; width: var(--diary-toolbar-button-width, 2.75rem); height: var(--diary-toolbar-button-height, 2.75rem); padding: .5rem; flex: 0 0 auto; }
+.diary .diary-toolbar-icon { display: var(--diary-toolbar-icon-display, block); width: var(--diary-toolbar-icon-size, 1.25rem); height: var(--diary-toolbar-icon-size, 1.25rem); flex: 0 0 auto; background-image: var(--diary-toolbar-icon); background-size: contain; background-repeat: no-repeat; background-position: center; }
+.diary .diary-toolbar-label { display: var(--diary-toolbar-label-display, none); }
+.diary .diary-toolbar-label::before { content: var(--diary-toolbar-label); }
+.diary .diary-toolbar-tooltip { position: absolute; z-index: 10; top: calc(100% + .4rem); left: 0; display: none; width: max-content; max-width: min(18rem, 80vw); white-space: normal; padding: .35rem .5rem; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-surface); color: var(--diary-text); font-size: .875rem; font-weight: normal; pointer-events: auto; }
+.diary .diary-toolbar-tooltip::before { content: var(--diary-toolbar-tooltip, var(--diary-toolbar-label)); }
+.diary .diary-toolbar-button:hover .diary-toolbar-tooltip,
+.diary .diary-toolbar-button:focus-visible .diary-toolbar-tooltip { display: var(--diary-toolbar-tooltip-display, block); }
+.diary .diary-graph-toolbar-end .diary-toolbar-tooltip { left: auto; right: 0; }
+.diary .diary-graph-toolbar-separator { align-self: stretch; border-inline-start: 1px solid var(--diary-border); margin-inline: .25rem; }
+.diary .diary-graph-zoom-controls, .diary .diary-graph-toolbar-end { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.diary .diary-graph-toolbar-end { margin-inline-start: auto; justify-content: flex-end; }
+.diary .diary-graph-toolbar [hidden], .diary .diary-graph-toolbar .diary-template-hidden { display: none; }
 .diary .diary-graph-zoom { min-width: 3.5rem; text-align: center; }
-.diary .diary-graph-status { color: var(--diary-muted); overflow-wrap: anywhere; }
-.diary .diary-graph-viewport { width: 100%; max-width: 100%; max-height: 32rem; overflow: auto; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-background); cursor: grab; }
+.diary .diary-graph-status { color: var(--diary-muted); overflow-wrap: anywhere; margin-block: .25rem .5rem; }
+.diary .diary-graph-viewport { display: block; min-width: 0; width: 100%; max-width: 100%; height: clamp(16rem, calc(100dvh - 19rem), 48rem); max-height: 48rem; contain: inline-size; overflow: auto; direction: ltr; text-align: left; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-background); cursor: grab; }
+.diary .diary-graph-viewport[hidden] { display: none; }
 .diary .diary-graph-viewport:focus-visible { outline: 3px solid var(--diary-focus); outline-offset: 2px; }
 .diary .diary-graph-dragging { cursor: grabbing; user-select: none; }
-.diary .diary-graph-canvas { display: block; max-width: none; margin-inline: auto; font: 14px/1.4 sans-serif; }
+.diary .diary-graph-canvas { display: block; flex: none; max-width: none; margin-inline: auto; font: 14px/1.4 sans-serif; }
 .diary .diary-graph-edge { fill: none; stroke: var(--diary-accent); stroke-width: 2; }
 .diary .diary-graph-arrow { fill: var(--diary-accent); }
 .diary .diary-graph-node { cursor: pointer; text-decoration: none; }

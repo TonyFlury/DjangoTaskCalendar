@@ -327,7 +327,9 @@
         const viewport = panel.querySelector('.diary-graph-viewport');
         const svg = panel.querySelector('svg');
         const status = panel.querySelector('.diary-graph-status');
-        const zoom = panel.querySelector('.diary-graph-zoom');
+        const toolbar = editor.querySelector('.diary-graph-toolbar');
+        const zoom = toolbar.querySelector('.diary-graph-zoom');
+        show(toolbar.querySelector('.diary-graph-zoom-controls'), true);
         const markerId = `diary-graph-arrow-${entryKey()}`;
         const milestoneLabels = new Map(milestones.map(milestone => [milestone.name, milestone.label]));
         let width = 1, height = 1, scale = 1, fitting = true, pending = 0, latest = [];
@@ -341,15 +343,20 @@
         }
 
         function resize() {
-            if (fitting) {
-                const maxHeight = parseFloat(getComputedStyle(viewport).maxHeight) || height;
-                scale = Math.min(1, Math.max(1, viewport.clientWidth - 8) / width, (maxHeight - 8) / height);
+            if (!latest.length) scale = 1;
+            else if (fitting) {
+                scale = Math.min(1, Math.max(1, viewport.clientWidth - 8) / width,
+                    Math.max(1, viewport.clientHeight - 8) / height);
             }
             svg.setAttribute('width', String(Math.ceil(width * scale)));
             svg.setAttribute('height', String(Math.ceil(height * scale)));
+            // Explicit CSS dimensions prevent host SVG sizing rules from shrinking the scrollable canvas.
+            svg.style.width = `${Math.ceil(width * scale)}px`;
+            svg.style.height = `${Math.ceil(height * scale)}px`;
             zoom.value = `${Math.round(scale * 100)}%`;
-            panel.querySelector('[data-graph-action="in"]').disabled = scale >= 2;
-            panel.querySelector('[data-graph-action="out"]').disabled = scale <= .1;
+            toolbar.querySelector('[data-graph-action="in"]').disabled = !latest.length || scale >= 2;
+            toolbar.querySelector('[data-graph-action="out"]').disabled = !latest.length || scale <= .1;
+            toolbar.querySelector('[data-graph-action="fit"]').disabled = !latest.length;
         }
 
         function changeZoom(action) {
@@ -359,7 +366,7 @@
             if (fitting) viewport.scrollTo(0, 0);
         }
 
-        panel.querySelector('.diary-graph-toolbar').addEventListener('click', event => {
+        toolbar.addEventListener('click', event => {
             const button = event.target.closest('[data-graph-action]');
             if (button) changeZoom(button.dataset.graphAction);
         });
@@ -523,7 +530,7 @@
             const dateCount = visibleLinks.filter(link => link[2] === 'date').length;
             const summary = taskNodes.length
                 ? `${taskNodes.length} tasks · ${milestoneNodes.size} milestones · ${visibleLinks.length - dateCount} completion connections · ${dateCount} date relations.`
-                : 'No tasks yet. Add a task below to start the graph.';
+                : 'No tasks yet. Use Add task to start the graph.';
             status.textContent = summary + (cyclic || invalid ? ' Check task keys, milestones, and predecessor selections; this preview is not a valid dependency order.' : '');
             viewport.hidden = !taskNodes.length;
             resize();
@@ -552,12 +559,67 @@
         const taskLimit = Number(editor.dataset.taskLimit);
         const updateGraph = taskGraph(editor, milestones);
         const rows = Array.from(list.querySelectorAll('.diary-template-task'));
-        const dialog = editor.querySelector('.diary-template-dialog');
+        const dialog = editor.querySelector('.diary-template-task-dialog');
         const enhanced = typeof dialog.showModal === 'function';
         const index = editor.querySelector('.diary-template-task-index');
         const indexButtons = editor.querySelector('.diary-template-task-buttons');
         const search = editor.querySelector('.diary-template-task-search');
+        const metadata = editor.querySelector('.diary-template-metadata');
+        const settingsDialog = editor.querySelector('.diary-template-settings-dialog');
+        const helpDialog = editor.querySelector('.diary-template-help-dialog');
+        const settingsButton = editor.querySelector('.diary-template-settings');
+        const helpButton = editor.querySelector('.diary-template-help');
+        let settingsSnapshot = [], settingsFocus = null;
         let editing = null, snapshot = [], isNew = false, returnFocus = null;
+
+        function openSettings() {
+            if (!enhanced || settingsDialog.open || dialog.open || helpDialog.open) return;
+            settingsFocus = document.activeElement;
+            settingsSnapshot = Array.from(metadata.querySelectorAll('input, textarea'), control => ({control, value: control.value}));
+            settingsDialog.showModal();
+            settingsButton.setAttribute('aria-expanded', 'true');
+            const first = metadata.querySelector('input:not(:disabled), textarea');
+            if (first) first.focus();
+        }
+
+        function closeSettings(accept) {
+            if (!settingsDialog.open) return;
+            if (accept) {
+                const invalid = Array.from(metadata.querySelectorAll('input, textarea')).find(control => !control.checkValidity());
+                if (invalid) { invalid.reportValidity(); return; }
+            } else {
+                for (const {control, value} of settingsSnapshot) control.value = value;
+            }
+            settingsDialog.close();
+            settingsButton.setAttribute('aria-expanded', 'false');
+            message.textContent = accept ? 'Settings saved to draft. Save template to publish the new version.' : 'Settings edits canceled.';
+            if (settingsFocus && settingsFocus !== document.body && settingsFocus.isConnected) settingsFocus.focus();
+            else settingsButton.focus();
+        }
+
+        if (enhanced) {
+            settingsDialog.querySelector('.diary-template-settings-content').append(metadata);
+            helpDialog.querySelector('.diary-template-help-container').append(editor.querySelector('.diary-template-help-content'));
+            show(editor.querySelector('.diary-graph-toolbar-end'), true);
+            settingsButton.addEventListener('click', () => settingsDialog.open ? closeSettings(false) : openSettings());
+            editor.querySelector('.diary-template-settings-save').addEventListener('click', () => closeSettings(true));
+            editor.querySelector('.diary-template-settings-cancel').addEventListener('click', () => closeSettings(false));
+            settingsDialog.addEventListener('cancel', event => { event.preventDefault(); closeSettings(false); });
+            settingsDialog.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && event.target.matches('input')) {
+                    event.preventDefault(); closeSettings(true);
+                }
+            });
+            helpButton.addEventListener('click', () => {
+                if (!helpDialog.open && !dialog.open && !settingsDialog.open) {
+                    helpDialog.showModal(); helpButton.setAttribute('aria-expanded', 'true');
+                }
+            });
+            editor.querySelector('.diary-template-help-close').addEventListener('click', () => helpDialog.close());
+            helpDialog.addEventListener('close', () => {
+                helpButton.setAttribute('aria-expanded', 'false'); helpButton.focus();
+            });
+        }
 
         /** Keep canceled edits, including removed source choices, out of the draft. */
         function capture() {
@@ -639,9 +701,10 @@
         form.addEventListener('invalid', event => {
             const row = event.target.closest('.diary-template-task');
             if (row && enhanced) { event.preventDefault(); openTask(row); }
+            else if (enhanced && metadata.contains(event.target)) { event.preventDefault(); openSettings(); }
         }, true);
         form.addEventListener('submit', event => {
-            if (editing) { event.preventDefault(); return; }
+            if (editing || settingsDialog.open || helpDialog.open) { event.preventDefault(); return; }
         });
         search.addEventListener('input', updateIndex);
         function updateIndex() {
@@ -922,6 +985,7 @@
             show(index, true);
             const errorRow = rows.find(row => row.querySelector('.diary-field-error, .diary-form-error'));
             if (errorRow) openTask(errorRow);
+            else if (editor.dataset.creating === 'true' || metadata.querySelector('.diary-field-error')) openSettings();
         }
     }
 

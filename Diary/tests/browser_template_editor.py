@@ -49,6 +49,7 @@ class EditorBrowserTests(StaticLiveServerTestCase):
                                'value': self.client.cookies[settings.SESSION_COOKIE_NAME].value, 'path': '/'})
             driver.get(self.live_server_url + '/diary/templates/new/')
             driver.find_element(By.CSS_SELECTOR, '.diary-template-metadata .diary-template-field-name').send_keys('Browser template')
+            driver.find_element(By.CSS_SELECTOR, '.diary-template-settings-save').click()
             self.assertEqual(driver.find_elements(By.CSS_SELECTOR, '[name="milestone_names"]'), [])
             driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
             rows = driver.find_elements(By.CSS_SELECTOR, '.diary-template-editor .diary-template-task')
@@ -62,7 +63,7 @@ class EditorBrowserTests(StaticLiveServerTestCase):
                 Select(first.find_element(By.CSS_SELECTOR, '.diary-template-date-source')).options], ['', 'milestone:target', 'milestone:unused'])
             first.find_element(By.CSS_SELECTOR, '.diary-template-field-day-offset').send_keys('-7')
             driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
-            self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-dialog').get_attribute('open'),
+            self.assertFalse(driver.find_element(By.CSS_SELECTOR, '.diary-template-task-dialog').get_attribute('open'),
                 driver.execute_script("return Array.from(document.querySelectorAll('input:invalid, select:invalid, textarea:invalid'), el => [el.name, el.id, el.validationMessage])"))
             driver.find_element(By.CSS_SELECTOR, '.diary-template-add').click()
             second = driver.find_element(By.CSS_SELECTOR, '.diary-template-task:has([name="tasks-1-entry_key"])')
@@ -102,7 +103,7 @@ class EditorBrowserTests(StaticLiveServerTestCase):
             rows[1].find_element(By.CSS_SELECTOR, '.diary-template-remove').click()
             driver.find_element(By.CSS_SELECTOR, '.diary-template-task-save').click()
             driver.find_element(By.CSS_SELECTOR, '.diary-template-save').click()
-            wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').text)
+            wait.until(lambda browser: 'Version 2' in browser.find_element(By.CSS_SELECTOR, '.diary-template-version').get_attribute('textContent'))
             self.assertEqual(TemplateVersion.objects.count(), 2)
             self.assertEqual(TemplateVersion.objects.order_by('-number').first().entries.count(), 1)
             self.assertEqual(CalendarTemplate.objects.count(), 1)
