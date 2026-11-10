@@ -1,7 +1,7 @@
 """DFUT-007: Committed task events for host applications.
 
-Receivers accept sender, user, task, and **kwargs (including 'task-name').
-The sender is CalendarEntry or TemplateEntry; task is the stable UUID.
+Receivers accept sender, user, task, diary_key, template_version_key, and **kwargs
+(including 'task-name'). Pair task with its non-null scope key to identify a copy.
 """
 from django.db import transaction
 from django.dispatch import Signal
@@ -19,7 +19,9 @@ def _queue_task_event(signal, *, actor, entry):
     Receiver failures are logged by Django and cannot undo a committed change.
     Email is trusted caller context, never a submitted form value.
     """
-    payload = {'user': actor.email, 'task': entry.entry_key, 'task-name': entry.name}
+    payload = {'user': actor.email, 'task': entry.entry_key, 'task-name': entry.name,
+               'diary_key': getattr(entry, 'calendar_id', None),
+               'template_version_key': getattr(entry, 'version_id', None)}
     sender = type(entry)
 
     def dispatch():

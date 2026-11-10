@@ -1,5 +1,18 @@
 # Version timeline
 
+## Unreleased
+
+- Extended all five task signals with `diary_key` and `template_version_key`.
+  Pair the non-null scope key with the existing `task` UUID to distinguish reused
+  task keys across diaries and template versions. Existing payload fields remain.
+- Added explicit diary/task identity to diary task and note records, and scope
+  keys to predecessor choices and template-version task records. Existing mutation
+  arguments, UUID return values, permissions, and post-commit delivery remain intact.
+- Added regression coverage for identical task UUIDs in two diaries and multiple
+  template versions, alongside existing UI attribution and receiver-failure tests.
+
+## Recorded versions
+
 Reconstructed on 10 November 2026 from local Git history through version
 **0.1.10.1**, merging `feature/dfut-007-task-signals` into `main`.
 The main tip before that merge was `acc4895`.

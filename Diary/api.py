@@ -347,7 +347,7 @@ class _DependencyAPI(_BoundObject):
     # DV1-006: Saved dependency validation.
     def available_predecessors(self, *, entry_key):
         """Return same-scope predecessor choices excluding this task and all its successors.
-        Each result contains the entry key and display name.
+        Each result contains the entry key, display name, and diary/template-version scope.
         """
         actor, scope_key, template = self.actor, self.key, self._template_scope
         scope, model, links, field_name = _scope(actor, scope_key, template, 'view')
@@ -383,7 +383,9 @@ class _DependencyAPI(_BoundObject):
         for item, predecessor in link_pairs:
             if item in by_pk and predecessor in by_pk:
                 by_pk[item]['predecessors'].append(by_pk[predecessor]['entry_key'])
-        return tuple({'entry_key': item['entry_key'], 'name': item['name']}
+        return tuple({'entry_key': item['entry_key'], 'name': item['name'],
+                      'diary_key': None if template else scope_key,
+                      'template_version_key': scope_key if template else None}
                      for item in ordered_task_choices(candidates) if item['pk'] not in excluded)
 
     # DV1-006, DV1-028: Only draft template dependencies can change in V1.
@@ -858,6 +860,7 @@ class DiaryTemplateVersion(_DependencyAPI):
                 'status': version.status,
                 'milestones': self.required_milestones(),
                 'entries': tuple({**EntryMapper.snapshot_fields(entry),
+                                  'template_version_key': version.pk,
                                   'milestone_name': entry.milestone.name if entry.milestone_id else None,
                                   'predecessors': tuple(entry.predecessors.values_list('entry_key', flat=True))}
                                  for entry in version.entries.select_related('milestone'))}
@@ -1260,9 +1263,9 @@ class DiaryInstance(_DependencyAPI):
                 or (entry.owner_kind == OwnerKind.PERSON and entry.person_ref == self.actor.reference)
                 or (entry.owner_kind == OwnerKind.ROLE and entry.role_ref in self.actor.groups))
 
-    @staticmethod
-    def _note_data(note, labels):
-        return {'key': note.pk, 'text': note.text, 'author_ref': note.author_ref,
+    def _note_data(self, note, labels, *, entry_key):
+        return {'key': note.pk, 'diary_key': self.key, 'entry_key': entry_key,
+                'text': note.text, 'author_ref': note.author_ref,
                 'author_label': labels.get(note.author_ref, 'deleted user'), 'created_at': note.created_at}
 
     @staticmethod
@@ -1282,7 +1285,7 @@ class DiaryInstance(_DependencyAPI):
         entry = self._task_entry(_calendar(self.actor, self.key), entry_key)
         notes = tuple(entry.notes.all())
         labels = self._note_author_labels({note.author_ref for note in notes})
-        return tuple(self._note_data(note, labels) for note in notes)
+        return tuple(self._note_data(note, labels, entry_key=entry.entry_key) for note in notes)
 
     @transaction.atomic
     def add_note(self, *, entry_key, text, note_key=None):
@@ -1306,10 +1309,10 @@ class DiaryInstance(_DependencyAPI):
         if existing:
             if (existing.entry_id, existing.author_ref, existing.text) != (entry.pk, self.actor.reference, text):
                 raise ValidationError('This note key was already used. Reload before adding a new note.')
-            return self._note_data(existing, self._note_author_labels({existing.author_ref}))
+            return self._note_data(existing, self._note_author_labels({existing.author_ref}), entry_key=entry.entry_key)
         note = TaskNote.objects.create(id=key, entry=entry, text=text, author_ref=self.actor.reference)
         _queue_task_event(task_note_added, actor=self.actor, entry=entry)
-        return self._note_data(note, self._note_author_labels({note.author_ref}))
+        return self._note_data(note, self._note_author_labels({note.author_ref}), entry_key=entry.entry_key)
 
     # DV1-032: Users edit their personal additions, while managers can also edit template-task dates.
     @transaction.atomic
@@ -1429,7 +1432,8 @@ class DiaryInstance(_DependencyAPI):
             # DV1-022, DV1-052: Managers can display task origin and the completing actor.
             # A source-entry reference distinguishes copied tasks from diary additions.
             # DV1-032, DV1-036: Open tasks use effective date overrides, while completed tasks keep their recorded dates.
-            entries.append({'entry_key': entry.entry_key, 'name': entry.name, 'description': entry.description,
+            entries.append({'entry_key': entry.entry_key, 'diary_key': calendar.pk,
+                            'name': entry.name, 'description': entry.description,
                             'date': (entry.completed_due_date if entry.completed_at is not None else
                                      entry.open_due_date(source_dates=context)),
                             'source': 'template' if entry.source_entry_id else 'diary',

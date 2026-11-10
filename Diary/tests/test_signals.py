@@ -1,4 +1,5 @@
 """DFUT-007: Payloads, UI identity, commit boundaries, retries and failures."""
+import json
 from dataclasses import replace
 from datetime import date
 from uuid import UUID, uuid4
@@ -6,7 +7,7 @@ from unittest.mock import patch
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, transaction
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from Diary.api import DiaryAPI, EntrySpec
@@ -16,7 +17,7 @@ from Diary.signals import (task_created, task_note_added, task_dependency_change
                           task_ownership_changed)
 from Diary.tests.test_task_editing import TaskEditingFixtures
 from Diary.tests import test_ownership_recovery
-from Diary.views import DjangoOwnerDirectory
+from Diary.views import DiaryDataView, DjangoOwnerDirectory
 
 
 TASK_SIGNALS = (task_created, task_note_added, task_dependency_changed, task_closed, task_ownership_changed)
@@ -36,8 +37,13 @@ class SignalFixtures(TaskEditingFixtures):
     def receive(self, sender, signal, **payload):
         self.events.append((signal, sender, payload))
 
-    def event(self, signal, key, name, *, sender=CalendarEntry, user='manager@example.test'):
-        return signal, sender, {'user': user, 'task': key, 'task-name': name}
+    def event(self, signal, key, name, *, sender=CalendarEntry, user='manager@example.test',
+              diary_key=None, template_version_key=None):
+        diary_key = (diary_key or self.diary.key) if sender is CalendarEntry else None
+        template_version_key = ((template_version_key or self.template.latest_version().key)
+                                if sender is TemplateEntry else None)
+        return signal, sender, {'user': user, 'task': key, 'task-name': name,
+                               'diary_key': diary_key, 'template_version_key': template_version_key}
 
     orphan = test_ownership_recovery.OwnershipRecoveryTests.orphan
 
@@ -49,6 +55,57 @@ class SignalFixtures(TaskEditingFixtures):
 @override_settings(DIARY_MANAGER='Planners', DIARY_USER='Participants', DIARY_TASK_OWNER_ROLES=('Helpers',),
                    ROOT_URLCONF='Diary.tests.test_task_editing')
 class TaskSignalTests(SignalFixtures, TestCase):
+    def test_reused_task_key_is_distinguished_across_diaries_and_api_records(self):
+        actor = replace(self.actor, calendar_keys=frozenset({self.diary.key, self.other_diary.key}))
+        api = DiaryAPI(actor=actor)
+        diaries = [api.diary(key=key) for key in (self.diary.key, self.other_diary.key)]
+        with self.captureOnCommitCallbacks(execute=True):
+            for diary in diaries:
+                note = diary.add_note(entry_key=self.first.entry_key, text='Scoped note')
+                self.assertEqual((note['diary_key'], note['entry_key']), (diary.key, self.first.entry_key))
+                diary.complete(entry_key=self.first.entry_key, expected_revision=0)
+        self.assertCountEqual(self.events, [self.event(signal, self.first.entry_key, self.first.name, diary_key=diary.key)
+            for diary in diaries for signal in (task_note_added, task_closed)])
+        for diary in diaries:
+            for row in diary.read()['entries']:
+                self.assertEqual(row['diary_key'], diary.key)
+            self.assertEqual(diary.task(entry_key=self.first.entry_key)['diary_key'], diary.key)
+            self.assertEqual(diary.notes(entry_key=self.first.entry_key)[0]['diary_key'], diary.key)
+            self.assertEqual(diary.available_predecessors(entry_key=self.second.entry_key),
+                ({'entry_key': self.first.entry_key, 'name': self.first.name,
+                  'diary_key': diary.key, 'template_version_key': None},))
+            for row in diary.active_tasks():
+                self.assertEqual(row['diary_key'], diary.key)
+        found = api.search_tasks(query=self.first.name)
+        self.assertEqual({(row['diary_key'], row['entry_key']) for row in found},
+                         {(diary.key, self.first.entry_key) for diary in diaries})
+
+    def test_template_events_distinguish_reused_keys_by_version(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            second = self.template.save_version(entries=[self.first, self.second], predecessors={},
+                                                expected_version_key=self.version.key)
+            third = self.template.save_version(entries=[self.first, self.second],
+                predecessors={self.second.entry_key: [self.first.entry_key]}, expected_version_key=second.key)
+        self.assertEqual(self.events, [self.event(task_dependency_changed, self.second.entry_key, self.second.name,
+            sender=TemplateEntry, template_version_key=version.key) for version in (second, third)])
+        for version in (second, third):
+            self.assertTrue(all(row['template_version_key'] == version.key for row in version.read()['entries']))
+        self.assertEqual(third.available_predecessors(entry_key=self.second.entry_key),
+            ({'entry_key': self.first.entry_key, 'name': self.first.name,
+              'diary_key': None, 'template_version_key': third.key},))
+
+    def test_http_task_records_expose_the_selected_diary_task_pair(self):
+        keys = (self.diary.key, self.other_diary.key)
+        view = DiaryDataView.as_view(resource='task', permitted_diary_keys=keys)
+        for diary_key in keys:
+            request = RequestFactory().get('/task-data/', {'diary_key': str(diary_key)})
+            request.user = self.manager
+            response = view(request, entry_key=self.first.entry_key)
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)['data']
+            self.assertEqual((data['diary_key'], data['entry_key']),
+                             (str(diary_key), str(self.first.entry_key)))
+
     def test_creation_note_and_completion_payloads_and_retries(self):
         spec = EntrySpec('New task', DateKind.ONCE, fixed_date=date(2027, 6, 22))
         note_key = uuid4()
@@ -131,11 +188,11 @@ class TaskSignalTests(SignalFixtures, TestCase):
         api = DiaryAPI(actor=self.actor)
         with self.captureOnCommitCallbacks(execute=True):
             for _ in range(2):
-                api.create_diary(name='Signal copy', event_ref='signal-copy', template_version_key=self.version.key,
+                diary = api.create_diary(name='Signal copy', event_ref='signal-copy', template_version_key=self.version.key,
                                  milestone_dates={'target': date(2027, 7, 1)})
-        self.assertCountEqual(self.events, [self.event(task_created, spec.entry_key, spec.name)
+        self.assertCountEqual(self.events, [self.event(task_created, spec.entry_key, spec.name, diary_key=diary.key)
                                            for spec in (self.first, self.second)] +
-                              [self.event(task_dependency_changed, self.second.entry_key, self.second.name)])
+                              [self.event(task_dependency_changed, self.second.entry_key, self.second.name, diary_key=diary.key)])
 
     def test_task_relative_template_copy_preserves_dates_and_signal_identity(self):
         """Merge regression: copying in date order must retain each task's own fields."""
@@ -149,9 +206,9 @@ class TaskSignalTests(SignalFixtures, TestCase):
             for _ in range(2):
                 diary = api.create_diary(name='Signal dates', event_ref='signal-date-chain',
                     template_version_key=version.key, milestone_dates={'target': date(2027, 7, 1)})
-        self.assertEqual(self.events, [self.event(task_created, source.entry_key, source.name),
-                                      self.event(task_created, dependent.entry_key, dependent.name),
-                                      self.event(task_dependency_changed, dependent.entry_key, dependent.name)])
+        self.assertEqual(self.events, [self.event(task_created, source.entry_key, source.name, diary_key=diary.key),
+                                      self.event(task_created, dependent.entry_key, dependent.name, diary_key=diary.key),
+                                      self.event(task_dependency_changed, dependent.entry_key, dependent.name, diary_key=diary.key)])
         entries = {entry.entry_key: entry for entry in CalendarEntry.objects.filter(calendar_id=diary.key)}
         self.assertEqual((entries[source.entry_key].name, entries[source.entry_key].due_date),
                          (source.name, date(2027, 7, 1)))

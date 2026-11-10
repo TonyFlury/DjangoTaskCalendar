@@ -805,6 +805,8 @@ Each receiver gets Django's `signal` argument, the model class as `sender`
 | --- | --- |
 | `user` | The authenticated UI user's email at the time of the action. |
 | `task` | The task's stable UUID (`entry_key`). |
+| `diary_key` | The diary UUID for a diary-task event; `None` for a template-task event. |
+| `template_version_key` | The template version UUID for a template-task event; `None` for a diary-task event, including copied tasks. |
 | `task-name` | The task name at the time of the action. |
 
 UI views obtain email from the authenticated user, ignoring submitted identity fields.
@@ -813,6 +815,12 @@ The default is an empty string, including for management commands without a UI u
 An account without an email also produces an empty string.
 Email is event metadata; it does not grant permissions or change stored actor references.
 Task keys persist across template versions and diary copies.
+Use **`(diary_key, task)`** to identify a diary task uniquely. For template-task
+events, use **`(template_version_key, task)`**. Exactly one scope field is non-null;
+these fields identify the changed copy, not its source template provenance.
+Both are captured with the other payload fields before dispatch. Existing `task`,
+`task-name`, and `user` fields retain their meanings; receivers should accept
+`**kwargs` for additive payload extensions.
 Receivers must treat email and private task names as trusted integration data and
 apply the host's access rules before exposing them to users.
 
@@ -823,9 +831,10 @@ from django.dispatch import receiver
 from Diary.signals import task_closed
 
 @receiver(task_closed, dispatch_uid='host.diary.task_closed')
-def handle_task_closed(sender, user, task, **kwargs):
+def handle_task_closed(sender, user, task, diary_key, **kwargs):
     task_name = kwargs['task-name']
-    # Process the committed event using user, task, and task_name.
+    task_identity = (diary_key, task)
+    # Process the committed diary task using task_identity, user, and task_name.
 ```
 
 The hyphen in `task-name` requires access through `kwargs`.
@@ -846,6 +855,20 @@ that use those APIs share the same behavior. Raw model saves, bulk writes,
 fixture loading, and template fixture transfers do not send these task events.
 Due-date changes are outside this five-signal contract.
 Host view success hooks retain their existing navigation behavior.
+
+Diary task records returned by `read()`, `task()`, `active_tasks()`,
+`personal_tasks()`, and `search_tasks()` include `diary_key` alongside `entry_key`.
+Task note records returned by `notes()` and `add_note()` also carry both keys.
+`available_predecessors()` returns `diary_key` and `template_version_key`, with
+exactly one non-null according to the bound diary or template version.
+Template-version task records include `template_version_key` beside `entry_key`.
+The HTTP data views retain these fields when serializing the API results.
+Existing predecessor/source task UUID references are relative to their containing
+diary or version. Mutation arguments and scalar UUID returns remain compatible:
+`add_entry()` and `create_task()` are bound to a `DiaryInstance`, so pair their
+returned entry key with `instance.key`. `DiaryViewResult` already exposes
+`diary_key` and `entry_key` for diary task writes. These identifiers do not grant
+access; the usual host scope and task visibility checks still apply.
 
 Delivery uses Django's `send_robust()`: receiver exceptions are logged by
 `django.dispatch`, other receivers continue, and committed changes remain saved.

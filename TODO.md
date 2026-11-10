@@ -128,6 +128,8 @@ separately records implemented V1 capabilities and remaining V1 review work.
   Task Dependency Changed, Task Closed, and Task Ownership Changed.
   Each carries `user` (UI actor email),
   `task` (stable task UUID), and `task-name` (task name).
+  Events also expose `diary_key` for diary tasks or `template_version_key` for
+  template tasks; pair the non-null scope key with `task` to identify the changed copy.
   Implementation: [signals.py](Diary/signals.py): five Django `Signal` instances and
   `_queue_task_event`; [api.py](Diary/api.py): `_copy_template`, `DiaryTemplateVersion.approve`,
   `DiaryInstance.add_entry`, `DiaryInstance.add_note`, `DiaryInstance.complete`, and `DiaryInstance.reassign_task`.
