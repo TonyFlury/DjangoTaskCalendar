@@ -24,6 +24,7 @@ No published package name, supported-version matrix, or release installation pro
 
 ## Existing documentation
 
+- [Version timeline and changelog](CHANGELOG.md)
 - [Package build guide](BUILD.md)
 - [Management command help](docs/management-commands/README.md)
 - [Developer guide](Diary/README.md)

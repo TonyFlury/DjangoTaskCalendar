@@ -76,7 +76,8 @@ class TemplateEditorView(DiarySuccessMixin, LoginRequiredMixin, ContextMixin, Vi
         # Direct URLs and forged POSTs must receive the same manager-only restriction.
         if access_groups()['manager'] not in groups:
             raise PermissionDenied('DiaryManager membership is required for template editing.')
-        self.api = DiaryAPI(actor=Actor(reference=f'user:{request.user.pk}', groups=groups))
+        self.api = DiaryAPI(actor=Actor(reference=f'user:{request.user.pk}', groups=groups,
+                                       email=request.user.email))
         self.view_context = self.get_context_data(**kwargs)
         try:
             self.posted_target = submitted_target(request)
@@ -243,7 +244,8 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
             raise PermissionDenied('Diary access group membership is required for this view.')
         self.view_context = self.get_context_data(**kwargs)
         self.actor = Actor(reference=f'user:{request.user.pk}', groups=groups,
-                           calendar_keys=frozenset(UUID(str(key)) for key in self.get_diary_keys()))
+                           calendar_keys=frozenset(UUID(str(key)) for key in self.get_diary_keys()),
+                           email=request.user.email)
         try:
             self.posted_target = submitted_target(request)
         except signing.BadSignature:

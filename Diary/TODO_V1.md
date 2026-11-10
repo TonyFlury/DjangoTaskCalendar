@@ -740,6 +740,8 @@ The complete DFUT list is maintained in the [repository TODO](../TODO.md#diary-f
 DFUT identifiers and existing statuses are retained there; requirements are not duplicated here.
 The implemented graphical view is recorded under DV1-055, and task-relative dates under DV1-056.
 The remaining full graphical editor stays in the backlog as DFUT-011.
+DFUT-007 signals are implemented in version 0.1.10.1; the contract and verification
+are recorded in the repository TODO and [Task change signals](README.md#task-change-signals).
 
 ## Review limits
 
