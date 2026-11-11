@@ -76,3 +76,69 @@ class DiaryPresentationBrowserTests(PersonalDiaryFixtures, StaticLiveServerTestC
         self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-calendar-return'))
         driver.find_element(By.CSS_SELECTOR, '.diary-calendar-return').click()
         self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-calendar-day-view'))
+
+    def test_manager_graph_css_zoom_and_existing_host_task_actions(self):
+        self.client.force_login(self.manager)
+        driver = self.driver
+        driver.add_cookie({'name': settings.SESSION_COOKIE_NAME,
+                           'value': self.client.cookies[settings.SESSION_COOKIE_NAME].value, 'path': '/'})
+        driver.get(self.live_server_url + '/fixed/manager/?view=graph&include_completed=1')
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-manager-graph .diary-graph-node'))
+        self.assertTrue(driver.find_elements(By.CSS_SELECTOR, '.diary-graph-milestone'))
+        self.assertTrue(driver.find_elements(By.CSS_SELECTOR, '.diary-graph-task-completed'))
+        self.assertTrue(driver.find_elements(By.CSS_SELECTOR, '.diary-graph-task-late'))
+        self.assertTrue(driver.find_elements(By.CSS_SELECTOR, '.diary-graph-task-blocked-late'))
+        self.assertNotIn('diary_key=', driver.current_url)
+        colours = driver.execute_script('''
+            const graph=document.querySelector('.diary-manager-graph');
+            graph.style.setProperty('--diary-task-completed-background','#123456');
+            graph.style.setProperty('--diary-task-completed-border','#654321');
+            graph.style.setProperty('--diary-task-completed-text','#abcdef');
+            const node=graph.querySelector('.diary-graph-node.diary-graph-task-completed');
+            return [getComputedStyle(node.querySelector('rect')).fill,
+                    getComputedStyle(node.querySelector('rect')).stroke,
+                    getComputedStyle(node.querySelector('text')).fill];
+        ''')
+        self.assertEqual(colours, ['rgb(18, 52, 86)', 'rgb(101, 67, 33)', 'rgb(171, 205, 239)'])
+        driver.find_element(By.CSS_SELECTOR, '.diary-graph-colours').click()
+        self.assertTrue(driver.find_elements(By.CSS_SELECTOR, '.diary-graph-neutral .diary-graph-task-blocked-pattern'))
+        for width in (1400, 600):
+            driver.set_window_size(width, 900)
+            panel = driver.find_element(By.CSS_SELECTOR, '.diary-graph-viewport')
+            before = panel.rect
+            for _ in range(5):
+                driver.find_element(By.CSS_SELECTOR, '[data-graph-action="in"]').click()
+            self.assertAlmostEqual(panel.rect['width'], before['width'], delta=2)
+            self.assertAlmostEqual(panel.rect['height'], before['height'], delta=2)
+            driver.find_element(By.CSS_SELECTOR, '[data-graph-action="fit"]').click()
+        driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-help').click()
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-help-dialog').is_displayed())
+        driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-help-dialog [data-graph-close]').click()
+        # The scoped SVG action delegates to the host's existing POST task selection.
+        driver.find_element(By.CSS_SELECTOR, '.diary-graph-node[data-entry-key="' + str(self.ready) + '"]').click()
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-detail-heading'))
+        self.assertIn('/fixed/task/?calendar_return=', driver.current_url)
+        driver.find_element(By.CSS_SELECTOR, '.diary-note-form textarea').send_keys('Graph host navigation note')
+        driver.find_element(By.CSS_SELECTOR, '.diary-note-submit').click()
+        self.wait.until(lambda browser: 'Graph host navigation note' in browser.find_element(By.TAG_NAME, 'body').text)
+        driver.find_element(By.CSS_SELECTOR, '.diary-calendar-return').click()
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-manager-graph .diary-graph-node'))
+        self.assertIn('view=graph', driver.current_url)
+        self.assertIn('include_completed=1', driver.current_url)
+
+    def test_without_javascript_manager_graph_keeps_existing_task_list_and_filters(self):
+        self.client.force_login(self.manager)
+        driver = self.driver
+        driver.add_cookie({'name': settings.SESSION_COOKIE_NAME,
+                           'value': self.client.cookies[settings.SESSION_COOKIE_NAME].value, 'path': '/'})
+        driver.get(self.live_server_url + '/fixed/manager/?view=graph')
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-task-list').get_attribute('open'))
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-filter-content').is_displayed())
+        self.assertTrue(driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-help-content').is_displayed())
+        driver.find_element(By.CSS_SELECTOR, '.diary-manager-graph-task-list button[value="' + str(self.ready) + '"]').click()
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-detail-heading'))
+        driver.find_element(By.CSS_SELECTOR, '.diary-detail-complete').click()
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-detail-completed'))
+        driver.find_element(By.CSS_SELECTOR, '.diary-calendar-return').click()
+        self.wait.until(lambda browser: browser.find_elements(By.CSS_SELECTOR, '.diary-manager-graph'))
+        self.assertEqual(driver.find_elements(By.CSS_SELECTOR, '.diary-manager-graph-task-list button[value="' + str(self.ready) + '"]'), [])

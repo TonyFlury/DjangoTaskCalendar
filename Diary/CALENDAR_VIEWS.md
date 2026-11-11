@@ -193,3 +193,10 @@ query-count stability, signed returns, responsive layout and no-JavaScript use.
 Manager multi-diary aggregation, milestone markers, time slots, recurring task
 generation, dragging to reschedule, and automatic forward-impact changes remain
 outside this feature. A calendar is a view of stored task dates, not a new scheduler.
+
+## Diary Manager graph
+
+Version 0.12.1 adds **Graph** to the same Manager URL and presentation preference.
+It reuses the existing manager filters and host task navigation; no extra host
+route is required. See [Manager graph](MANAGER_GRAPH.md) for usage and shared
+list/calendar/graph state-colour CSS properties. Personal presentations are unchanged.

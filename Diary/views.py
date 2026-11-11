@@ -40,6 +40,19 @@ logger = logging.getLogger(__name__)
 class DjangoOwnerDirectory:
     """Resolve user:primary-key references through the configured Django user model."""
 
+    def people_in_groups(self, references, group_names):
+        """Return current eligibility in one query without caching access decisions."""
+        model = get_user_model()
+        parsed = {}
+        for reference in references:
+            try:
+                parsed[reference] = model._meta.pk.to_python(reference[5:]) if reference.startswith('user:') else None
+            except (ValueError, TypeError, ValidationError):
+                parsed[reference] = None
+        eligible = set(model._default_manager.filter(pk__in=[key for key in parsed.values() if key is not None],
+            is_active=True, groups__name__in=group_names).values_list('pk', flat=True))
+        return {reference: key in eligible for reference, key in parsed.items()}
+
     # Partial DV1-013: Generic identity and role adapters.
     def person_in_groups(self, reference, group_names):
         """Return whether a referenced user exists in a configured access group."""
@@ -779,6 +792,8 @@ class ManagerDiaryView(DiaryPresentationMixin, DiaryScopeMixin, DiaryOwnerLabels
             context['manager_error'] = 'Supply one valid diary key.'
             return render(request, self.template_name, context, status=400)
         context.update(self.presentation_context(filters))
+        if key is not None and presentation == 'graph':
+            return self.render_manager_graph(request, key, filters)
         if key is not None and presentation != 'list':
             return self.render_calendar(request, presentation=presentation, filters=filters)
 

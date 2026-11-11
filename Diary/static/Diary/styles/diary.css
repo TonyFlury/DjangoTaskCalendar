@@ -312,3 +312,59 @@
     .diary .diary-calendar-mobile-label { display: inline; }
     .diary .diary-calendar-date-form { width: 100%; }
 }
+
+/* Shared live-task palette. Hosts may override these public variables on .diary,
+   or on .diary-manager-graph to customise only the graph. */
+.diary :is(.diary-graph-task-ready, .diary-manager-task-ready, .diary-calendar-ready) {
+    --_diary-state-background: var(--diary-task-ready-background, #eef6ff);
+    --_diary-state-border: var(--diary-task-ready-border, #366895);
+    --_diary-state-text: var(--diary-task-ready-text, #173c5d);
+}
+.diary :is(.diary-graph-task-blocked, .diary-manager-task-blocked, .diary-calendar-blocked) {
+    --_diary-state-background: var(--diary-task-blocked-background, #f2f2f2);
+    --_diary-state-border: var(--diary-task-blocked-border, #777);
+    --_diary-state-text: var(--diary-task-blocked-text, #383838);
+}
+.diary :is(.diary-graph-task-blocked-late, .diary-manager-task-blocked-late, .diary-calendar-blocked-late) {
+    --_diary-state-background: var(--diary-task-blocked-late-background, #fff4dd);
+    --_diary-state-border: var(--diary-task-blocked-late-border, #916300);
+    --_diary-state-text: var(--diary-task-blocked-late-text, #674600);
+}
+.diary :is(.diary-graph-task-late, .diary-manager-task-late, .diary-calendar-late) {
+    --_diary-state-background: var(--diary-task-late-background, #ffeded);
+    --_diary-state-border: var(--diary-task-late-border, #b42318);
+    --_diary-state-text: var(--diary-task-late-text, #861b13);
+}
+.diary :is(.diary-graph-task-completed, .diary-manager-task-completed, .diary-calendar-completed) {
+    --_diary-state-background: var(--diary-task-completed-background, #eaf7ee);
+    --_diary-state-border: var(--diary-task-completed-border, #287343);
+    --_diary-state-text: var(--diary-task-completed-text, #17532c);
+}
+.diary :is(.diary-manager-task, .diary-calendar-task, .diary-graph-legend li) {
+    background: var(--_diary-state-background, var(--diary-surface));
+    border-color: var(--_diary-state-border, var(--diary-border));
+    color: var(--_diary-state-text, var(--diary-text));
+}
+.diary :is(.diary-calendar-late, .diary-calendar-blocked-late) { box-shadow: 0 0 .25rem var(--_diary-state-border); }
+.diary .diary-manager-graph .diary-graph-node rect { fill: var(--_diary-state-background); stroke: var(--_diary-state-border); }
+.diary .diary-manager-graph .diary-graph-node text { fill: var(--_diary-state-text); font-size: 12px; }
+.diary .diary-manager-graph .diary-graph-node:is(:hover, :focus) rect { stroke: var(--diary-focus); stroke-width: 3; }
+.diary .diary-manager-graph .diary-graph-task-blocked-pattern rect { stroke-dasharray: 6 4; }
+.diary .diary-manager-graph .diary-graph-edge-inactive:not(.diary-graph-edge-date) { opacity: .55; }
+.diary .diary-manager-graph.diary-graph-neutral .diary-graph-node {
+    --_diary-state-background: var(--diary-surface); --_diary-state-border: var(--diary-border); --_diary-state-text: var(--diary-text);
+}
+.diary :is(.diary-manager-orphaned, .diary-calendar-ownership-warning) { color: var(--diary-task-orphaned-text, #861b13); }
+.diary .diary-manager-graph .diary-graph-node .diary-graph-owner-warning { fill: var(--diary-task-orphaned-text, #861b13); }
+.diary .diary-manager-date-unset { color: var(--diary-task-undated-text, var(--diary-muted)); }
+.diary .diary-manager-graph :is(.diary-graph-node, .diary-graph-milestone) .diary-graph-undated { fill: var(--diary-task-undated-text, var(--diary-muted)); }
+.diary .diary-graph-legend { list-style: none; padding: 0; }
+.diary .diary-graph-legend li { padding: .5rem; margin-block: .25rem; border: 2px solid var(--_diary-state-border); border-radius: .3rem; }
+.diary .diary-manager-graph { min-width: 0; }
+.diary .diary-manager-graph [hidden] { display: none; }
+.diary :is(.diary-manager-task-late, .diary-manager-task-blocked-late) { box-shadow: 0 0 .4rem var(--_diary-state-border); }
+.diary .diary-manager-task :is(.diary-status, .diary-manager-completion), .diary .diary-calendar-task-link { color: var(--_diary-state-text, var(--diary-text)); }
+
+.diary .diary-toolbar-refresh { --diary-toolbar-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23111%22%20stroke-width%3D%221.8%22%3E%3Cpath%20d%3D%22M20%2011a8%208%200%201%200-2%206M20%204v7h-7%22%2F%3E%3C%2Fsvg%3E"); --diary-toolbar-label: "Refresh"; --diary-toolbar-tooltip: var(--diary-toolbar-label); }
+.diary .diary-toolbar-filter { --diary-toolbar-label: "Filters"; }
+.diary .diary-toolbar-legend { --diary-toolbar-label: "Legend / Help"; }

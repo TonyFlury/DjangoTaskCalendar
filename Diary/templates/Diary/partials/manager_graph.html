@@ -1,0 +1,56 @@
+{% include 'Diary/partials/selection_forms.html' %}
+<section class="diary diary-manager" aria-labelledby="diary-manager-graph-heading">
+    <h1 class="diary-heading" id="diary-manager-graph-heading">Manager diary graph{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
+    {% include 'Diary/partials/presentation_tabs.html' %}
+    {% if graph_error %}<p class="diary-manager-error" role="alert">{{ graph_error }}</p>{% else %}
+    {% if diary_data.closed %}<p role="status">Archived diary. Existing task-change restrictions apply.</p>{% endif %}
+    <section class="diary-manager-graph" aria-label="Live diary task graph">
+        <div class="diary-actions diary-graph-toolbar" role="toolbar" aria-label="Manager graph controls">
+            {% if not diary_data.closed %}{% url 'Diary:task-create' as default_task_create_url %}<a class="diary-button diary-toolbar-button diary-toolbar-add" aria-label="Add task" href="{{ task_create_url|default:default_task_create_url }}{% if not diary_ui.trusted_scope %}?diary_key={{ diary_data.key }}{% endif %}"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></a>{% endif %}
+            <span class="diary-graph-toolbar-separator" aria-hidden="true"></span>
+            <button class="diary-button diary-toolbar-button diary-toolbar-zoom-out" type="button" data-graph-action="out" aria-label="Zoom out" hidden><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <output class="diary-graph-zoom" aria-label="Graph zoom" hidden>100%</output>
+            <button class="diary-button diary-toolbar-button diary-toolbar-zoom-in" type="button" data-graph-action="in" aria-label="Zoom in" hidden><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <button class="diary-button diary-toolbar-button diary-toolbar-fit" type="button" data-graph-action="fit" aria-label="Fit to screen" hidden><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            <span class="diary-graph-toolbar-separator" aria-hidden="true"></span>
+            <a class="diary-button diary-toolbar-button diary-toolbar-refresh" href="{{ graph_refresh_url }}" aria-label="Refresh"><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></a>
+            <label class="diary-graph-colour-control" hidden><input type="checkbox" class="diary-graph-colours" checked> Colour by status</label>
+            <div class="diary-graph-toolbar-end">
+                <button class="diary-button diary-manager-graph-filters diary-toolbar-button diary-toolbar-settings diary-toolbar-filter" type="button" aria-label="Filters" hidden><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+                <button class="diary-button diary-manager-graph-help diary-toolbar-button diary-toolbar-help diary-toolbar-legend" type="button" aria-label="Legend / Help" hidden><span class="diary-toolbar-icon" aria-hidden="true"></span><span class="diary-toolbar-label" aria-hidden="true"></span><span class="diary-toolbar-tooltip" aria-hidden="true"></span></button>
+            </div>
+        </div>
+        <p class="diary-graph-status" role="status">{{ graph_data.count }} matching tasks · {{ graph_data.milestone_count }} milestones · {{ graph_data.undated_count }} tasks without dates.</p>
+        <div class="diary-graph-viewport" role="region" tabindex="0" aria-label="Live task graph. Scroll or drag the background to pan; plus and minus zoom, Home fits." hidden><svg class="diary-graph-canvas" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Diary tasks, milestone dates and relationships"></svg></div>
+        <p class="diary-muted">Positions follow actual due dates, not a calendar-day scale. Undated items are placed after dated items. Date-source offsets describe saved rules; late tasks and source-date overrides do not move fixed snapshots.</p>
+        <section class="diary-manager-graph-filter-content" aria-labelledby="diary-manager-graph-filter-heading">
+            <h2 id="diary-manager-graph-filter-heading">Task filters</h2>
+            <form method="get">
+                {% for name, value in graph_filter_state.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+                {% for field in filters %}{% include 'Diary/partials/template_field.html' %}{% endfor %}
+                <div class="diary-actions"><button class="diary-button" type="submit">Apply filters</button><a class="diary-button" href="{{ graph_reset_url }}">Clear filters</a><button class="diary-button" type="button" data-graph-close hidden>Cancel</button></div>
+            </form>
+        </section>
+        <section class="diary-manager-graph-help-content" aria-labelledby="diary-manager-graph-help-heading">
+            <h2 id="diary-manager-graph-help-heading">Graph legend and help</h2>
+            <ul class="diary-graph-legend">
+                <li class="diary-graph-task-completed">✓ Completed: completion takes priority over past due dates.</li>
+                <li class="diary-graph-task-late">Late: open and due today or earlier. Blocked tasks retain their blocked label and dashed outline.</li>
+                <li class="diary-graph-task-blocked-late">Blocked · late prerequisite: not itself late, but a direct prerequisite is late.</li>
+                <li class="diary-graph-task-blocked">Blocked: waiting for completion prerequisites.</li>
+                <li class="diary-graph-task-ready">Ready: no outstanding completion prerequisite.</li>
+            </ul>
+            <p>Owner needs review and Date not set are separate warnings. Milestones are neutral diamonds, not completable tasks. Show completed uses the same filter as List; Graph does not enable it automatically.</p>
+            <p>Solid arrows show completion prerequisites; dashed arrows show date sources. Hover/focus a relationship for its meaning. A completion arrow replaces a duplicate date arrow, but describes both relationships. Filtered neighbours are not drawn and no shortcut dependencies are invented.</p>
+            <p>Select a task to use the existing task details and permitted actions, then Back to calendar to return to this graph. Refresh updates all task states. Notes and archived-diary restrictions stay unchanged. Tab/Enter opens tasks; plus/minus/Home controls zoom when the background is focused.</p>
+            <p>Colour is configurable by your site. Turn it off to use neutral task boxes while keeping labels and patterns. The task list remains available without JavaScript.</p>
+            <button class="diary-button" type="button" data-graph-close hidden>Close help</button>
+        </section>
+        <dialog class="diary-calendar-dialog diary-manager-graph-filter-dialog" aria-labelledby="diary-manager-graph-filter-heading"></dialog>
+        <dialog class="diary-calendar-dialog diary-manager-graph-help-dialog" aria-labelledby="diary-manager-graph-help-heading"></dialog>
+        <noscript><p>Use the task list below to inspect and update tasks. Enable JavaScript for the graphical layout.</p></noscript>
+        <details class="diary-manager-graph-task-list" open><summary>Task list ({{ graph_data.count }})</summary>{% include 'Diary/partials/manager_tasks.html' %}</details>
+        {{ graph_data|json_script:'diary-manager-graph-data' }}
+    </section>
+    {% endif %}
+</section>

@@ -1,0 +1,5 @@
+{% extends diary_base_template|default:"Diary/base.html" %}
+{% load static %}
+{% block diary_title %}Manager graph{% if diary_data %} — {{ diary_data.name }}{% endif %}{% endblock %}
+{% block diary_content %}{% include 'Diary/partials/manager_graph.html' %}{% endblock %}
+{% block diary_scripts %}<script src="{% static 'Diary/scripts/graph_layout.js' %}" defer></script><script src="{% static 'Diary/scripts/manager_graph.js' %}" defer></script>{% endblock %}

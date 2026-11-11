@@ -296,6 +296,20 @@ template transfer, migration, and backward compatibility.
   package-owned; hosts do not need separate calendar URLs or view classes.
   This extends the future backlog and does not change the agreed V1 list-view scope.
 
+- [x] **DFUT-019: Diary Manager graph with task-state colours.**
+  Add a Graph presentation to the existing manager diary URL, using instantiated
+  tasks, saved relationships and actual dates. Colour task nodes and dated calendar
+  cards consistently for completion, lateness and blocking; retain text/patterns
+  and separate ownership/missing-date warnings.
+  All graph state colours must be host-configurable through documented CSS custom
+  properties and semantic classes, with no JavaScript or template changes required.
+  Reuse existing filters, per-user presentation preferences, host navigation hooks,
+  permissions and task actions. Preserve fixed date snapshots and scoped identity.
+  Design: [Diary Manager graph and task-state colours](docs/design/manager-diary-graph.md).
+  Target version: **0.12.1**.
+  Implementation: Delivered through the existing manager endpoint. See the
+  [Manager graph guide](Diary/MANAGER_GRAPH.md) for usage, host integration and CSS.
+
 ## Scope
 
 GarageSale event creation, settings, URL adapters, page wrappers, and dashboard integration belong to the host repository.

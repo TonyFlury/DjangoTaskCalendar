@@ -884,6 +884,15 @@ class DiaryTemplateVersion(_DependencyAPI):
 class DiaryInstance(_DependencyAPI):
     """An instance reference without cached database or authorization results."""
 
+    def graph(self, *, include_completed=False, exclude_blocked=False, exclude_non_late=False,
+              today=None, directory=None):
+        """DFUT-019: Return the selected diary's manager-only, filtered graph projection.
+        Layout and colours remain presentation concerns; reads emit no task events.
+        """
+        from .diary_graph import diary_graph
+        return diary_graph(self, include_completed=include_completed, exclude_blocked=exclude_blocked,
+                           exclude_non_late=exclude_non_late, today=today, directory=directory)
+
     @classmethod
     def from_key(cls, *, actor, key):
         """Return a diary reference after role, host-scope, and existence checks.

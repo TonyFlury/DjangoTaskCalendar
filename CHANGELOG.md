@@ -1,5 +1,21 @@
 # Version timeline
 
+## 0.12.1 — 11 November 2026
+
+- Implemented DFUT-019: Graph on the existing Diary Manager URL, with live diary
+  tasks, referenced milestone diamonds, completion/date connections and actual
+  saved due dates. Reused shared template graph layout and contained zoom/pan.
+- Added CSS-configurable completed, late, blocked-late, blocked and ready colours
+  across graph, manager list and calendar cards, with text/patterns and separate
+  ownership/missing-date warnings. No state colours are assigned by JavaScript.
+- Reused manager filters, per-user presentation preferences, wrapper/access policy
+  and existing task navigation/actions, including identifier-free host POST
+  selection and return after notes or changes. No new host routes or migration.
+- Calculate status before filtering, omit hidden endpoints, preserve scoped task
+  identities, fixed task-relative snapshots and recorded completion dates.
+- Added graph API, integration/CSS guidance and API/browser regression coverage.
+  See [Manager graph guide](Diary/MANAGER_GRAPH.md).
+
 ## 0.1.11.1 — 11 November 2026
 
 - Delivered DFUT-018 calendar presentations through the existing personal and

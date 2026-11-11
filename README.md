@@ -33,6 +33,7 @@ No published package name, supported-version matrix, or release installation pro
 - [V1 implementation checklist](Diary/TODO_V1.md)
 - [Design record](docs/design/event-calendar.md)
 - [Weekly and monthly task view proposal](docs/design/weekly-monthly-task-views.md)
+- [Diary Manager graph and host CSS guide](Diary/MANAGER_GRAPH.md)
 
 These documents preserve the implementation record from the original project.
 Their conversion into a complete standalone documentation set remains open in [TODO.md](TODO.md).
