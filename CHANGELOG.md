@@ -1,6 +1,6 @@
 # Version timeline
 
-## 0.12.1 — 11 November 2026
+## 0.1.12.1 — 11 November 2026
 
 - Implemented DFUT-019: Graph on the existing Diary Manager URL, with live diary
   tasks, referenced milestone diamonds, completion/date connections and actual

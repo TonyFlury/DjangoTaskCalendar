@@ -2,7 +2,7 @@
 
 Date: 11 November 2026.
 
-Status: Implemented DFUT-019 in version **0.12.1**.
+Status: Implemented DFUT-019 in version **0.1.12.1**.
 This design record describes the intended behaviour. See the
 [Manager graph guide](../../Diary/MANAGER_GRAPH.md) for delivered controls,
 CSS properties and host integration. Refresh uses a full page reload and fits

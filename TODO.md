@@ -306,7 +306,7 @@ template transfer, migration, and backward compatibility.
   Reuse existing filters, per-user presentation preferences, host navigation hooks,
   permissions and task actions. Preserve fixed date snapshots and scoped identity.
   Design: [Diary Manager graph and task-state colours](docs/design/manager-diary-graph.md).
-  Target version: **0.12.1**.
+  Target version: **0.1.12.1**.
   Implementation: Delivered through the existing manager endpoint. See the
   [Manager graph guide](Diary/MANAGER_GRAPH.md) for usage, host integration and CSS.
 

@@ -1,4 +1,4 @@
-# Diary Manager graph (DFUT-019, version 0.12.1)
+# Diary Manager graph (DFUT-019, version 0.1.12.1)
 
 Choose **Graph** on the existing Diary Manager page, or add `?view=graph` to that
 page's URL. The package remembers the presentation for the signed-in user and
