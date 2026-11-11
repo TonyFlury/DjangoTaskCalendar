@@ -2,18 +2,27 @@
 
 Date: 10 November 2026.
 
+Revision: 11 November 2026. Presentation ownership is inside the Diary package.
+Existing personal/manager endpoints now provide List, Day, Week and Month, with
+their original shared filters and defaults. A per-user/session, per-role preference
+selects the presentation when `view` is absent; an explicit URL value wins. The
+host retains its wrapper and access policy, including identifier-free POST task
+selection. Separate host calendar URLs/controllers are not required. This revision
+supersedes the earlier proposal for different calendar filter defaults below.
+
 Status: DFUT-018 implemented following approval of this design. The original design
-is retained below as the rationale. Delivery uses Monday-first weeks, blocked tasks
-shown by default, and one explicitly selected diary in manager mode. Existing list
-defaults remain unchanged. See [Calendar views](../../Diary/CALENDAR_VIEWS.md)
+is retained below as the rationale. Delivery uses Monday-first weeks, existing
+role-specific filter defaults, and one explicitly selected diary in manager mode.
+See [Calendar views](../../Diary/CALENDAR_VIEWS.md)
 for the implemented API, host setup, settings, and browser behaviour.
 
 ## Purpose and scope
 
 Provide two date-based ways to review and progress tasks in instantiated diaries:
 **Week** for planning the next few days and **Month** for the wider workload.
-Keep **List**, **Week**, and **Month** as interchangeable presentations of the
-same authorised tasks. Keep a selected diary, filters, and date when switching.
+Keep **List**, **Day**, **Week**, and **Month** on the same host diary endpoint.
+List retains its original all-dates scope; dated presentations show the appropriate
+period. Preserve the selected diary and role-specific task filters when switching.
 
 These views use actual diary due dates. They are separate from the template graph,
 which explains completion dependencies and date rules without concrete dates for
@@ -139,10 +148,10 @@ show blocked, whole-team inclusion in Personal mode, and owner selection in
 Manager mode. Show active filters and offer Reset filters. Counts, previews,
 expanded days, and attention panels apply the same selection.
 
-**Proposed default:** show blocked tasks in Week and Month so the plan includes
-work that cannot yet start. This differs from the existing ready-only personal
-list default. Do not change that list default as a side effect; confirm the
-calendar default during design review.
+The implemented shared-filter rule preserves personal ready-only defaults in
+all presentations. Explicit personal status selections and Show blocked apply
+identically in List, Day, Week and Month. Manager completion/blocked/late filters
+also stay identical when the presentation changes.
 
 ## Late and undated work
 
@@ -280,7 +289,7 @@ Required verification includes:
   filter reset, task write success/failure, and host styling overrides.
 
 Implementation uses configurable weekday/preview limits, Monday-first and
-blocked-visible defaults, and single-diary manager scope. Multi-diary manager
+existing role filter defaults, and single-diary manager scope. Multi-diary manager
 aggregation and milestone markers remain future extensions. This delivery does
 not retroactively make a month display a V1 completion condition.
 

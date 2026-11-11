@@ -3,7 +3,7 @@
 <section class="diary diary-personal" aria-label="My Diary">
     <h1 class="diary-heading diary-personal-heading">My Diary{% if diary_data %} — {{ diary_data.name }}{% endif %}</h1>
     <p class="diary-personal-description">Tasks assigned to you or your current groups.</p>
-    {% if calendar_url %}<nav class="diary-actions" aria-label="Task calendar"><a class="diary-button" href="{{ calendar_url }}{% if '?' in calendar_url %}&amp;{% else %}?{% endif %}view=week&amp;mode=personal{% if diary_data %}&amp;diary_key={{ diary_data.key }}{% endif %}">Week</a><a class="diary-button" href="{{ calendar_url }}{% if '?' in calendar_url %}&amp;{% else %}?{% endif %}view=month&amp;mode=personal{% if diary_data %}&amp;diary_key={{ diary_data.key }}{% endif %}">Month</a></nav>{% endif %}
+    {% include "Diary/partials/presentation_tabs.html" %}
     {# DV1-029, DV1-030, DV1-033: The host can supply a task_create_url with its trusted creation scope. #}
     {% url 'Diary:task-create' as default_task_create_url %}
     <nav class="diary-create-navigation" aria-label="Task creation"><a class="diary-button diary-create-link" href="{{ task_create_url|default:default_task_create_url }}{% if diary_data %}{% if not diary_ui.trusted_scope %}?diary_key={{ diary_data.key }}{% endif %}{% endif %}">Add task</a></nav>
@@ -14,6 +14,7 @@
         <p class="diary-personal-error" role="alert">{{ personal_error }}</p>
     {% else %}
         <form class="diary-personal-filters" method="get">
+            {% for name, value in diary_presentation_state.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
             {% if diary_data %}{% if not diary_ui.trusted_scope %}<input class="diary-personal-selector" type="hidden" name="diary_key" value="{{ diary_data.key }}">{% endif %}{% endif %}
             <fieldset class="diary-personal-filter-group">
                 <legend class="diary-personal-filter-legend">Task filters</legend>
@@ -25,7 +26,7 @@
                 <p class="diary-muted diary-personal-filter-help">All open tasks shows ready tasks by default. Select a specific status to see that category, including blocked tasks.</p>
                 <div class="diary-actions diary-personal-filter-actions">
                     <button class="diary-button diary-button-primary diary-personal-apply" type="submit">Apply filters</button>
-                    <a class="diary-button diary-personal-reset" href="{% if diary_ui.trusted_scope %}{% url 'Diary:personal-diary' %}{% else %}?{% if diary_data %}diary_key={{ diary_data.key }}{% endif %}{% endif %}">Clear filters</a>
+                    <a class="diary-button diary-personal-reset" href="{{ diary_list_reset_url }}">Clear filters</a>
                 </div>
             </fieldset>
         </form>

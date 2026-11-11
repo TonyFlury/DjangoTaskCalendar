@@ -1,5 +1,5 @@
 """Signed, user-bound return links from task actions to a calendar page."""
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 
 from django.core import signing
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -29,3 +29,23 @@ def calendar_return_state(request):
     except (signing.BadSignature, KeyError, TypeError, ValueError):
         return '', ''
     return token, url
+
+
+def carry_calendar_return(request, response):
+    """Carry package navigation through successful host POST selection and write redirects.
+    Host selection remains authoritative; the token only restores a presentation.
+    """
+    if request.method != 'POST' or response.status_code not in {302, 303}:
+        return response
+    token, _ = calendar_return_state(request)
+    target = response.get('Location', '')
+    if not token or not target.startswith('/') or target.startswith('//'):
+        return response
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts=set()):
+        return response
+    parts = urlsplit(target)
+    query = [(name, value) for name, value in parse_qsl(parts.query, keep_blank_values=True)
+             if name != 'calendar_return']
+    query.append(('calendar_return', token))
+    response['Location'] = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    return response

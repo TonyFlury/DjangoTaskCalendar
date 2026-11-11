@@ -31,7 +31,8 @@ from .models import CalendarEntry, CalendarTemplate, EventCalendar, Milestone, T
 from .roles import access_groups
 from .ownership import orphaned_entry_keys
 from .identity import user_display_name
-from .calendar_navigation import calendar_return_state
+from .calendar_navigation import calendar_return_state, carry_calendar_return
+from .presentation import DiaryPresentationMixin
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +252,8 @@ class DiaryScopeMixin(LoginRequiredMixin, ContextMixin):
             self.posted_target = submitted_target(request)
         except signing.BadSignature:
             return HttpResponseBadRequest('Invalid form selection. Reload the page before submitting.')
-        return super().dispatch(request, *args, **kwargs)
+        response = super().dispatch(request, *args, **kwargs)
+        return carry_calendar_return(request, response)
 
     def get_diary_keys(self):
         """Return permitted keys from trusted context, with no access granted by default.
@@ -605,7 +607,10 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
         """Retain a verified calendar return link after an existing task write."""
         token, _ = calendar_return_state(self.request)
         if token and self.success_url is None:
-            return self.request.path + '?' + urlencode({'diary_key': result.diary_key, 'calendar_return': token})
+            query = {'calendar_return': token}
+            if not self.view_context.get('diary_ui', {}).get('trusted_scope'):
+                query['diary_key'] = result.diary_key
+            return self.request.path + '?' + urlencode(query)
         url = super().get_success_url(result=result)
         return url + ('&' if '?' in url else '?') + urlencode({'calendar_return': token}) if token else url
 
@@ -753,10 +758,11 @@ class TaskDetailView(DiarySuccessMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, 
 
 
 # DV1-022, DV1-052: Manager list and completion history for one permitted diary.
-class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
+class ManagerDiaryView(DiaryPresentationMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
     """Display the manager's selected diary and read-only completion history."""
 
     template_name = 'Diary/manager_diary.html'
+    presentation_mode = 'manager'
 
     def get(self, request, *args, **kwargs):
         """Render a selected diary or an explicit empty selection without changing data."""
@@ -764,10 +770,17 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         filters.is_valid()
         context = {**self.view_context, 'filters': filters, 'diary_data': None, 'tasks': ()}
         try:
+            presentation = self.selected_presentation()
+        except ValidationError as error:
+            return self.error({'calendar_form': filters}, ' '.join(error.messages), 400)
+        try:
             key = self.selected_key()
         except (ValueError, TypeError, AttributeError):
             context['manager_error'] = 'Supply one valid diary key.'
             return render(request, self.template_name, context, status=400)
+        context.update(self.presentation_context(filters))
+        if key is not None and presentation != 'list':
+            return self.render_calendar(request, presentation=presentation, filters=filters)
 
         # This manager page must not choose an arbitrary diary when the selector is absent.
         if key is None:
@@ -837,7 +850,7 @@ class ManagerDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
 
 
 # DV1-020, DV1-021, DV1-049: Personal tasks within one or all host-authorized diaries.
-class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
+class PersonalDiaryView(DiaryPresentationMixin, DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
     """Display owned open tasks with safe selectors and personal display filters."""
 
     access_roles = ('manager', 'user')
@@ -847,6 +860,10 @@ class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         """Render filtered owned tasks without changing diary records or expanding host scope."""
         filters = PersonalDiaryFilterForm(request.GET)
         context = {**self.view_context, 'filters': filters, 'diary_data': None, 'task_groups': (), 'status_links': ()}
+        try:
+            presentation = self.selected_presentation()
+        except ValidationError as error:
+            return self.error({'calendar_form': filters}, ' '.join(error.messages), 400)
 
         # Invalid status choices must not silently display a broader task selection.
         if not filters.is_valid():
@@ -857,6 +874,9 @@ class PersonalDiaryView(DiaryScopeMixin, DiaryOwnerLabelsMixin, View):
         except (ValueError, TypeError, AttributeError):
             context['personal_error'] = 'Supply one valid diary key.'
             return render(request, self.template_name, context, status=400)
+        context.update(self.presentation_context(filters))
+        if presentation != 'list':
+            return self.render_calendar(request, presentation=presentation, filters=filters)
         client = DiaryAPI(actor=self.actor)
         try:
 

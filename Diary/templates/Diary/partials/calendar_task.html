@@ -1,5 +1,5 @@
 <li class="diary-calendar-task{% if task.orphaned %} diary-calendar-orphaned{% endif %}{% if task.completed_at %} diary-calendar-completed{% elif task.late %} diary-calendar-late{% elif task.blocked_late %} diary-calendar-blocked-late{% elif not task.ready %} diary-calendar-blocked{% endif %}" data-diary-key="{{ task.diary_key }}" data-entry-key="{{ task.entry_key }}">
-    <a class="diary-calendar-task-link" href="{{ task.detail_url }}">{{ task.name }}</a>
+    {% if diary_ui.selection_url %}<button class="diary-calendar-task-link" type="submit" form="diary-select-task" name="entry_key" value="{{ task.entry_key }}">{{ task.name }}</button>{% else %}<a class="diary-calendar-task-link" href="{{ task.detail_url }}">{{ task.name }}</a>{% endif %}
     {% if not calendar.diary %}<span class="diary-calendar-diary-name">{{ task.diary_name }}</span>{% endif %}
     {% if calendar.mode == 'manager' %}<span class="diary-calendar-owner">{{ task.owner_label }}</span>{% endif %}
     <span class="diary-calendar-status">{{ task.status_label }}{% if task.date_label %} · {{ task.date_label }}{% endif %}</span>

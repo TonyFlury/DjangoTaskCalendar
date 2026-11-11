@@ -442,7 +442,7 @@ class DiaryAPI:
     def task_period(self, *, view='week', anchor_date=None, diary_key=None, mode='personal',
                     include_completed=False, show_blocked=True, include_whole_team=False,
                     query='', owner='', selected_day=None, page=1, late_page=1, undated_page=1,
-                    period=None, today=None, directory=None):
+                    period=None, today=None, directory=None, task_status='all', only_late=False):
         """DFUT-018: Return authorised day buckets and bounded previews for a week or month.
         Every task retains its diary key. Calendar selection never changes stored dates.
         """
@@ -450,7 +450,8 @@ class DiaryAPI:
         return task_period(self, view=view, anchor_date=anchor_date, diary_key=diary_key, mode=mode,
             include_completed=include_completed, show_blocked=show_blocked, include_whole_team=include_whole_team,
             query=query, owner=owner, selected_day=selected_day, page=page, late_page=late_page,
-            undated_page=undated_page, period=period, today=today, directory=directory)
+            undated_page=undated_page, period=period, today=today, directory=directory,
+            task_status=task_status, only_late=only_late)
 
     # DV1-002: Named milestone API.
     @transaction.atomic

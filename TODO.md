@@ -289,7 +289,11 @@ template transfer, migration, and backward compatibility.
   page/JSON views, responsive templates, day/filter/help dialogs, and signed task-return links.
   Documentation: [Calendar views](Diary/CALENDAR_VIEWS.md).
   Verification: `Diary/tests/test_task_calendar.py` and `Diary/tests/browser_task_calendar.py`.
-  Defaults: Monday first, blocked tasks shown, manager mode limited to one selected diary.
+  Defaults: Monday first, existing role filter defaults, manager mode limited to one selected diary.
+  Presentation refinement: existing personal/manager URLs now provide List, Day,
+  Week and Month internally, retaining their existing filters and defaults.
+  User/session presentation preferences and trusted-scope POST navigation are
+  package-owned; hosts do not need separate calendar URLs or view classes.
   This extends the future backlog and does not change the agreed V1 list-view scope.
 
 ## Scope

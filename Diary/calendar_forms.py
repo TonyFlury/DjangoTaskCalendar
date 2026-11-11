@@ -7,8 +7,8 @@ from .forms import StyledForm
 class TaskCalendarForm(StyledForm):
     """Keep invalid period/filter values from silently broadening the result."""
 
-    view = forms.ChoiceField(choices=(('list', 'List'), ('week', 'Week'), ('month', 'Month')))
-    period = forms.ChoiceField(required=False, choices=(('week', 'Week'), ('month', 'Month')))
+    view = forms.ChoiceField(choices=(('list', 'List'), ('day', 'Day'), ('week', 'Week'), ('month', 'Month')))
+    period = forms.ChoiceField(required=False, choices=(('day', 'Day'), ('week', 'Week'), ('month', 'Month')))
     date = forms.DateField(required=False, input_formats=('%Y-%m-%d',), widget=forms.DateInput(attrs={'type': 'date'}), label='Go to date')
     day = forms.DateField(required=False, input_formats=('%Y-%m-%d',))
     mode = forms.ChoiceField(choices=(('personal', 'My tasks'), ('manager', 'Manager diary')))

@@ -6,9 +6,11 @@ task records, permissions, notes and completion operations; no migration is need
 
 ## Using the calendar
 
-Choose **Week** for seven days, **Month** for complete calendar weeks around the
-selected month, or **List** for the same period as a chronological agenda. Switch
-views without losing the selected date and filters. Previous/Next moves one period;
+Use the presentation selector on the existing personal or manager diary page.
+Choose **Day** for a dated, paginated agenda, **Week** for seven days, or **Month**
+for complete calendar weeks around the selected month. **List** retains the
+original diary task list and its normal all-dates scope. Filters are unchanged
+when switching presentation; date navigation applies to Day/Week/Month. Previous/Next moves one period;
 Today uses the Diary time zone; Go to date jumps to an ISO calendar date.
 
 Personal mode shows tasks assigned to you or your groups across the host's
@@ -17,10 +19,10 @@ selected permitted diary and shows all tasks visible there. Archived manager
 diaries retain unfinished work and optional history. Existing write restrictions
 on archived diaries still apply; notes retain their existing permission rules.
 
-Use the filter icon to find tasks, hide blocked tasks, show completed tasks,
-include whole-team tasks, or select an owner in manager mode. Reset filters clears
-these choices. Blocked tasks are shown initially in calendar views; this does not
-change My Diary's existing ready-only list default.
+The same existing filters apply to every presentation. Personal pages retain
+status, show-blocked, and whole-team choices; manager pages retain completion,
+blocked, and late-only choices. Personal ready-only defaults are preserved across
+all presentations. Changing the layout never silently changes a filter.
 
 Day cards show a bounded preview and the complete matching count. Select a date
 or **+N more** to expand the day, with pagination for busy dates. Open task details
@@ -41,59 +43,73 @@ Without JavaScript, filters/help remain inline and expanded days use page sectio
 
 ## Host integration
 
-The package routes are `Diary:task-calendar`, `Diary:data-calendar`, and
-`Diary:diary-task-calendar` (the last includes a diary UUID in its path).
-As with existing task views, these routes grant no diary access by themselves.
-Hosts must supply trusted permitted keys via `get_diary_keys()`, the
-`permitted_diary_keys` view attribute, or trusted view context.
+**Existing personal and manager diary views are the integration point.** Hosts
+continue to subclass `PersonalDiaryView` and `ManagerDiaryView`, supply the same
+trusted diary scope, and expose one URL per role. No calendar-specific URL,
+`calendar_url` context value, presentation controller, or new permission hook is
+required. The package resolves List/Day/Week/Month, renders its presentation
+fragment, and retains the current `diary_base_template` wrapper.
 
-Use the same host scope mixin as the existing list and task-detail views:
+For example, an existing host declaration remains sufficient:
 
 ```python
-from django.urls import path, reverse_lazy
-from Diary.calendar_views import TaskCalendarView, TaskCalendarDataView
-from Diary.views import PersonalDiaryView, TaskDetailView
-
-# YourExistingDiaryScope is your host's current get_diary_keys() policy mixin.
-class HostCalendar(YourExistingDiaryScope, TaskCalendarView):
-    extra_context = {'task_detail_url_name': 'host-calendar-task'}
-
-class HostCalendarData(YourExistingDiaryScope, TaskCalendarDataView):
-    pass
-
-class HostCalendarTask(YourExistingDiaryScope, TaskDetailView):
-    pass
-
 class HostPersonalDiary(YourExistingDiaryScope, PersonalDiaryView):
-    extra_context = {'calendar_url': reverse_lazy('host-calendar')}
+    pass
+
+class HostManagerDiary(YourExistingDiaryScope, ManagerDiaryView):
+    pass
 
 urlpatterns = [
-    path('tasks/calendar/', HostCalendar.as_view(), name='host-calendar'),
-    path('tasks/calendar/data/', HostCalendarData.as_view(), name='host-calendar-data'),
-    path('tasks/detail/<uuid:entry_key>/', HostCalendarTask.as_view(), name='host-calendar-task'),
+    path('diary/', HostPersonalDiary.as_view(), name='personal-diary'),
+    path('diary/manager/', HostManagerDiary.as_view(), name='manager-diary'),
 ]
 ```
 
-The task detail route name in this example accepts `entry_key`; the calendar adds
-the matching `diary_key` as a query parameter. Override `task_url()` for a different
-host route shape. A `calendar_url` context value adds Week/Month links to existing
-personal and manager lists. Preserve any other host context values when adding it.
-Set `calendar_mode = 'manager'` on a calendar subclass to lock it to manager mode.
-That mode still requires a selected, authorised diary; it does not expand scope.
+Here `YourExistingDiaryScope` is the host's existing access/context mixin, not
+new calendar code. The host continues to own access, business context, and its
+outer page. The package owns the current presentation and its controls.
 
-The normal `diary_base_template` context hook is supported. The content fragment
-is `Diary/partials/task_calendar.html`; it needs the context from `TaskCalendarView`.
-Include `Diary/scripts/task_calendar.js` once for dialog enhancement. Templates,
-CSS and JS are shipped through the existing package-data patterns. No external
-calendar dependency, CDN, or frontend build step is required.
+### Presentation preference
 
-Calendar links carry a signed, user-bound `calendar_return` token. It stores
-validated navigation state, grants no permissions, and expires after seven days.
-Task forms carry it across permitted writes. Without a custom success destination,
-calendar-originated writes stay on the authorised task route. Hosts that replace
-`get_success_url()` or the complete response flow should preserve this token or
-provide their own return navigation. Invalid, expired, cross-user and external
-return destinations are ignored.
+An explicit `?view=list`, `?view=day`, `?view=week`, or `?view=month` wins.
+After an authorised successful response, the selected value is saved in
+`request.session['diary.presentation.v1']`. Omitting `view` reuses that preference.
+List remains the initial default. Preferences are separated by user identity and
+personal/manager role. Only the presentation name is stored: permitted diary
+keys, task data, and filters are never taken from this preference. Scope and
+membership are rechecked on every request. A login change cannot inherit another
+user's preference. Without a session, explicit URL navigation still works.
+
+### Host task selection and return navigation
+
+The package honours existing `diary_ui.trusted_scope` and
+`diary_ui.selection_url` conventions. Trusted-scope calendar controls omit diary
+identifiers from query strings. Calendar cards submit through the existing
+CSRF-protected POST task-selection form when the host supplies one. Hosts that
+use ordinary links keep the existing `task_url()` / `task_detail_url_name` hooks.
+
+A signed, user-bound `calendar_return` token restores period, presentation, and
+filters after task actions. The shared `DiaryScopeMixin` carries a valid token
+through successful local POST redirects, including existing host selection and
+success hooks that return only a path. Tokens expire after seven days and grant
+no diary access. Invalid, cross-user, expired or external destinations are ignored.
+No host logic needs to interpret the selected calendar presentation.
+
+### Templates, assets and compatibility routes
+
+The package shares filters, toolbar, help and task actions across presentation
+fragments: `calendar_day.html`, `calendar_week.html`, and `calendar_month.html`
+under `Diary/partials/`. The original personal/manager templates remain the
+List presentation. `calendar_template_name` can override the complete calendar
+document if needed; `diary_base_template` remains the normal wrap-around hook.
+The package's document loads `Diary/scripts/task_calendar.js` automatically.
+An explicitly embedded calendar fragment needs that script once after its content.
+The existing package-data patterns ship all assets; no external library is needed.
+
+The earlier `TaskCalendarView`, `TaskCalendarDataView`, and package calendar/data
+routes remain available for compatibility and specialist integrations. They are
+not required to add presentation switching to an existing diary page. Their
+standalone filters remain available independently of the original list forms.
 
 ## Callable and JSON interfaces
 
@@ -108,7 +124,7 @@ period = DiaryAPI(actor=actor).task_period(
 )
 ```
 
-Arguments include `view` (`list`, `week`, `month`), `anchor_date`, optional
+Arguments include `view` (`list`, `day`, `week`, `month`), `anchor_date`, optional
 `diary_key`, `mode`, the filters above, `selected_day`, and separate positive
 `page`, `late_page`, `undated_page` values. `period` retains the selected `week`
 or `month` interval in List view. `today` is an optional date for deterministic
@@ -131,7 +147,9 @@ unavailable records 404, and unauthorised access 403. Query values never grant s
 HTTP options use `view`, `period`, `date`, `day`, `mode`, `query`, `owner`,
 `include_completed`, `hide_blocked`, `include_whole_team`, `page`, `late_page`,
 `undated_page`, `panel`, and optional `diary_key`. Flags use `1`; omit for false.
-The `panel` choices are `day`, `late`, and `undated`. Range bounds are derived on
+The `panel` choices are `day`, `late`, and `undated`. Optional callable filters
+`task_status` and `only_late` let the shared renderer honour the original personal
+and manager filter forms. Range bounds are derived on
 the server, not accepted as an arbitrary unbounded date interval.
 
 ## Settings and styles
@@ -164,8 +182,10 @@ toolbar icon/label/tooltip properties. For example:
 
 ## Verification and limits
 
-Server checks: `Diary.tests.test_task_calendar`. Optional Chrome checks:
-`Diary.tests.browser_task_calendar`, using the same isolated PostgreSQL test
+Server checks: `Diary.tests.test_task_calendar` and
+`Diary.tests.test_diary_presentations`. Optional Chrome checks:
+`Diary.tests.browser_task_calendar` and `Diary.tests.browser_diary_presentations`,
+using the same isolated PostgreSQL test
 database setup as the other browser checks. Coverage includes boundaries, leap/DST
 dates, scoped identity, history, private tasks, earlier blockers, pagination,
 query-count stability, signed returns, responsive layout and no-JavaScript use.

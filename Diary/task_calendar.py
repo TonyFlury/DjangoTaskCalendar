@@ -40,15 +40,17 @@ def _page(rows, number, size):
 
 def task_period(api, *, view, anchor_date, diary_key, mode, include_completed, show_blocked,
                 include_whole_team, query, owner, selected_day, page, late_page, undated_page,
-                period, today, directory):
+                period, today, directory, task_status='all', only_late=False):
     """Select visible tasks before counting or slicing; date bounds are half-open."""
     from .api import _comparison_date, _require
     _require(api.actor, 'edit' if mode == 'manager' else 'view')
-    if mode not in {'personal', 'manager'} or view not in {'list', 'week', 'month'}:
+    if mode not in {'personal', 'manager'} or view not in {'list', 'day', 'week', 'month'}:
         raise ValidationError('Select a valid calendar view and mode.')
-    if period not in {None, 'week', 'month'}:
+    if period not in {None, 'day', 'week', 'month'}:
         raise ValidationError('Select a valid calendar period.')
-    for flag in (include_completed, show_blocked, include_whole_team):
+    if task_status not in {'all', 'late', 'ready', 'blocked'}:
+        raise ValidationError('Select a valid task status.')
+    for flag in (include_completed, show_blocked, include_whole_team, only_late):
         if type(flag) is not bool:
             raise ValidationError('Calendar filter flags must be booleans.')
     for number in (page, late_page, undated_page):
@@ -66,9 +68,13 @@ def task_period(api, *, view, anchor_date, diary_key, mode, include_completed, s
     if type(weekday) is not int or not 0 <= weekday <= 6:
         raise ValidationError('DIARY_WEEK_START must be between 0 and 6.')
     try:
-        first = anchor if period == 'week' else anchor.replace(day=1)
-        start = first - timedelta(days=(first.weekday() - weekday) % 7)
-        if period == 'week':
+        first = anchor if period in {'day', 'week'} else anchor.replace(day=1)
+        start = first if period == 'day' else first - timedelta(days=(first.weekday() - weekday) % 7)
+        if period == 'day':
+            end = start + timedelta(days=1)
+            primary_start, primary_end = start, end
+            previous, following = anchor - timedelta(days=1), anchor + timedelta(days=1)
+        elif period == 'week':
             end = start + timedelta(days=7)
             primary_start, primary_end = start, end
             previous, following = anchor - timedelta(days=7), anchor + timedelta(days=7)
@@ -108,6 +114,10 @@ def task_period(api, *, view, anchor_date, diary_key, mode, include_completed, s
             if not include_completed and task['completed_at'] is not None:
                 continue
             if not show_blocked and task['state'] == 'blocked':
+                continue
+            if only_late and not task['late']:
+                continue
+            if task_status != 'all' and ('late' if task['late'] else task['state']) != task_status:
                 continue
             if mode == 'personal' and not (
                 task['owner_kind'] == OwnerKind.PERSON and task['person_ref'] == api.actor.reference

@@ -634,8 +634,10 @@ An unavailable task message does not prove that a task exists.
 
 ## Understand the current limits
 
-Weekly and monthly task pages are available where your host site exposes them.
-See [Weekly and monthly task calendars](CALENDAR_VIEWS.md#using-the-calendar) for
+Your existing diary page has List, Day, Week and Month presentation controls.
+The package remembers your choice separately for personal and manager pages in
+your session. Changing the presentation preserves your current task filters.
+See [Task calendar presentations](CALENDAR_VIEWS.md#using-the-calendar) for
 navigation, filters, expanded days, and returning after task actions.
 
 The current web pages have these limits:

@@ -1,0 +1,5 @@
+{# Package-owned daily agenda; filters and navigation are shared. #}
+<section class="diary-calendar-day diary-calendar-day-view" aria-label="{{ calendar.anchor_date|date:'l j F Y' }}">
+    <h2>{{ calendar.anchor_date|date:'l j F Y' }} · {{ calendar.day.count }} tasks</h2>
+    {% include 'Diary/partials/calendar_page.html' with page=calendar.day label='Day tasks' %}
+</section>

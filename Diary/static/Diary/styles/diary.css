@@ -289,6 +289,8 @@
 .diary .diary-calendar-task { min-width: 0; margin-block: .5rem; padding: .35rem; border: 1px solid var(--diary-border); border-radius: var(--diary-radius); background: var(--diary-surface); overflow-wrap: anywhere; }
 .diary .diary-calendar-task-link { display: -webkit-box; -webkit-line-clamp: var(--diary-calendar-name-lines, 3); -webkit-box-orient: vertical; overflow: hidden; font-weight: bold; color: var(--diary-accent); }
 .diary .diary-calendar-day-panel .diary-calendar-task-link { display: block; overflow: visible; }
+.diary .diary-calendar-day-view .diary-calendar-task-link { display: block; overflow: visible; }
+.diary button.diary-calendar-task-link { background: none; border: 0; padding: 0; text-align: start; font: inherit; font-weight: bold; text-decoration: underline; cursor: pointer; width: 100%; }
 .diary .diary-calendar-late { box-shadow: 0 0 .25rem var(--diary-late); border-color: var(--diary-late); }
 .diary .diary-calendar-blocked-late { box-shadow: 0 0 .25rem var(--diary-blocked); border-color: var(--diary-blocked); }
 .diary .diary-calendar-blocked { border-style: dashed; }

@@ -1,26 +1,31 @@
 # Version timeline
 
-## Unreleased
+## 0.1.11.1 — 11 November 2026
 
-- Implemented DFUT-018 weekly/monthly task calendars with a shared period API,
-  responsive day/agenda views, manager/personal filters, late/undated panels,
-  bounded previews and pagination, private-safe counts, and signed task-return links.
-  Existing dates, task actions, identity pairs, and list defaults are preserved.
-
-- Extended all five task signals with `diary_key` and `template_version_key`.
-  Pair the non-null scope key with the existing `task` UUID to distinguish reused
-  task keys across diaries and template versions. Existing payload fields remain.
-- Added explicit diary/task identity to diary task and note records, and scope
-  keys to predecessor choices and template-version task records. Existing mutation
-  arguments, UUID return values, permissions, and post-commit delivery remain intact.
-- Added regression coverage for identical task UUIDs in two diaries and multiple
-  template versions, alongside existing UI attribution and receiver-failure tests.
+- Delivered DFUT-018 calendar presentations through the existing personal and
+  manager diary endpoints. List, Day, Week and Month use package-owned templates;
+  hosts retain one URL per role and their existing wrapper and access policy.
+- Kept the existing role-specific filters and defaults consistent across
+  presentations. Added a paginated daily agenda alongside the weekly/monthly
+  calendars, busy-day expansion, responsive layouts and late/undated panels.
+- Remembered presentation choices per authenticated user/session and role. An
+  explicit `view` parameter overrides the preference; scope and permissions are
+  checked on every request and are never restored from the preference.
+- Preserved identifier-free host POST task selection and signed calendar return
+  navigation through existing host redirects, including task-note saves. Existing
+  standalone calendar routes remain available for compatibility.
+- Updated host/user documentation. Integration requires the normal package/static
+  asset deployment; no new host calendar views, URLs, dependencies or database
+  migrations are required when using the existing package wrapper hooks.
+- Verification: the 378-test server suite, browser regression checks, and focused
+  presentation/redirect tests passed. Package publication is not recorded here.
 
 ## Recorded versions
 
-Reconstructed on 10 November 2026 from local Git history through version
-**0.1.10.1**, merging `feature/dfut-007-task-signals` into `main`.
-The main tip before that merge was `acc4895`.
+Updated on 11 November 2026 using committed package metadata through
+**0.1.10.2** (`34d1098`) and the prepared **0.1.11.1** changes.
+Calendar implementation commit `b4a9c86` retained the 0.1.10.2 version number
+and is included in the following 0.1.11.1 snapshot under the grouping rule below.
 The repository's primary branch is named `main`; there is no `master` branch.
 
 Mainline version numbers come from first-parent committed `[project].version` values in
@@ -50,6 +55,8 @@ under the previous version. The first entry includes the earlier baseline.
 | 9 November 2026 | **0.1.9.1** | `b629174` | DV1-057 template UI refresh: graph-first navigation, compact task dialogs, draft Save task / Cancel, separate Save template, searchable task finder, and one shared task/milestone date-source picker. Moved the DFUT backlog into the root TODO and documented completed graph/task-relative-date capabilities. |
 | 10 November 2026 | **0.1.9.4** | `acc4895` | Moved title/description and version status into Settings, automatically opened for new templates; moved guidance into Help. Added the navigator toolbar, separators, icon-only actions, and CSS hooks for host graphics, labels, and tooltips. Fixed zoom to keep the panel size stable with scrollable content. Includes left alignment of task search and the future subgraph/manual-layout requirements from `08f6f71`; those future features are not implemented. |
 | 10 November 2026 | **0.1.10.1** | Merge of `167e724` into main | Integrated DFUT-007 signals for task creation, notes, dependency changes, closure, and ownership changes. Events carry actor email, task key, and task name; dispatch occurs after commit and isolates receiver errors. Preserves task-relative date ordering and source validation added on main. Includes signal tests and this reconstructed changelog. |
+| 10 November 2026 | **0.1.10.2** | `34d1098` | Added diary/version scope keys to all five task signals and task/note/predecessor API records, resolving reused task UUID ambiguity. Added cross-diary/version and HTTP identity tests. |
+| 11 November 2026 | **0.1.11.1** | Prepared in working tree | DFUT-018 calendar delivery and rework: package-owned List/Day/Week/Month switching on existing diary URLs, shared role filters, per-user/session preferences, identifier-free POST navigation, signed task returns, responsive layouts and updated integration guidance. Includes the initial weekly/monthly implementation from `b4a9c86`. |
 
 ## Signals development and merge
 

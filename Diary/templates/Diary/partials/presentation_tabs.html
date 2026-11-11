@@ -1,0 +1,3 @@
+<nav class="diary-actions diary-calendar-view-tabs" aria-label="Task presentation">
+    {% for tab in diary_presentations %}<a class="diary-button" href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.name }}</a>{% endfor %}
+</nav>

@@ -788,9 +788,11 @@ The browser check creates its own users and templates in that database.
 
 ### Weekly and monthly task views
 
-Weekly/monthly task pages, calendar settings, and host/API setup are documented in
-[Calendar views](CALENDAR_VIEWS.md). The host must supply trusted diary scope to
-the calendar and task-detail routes, as with the existing list views.
+The existing personal and manager diary endpoints provide List, Day, Week and Month
+presentations with the same role-specific filters. The package remembers a validated
+presentation per user/session and role; an explicit `view` query overrides it.
+Existing host wrappers and access/POST-selection hooks remain sufficient: no
+calendar-specific host URL or view is required. See [Calendar views](CALENDAR_VIEWS.md).
 
 ### Task change signals
 

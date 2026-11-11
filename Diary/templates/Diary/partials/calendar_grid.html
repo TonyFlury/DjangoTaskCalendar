@@ -1,0 +1,12 @@
+    <div class="diary-calendar-weekdays" aria-hidden="true">{% for weekday in calendar.weekdays %}<span>{{ weekday }}</span>{% endfor %}</div>
+    <div class="diary-calendar-grid diary-calendar-{{ calendar.view }}" aria-label="{{ calendar.period|capfirst }} task dates">
+        {% for day in calendar.days %}
+        <section class="diary-calendar-day{% if day.today %} diary-calendar-is-today{% endif %}{% if day.outside_month %} diary-calendar-outside-month{% endif %}{% if day.selected %} diary-calendar-selected{% endif %}" data-calendar-date="{{ day.date|date:'Y-m-d' }}" aria-label="{{ day.date|date:'l j F Y' }}">
+            <h3><a class="diary-calendar-day-open" href="{{ day.url }}" aria-label="Tasks for {{ day.date|date:'l j F Y' }}">{{ day.date|date:'D j M' }}</a>{% if day.today %}<span class="diary-calendar-today-label">Today</span>{% endif %}</h3>
+            <span class="diary-calendar-day-count">{{ day.count }} task{{ day.count|pluralize }}</span>
+            <ul class="diary-calendar-day-tasks">{% for task in day.tasks %}{% include 'Diary/partials/calendar_task.html' %}{% empty %}<li class="diary-muted">No tasks</li>{% endfor %}</ul>
+            {% if day.more %}<a class="diary-calendar-more" href="{{ day.url }}">+{{ day.more }} more · View all {{ day.count }} tasks</a>{% endif %}
+            {% if calendar.period == 'month' %}<a class="diary-calendar-open-week" href="{{ day.week_url }}">Open this week</a>{% endif %}
+        </section>
+        {% endfor %}
+    </div>
